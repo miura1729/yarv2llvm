@@ -1,0 +1,13 @@
+yarv2llvm -- Yarv to LLVM Translater
+
+-- Description
+  yarv2llvm is Yarv to LLVM translater. 
+
+-- Bugs
+  This is paperware yet.
+   
+-- Author
+   Miura Hideki (miura1729)
+   e-mail: m-72 at tf6.so-net.ne.jp
+   blog:   http://d.hatena.ne.jp/miura1729 (in Japanese)
+
