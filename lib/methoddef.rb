@@ -11,7 +11,7 @@ module MethodDefinition
     :sqrt => 
       {:rettype => :float,
       :argtype => [:float],
-      :cname => "sqrt"}
+      :cname => "sqrtf"}
   }
 end
     

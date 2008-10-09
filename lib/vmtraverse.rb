@@ -13,12 +13,12 @@ class Symbol
 end
 
 def pppp(n)
-#  p n
+  p n
 end
 
 class Context
-  def initialize(local_vars)
-    @local_vars = local_vars
+  def initialize(local)
+    @local_vars = local
     @rc = nil
     @org = nil
     @blocks = {}
@@ -59,25 +59,23 @@ class DmyBlock
     pppp "div (#{p1}), (#{p2})"
   end
 
-  def iseq_eq(p1, p2)
-    pppp "iseq_eq (#{p1}), (#{p2})"
+  def icmp_eq(p1, p2)
+    pppp "icmp_eq (#{p1}), (#{p2})"
+  end
+
+  def fcmp_ueq(p1, p2)
+    pppp "fcmp_eq (#{p1}), (#{p2})"
   end
 
   def alloca(type, num)
     @@num ||= 0
     @@num += 1
-    pppp "Alloca #{type.type}, #{num}"
+    pppp "Alloca #{type}, #{num}"
     "[#{@@num}]"
   end
 
-  def create_block
-    pppp "create block"
-    @@num += 1
-    @@num
-  end
-
-  def set_insert_point
-    pppp "set_insert_point"
+  def set_insert_point(n)
+    pppp "set_insert_point #{n}"
   end
 
   def cond_br(cond, th, el)
@@ -88,7 +86,7 @@ class DmyBlock
     pppp "return #{rc}"
   end
 
-  def call(name, args)
+  def call(name, *args)
     pppp "call #{name}(#{args.join(',')})"
   end
 end
@@ -97,7 +95,7 @@ class RubyType
   @@type_table = []
   def initialize(type, name = nil)
     @name = name
-    @type = type
+    @type = sym2type(type)
     @flushed = false
     @same_type = []
     @@type_table.push self
@@ -151,18 +149,23 @@ class RubyType
     RubyType.new(:symbol)
   end
 
-  def eqtype(p1)
-    if p1 == nil then
-      @type == nil
-    elsif p1.is_a?(Symbol) then
-      @type == p1
-    else
-      @type == p1.type
-    end
-  end
+  def sym2type(sym)
+    case sym
+    when :fixnum
+      Type::Int32Ty
 
-  def nulltype?
-    @type == nil
+    when :float
+      Type::FloatTy
+
+    when :symbol
+      Type::VALUE
+
+    when nil
+      nil
+
+    else
+      raise "Unkonw type #{sym}"
+    end
   end
 
   def self.typeof(obj)
@@ -175,6 +178,7 @@ class RubyType
 
     when Symbol
       RubyType.symbol
+
     else
       RubyType.new(obj.class.to_s)
     end
@@ -185,6 +189,7 @@ class LLVMBuilder
   include RubyInternals
   def initialize
     @module = LLVM::Module.new('regexp')
+    @externed_function = {}
     ExecutionEngine.get(@module)
   end
 
@@ -196,8 +201,20 @@ class LLVMBuilder
     eb.builder
   end
 
+  def create_block
+    @func.create_block
+  end
+
   def external_function(name, type)
-    pppp "external_function #{name} #{type}"
+    if rc = @externed_function[name] then
+      rc
+    else
+      @externed_function[name] = @module.external_function(name, type)
+    end
+  end
+
+  def disassemble
+    p @module
   end
 end
 
@@ -209,9 +226,6 @@ class YarvVisitor
   def run
     @iseq.traverse_code([nil, nil, nil]) do |code, info|
       local = []
-      ([nil, :self] + code.header['locals'].reverse).each_with_index do |n, i|
-        local[i] = {:name => n, :type => RubyType.new(nil, n), :area => nil}
-      end
       visit_block_start(code, nil, local, nil, info)
 
       code.lblock_list.each do |ln|
@@ -239,15 +253,20 @@ class YarvTranslator<YarvVisitor
     super(iseq)
     @stack = []
     @rescode = lambda {|b, context| context}
-    @blocks = []
     @builder = LLVMBuilder.new
+  end
+
+  def run
+    super
+
+    @builder.disassemble
   end
   
   def get_or_create_block(ln, b, context)
     if context.blocks[ln] then
       context.blocks[ln]
     else
-      context.blocks[ln] = b.create_block
+      context.blocks[ln] = @builder.create_block
     end
   end
   
@@ -256,7 +275,7 @@ class YarvTranslator<YarvVisitor
     @rescode = lambda {|b, context|
       context = oldrescode.call(b, context)
       blk = get_or_create_block(ln, b, context)
-      b.set_insert_point
+      b.set_insert_point(blk)
       context
     }
   end
@@ -265,36 +284,52 @@ class YarvTranslator<YarvVisitor
   end
   
   def visit_block_start(code, ins, local, ln, info)
+    ([nil, :self] + code.header['locals'].reverse).each_with_index do |n, i|
+      local[i] = {:name => n, :type => RubyType.new(nil, n), :area => nil}
+    end
+
     oldrescode = @rescode
     @rescode = lambda {|b, context|
       context = oldrescode.call(b, context)
       context.local_vars.each_with_index {|vars, n|
-        lv = b.alloca(vars[:type], vars[:name])
-        vars[:area] = lv
+        if vars[:type].type then
+          lv = b.alloca(vars[:type].type, 1)
+          vars[:area] = lv
+        else
+          vars[:area] = nil
+        end
       }
       context
     }
   end
   
   def visit_block_end(code, ins, local, ln, info)
-    #block = @builder.define_function(info[1].to_s, Type.function(INT, [INT]))
-    pppp "define #{info[1]}"
     RubyType.flush
-    b = DmyBlock.new
-    context = @rescode.call(b, Context.new(local))
-    p1 = @stack.pop
-    if p1 then
-      b.return(p1[1].call(b, context).rc)
-      pppp "ret type #{p1[0].type}"
-    end
-    pppp "end"
-    # write function prototype
+
     numarg = code.header['misc'][:arg_size]
+=begin
+    # write function prototype
     print "#{info[1]} :("
     1.upto(numarg) do |n|
-      print "#{local[local.size - n][:type].type}, "
+      print "#{local[-n][:type].type}, "
     end
-    print ") -> #{p1[0].type}\n"
+    print ") -> #{@stack.last[0].type}\n"
+=end
+
+    argtype = []
+    1.upto(numarg) do |n|
+      argtype[n - 1] = local[-n][:type].type
+    end
+    if @stack.last then
+      b = @builder.define_function(info[1].to_s, Type.function(@stack.last[0].type, argtype))
+      pppp "define #{info[1]}"
+#      b = DmyBlock.new
+      context = @rescode.call(b, Context.new(local))
+      p1 = @stack.pop
+      b.return(p1[1].call(b, context).rc)
+      pppp "ret type #{p1[0].type}"
+      pppp "end"
+    end
     
     @rescode = lambda {|b, context| context}
   end
@@ -357,31 +392,38 @@ class YarvTranslator<YarvVisitor
     end
 
     if funcinfo = CMethod[p1] then
-      rettype = funcinfo[:rettype]
-      argtype = funcinfo[:argtype]
+      rettype = RubyType.new(funcinfo[:rettype])
+      argtype = funcinfo[:argtype].map {|ts| RubyType.new(ts)}
       cname = funcinfo[:cname]
-
+      
       if argtype.size == ins[2] then
+        argtype2 = argtype.map {|tc| tc.type}
+        ftype = Type.function(rettype.type, argtype2)
+        func = @builder.external_function(cname, ftype)
+
         p = []
         0.upto(ins[2] - 1) do |n|
           p[n] = @stack.pop
-          if p[n][0].type and p[n][0].type != argtype[n] then
+          if p[n][0].type and p[n][0].type != argtype[n].type then
             raise "arg error"
           else
-            p[n][0].type = argtype[n]
+            p[n][0].add_same_type argtype[n]
+            argtype[n].add_same_type p[n][0]
           end
-        end 
-
-        @stack.push [RubyType.new(rettype),
+        end
+          
+        @stack.push [rettype,
           lambda {|b, context|
             args = []
             p.each do |pe|
               args.push pe[1].call(b, context).rc
             end
-            context.rc = b.call(cname, args)
+            # p cname
+            # print func
+            context.rc = b.call(func, *args)
             context
           }
-          ]
+        ]
         return
       end
     end
@@ -394,9 +436,9 @@ class YarvTranslator<YarvVisitor
     @rescode = lambda {|b, context|
       oldrescode.call(b, context)
       tblock = get_or_create_block(lab, b, context)
-      eblock = b.create_block
+      eblock = @builder.create_block
       b.cond_br(s1[1].call(b, context).rc, eblock, tblock)
-      eblock = b.set_insert_point
+      eblock = b.set_insert_point(eblock)
 
       context
     }
@@ -494,7 +536,12 @@ class YarvTranslator<YarvVisitor
     @stack.push [s1[0], 
       lambda {|b, context|
         s1val, s2val, context = gen_common_opt_2arg(b, context, s1, s2)
-        context.rc = b.div(s1val, s2val)
+        case s1[0].type
+        when Type::FloatTy
+          context.rc = b.fdiv(s1val, s2val)
+        when Type::Int32TY
+          context.rc = b.sdiv(s1val, s2val)
+        end
         context
       }
     ]
@@ -508,7 +555,13 @@ class YarvTranslator<YarvVisitor
     @stack.push [nil, 
       lambda {|b, context|
         s1val, s2val, context = gen_common_opt_2arg(b, context, s1, s2)
-        context.rc = b.iseq_eq(s1val, s2val)
+        case s1[0].type
+          when Type::FloatTy
+          context.rc = b.fcmp_ueq(s1val, s2val)
+
+          when Type::Int32TY
+          context.rc = b.icmp_eq(s1val, s2val)
+        end
         context
       }
     ]
@@ -524,68 +577,3 @@ is = RubyVM::InstructionSequence.compile( File.read(ARGV[0]), '<test>', 1,
 iseq = InstSeqTree.new(nil, is)
 #p iseq.to_a
 YarvTranslator.new(iseq).run
-
-=begin
-stack = []
-iseq.traverse_code([nil, nil, nil]) do |code, info|
-  code.lblock_list.each do |ln|
-    p ln
-    local = ["", :self] + code.header['locals'].reverse
-    p local
-    code.lblock[ln].each do |ins|
-      p ins
-      nm = ins[0]
-      p1 = ins[1]
-      case nm 
-      when :send
-        if p1 == :"core#define_method" then
-          s1 = stack.pop
-          s2 = stack.pop
-          p "def #{s1}"
-        else
-          res = ""
-          p2 = ins[2]
-          p2.times do |n|
-            res += stack.pop.to_s
-            res += ','
-          end
-          res.chop!
-          stack.push "#{p1}(#{res})"
-        end
-      when :getlocal
-        stack.push local[p1]
-      when :setlocal
-        src = stack.pop
-        p "#{local[p1]} = #{src}"
-      when :putobject
-        stack.push p1
-      when :opt_plus
-        s1 = stack.pop
-        s2 = stack.pop
-        stack.push "#{s2} + #{s1}"
-      when :opt_minus
-        s1 = stack.pop
-        s2 = stack.pop
-        stack.push "#{s2} - #{s1}"
-      when :opt_mult
-        s1 = stack.pop
-        s2 = stack.pop
-        stack.push "#{s2} * #{s1}"
-      when :opt_div
-        s1 = stack.pop
-        s2 = stack.pop
-        stack.push "#{s2} / #{s1}"
-      when :opt_eq
-        s1 = stack.pop
-        s2 = stack.pop
-        stack.push "#{s2} == #{s1}"
-
-      when :branchunless
-        s1 = stack.pop
-        p "if #{s1} then"
-      end
-    end
-  end
-end
-
-=end

@@ -141,7 +141,7 @@ module VMLib
       stacktop = nil
       body = []
       @lblock_list.each do |ln|
-        body.push ln.to_i
+        body.push ln
         @lblock[ln].each do |inst|
           if inst.is_a? Array then
             cinst = inst.clone
@@ -190,7 +190,7 @@ module VMLib
     end
 
     def traverse_code(info, &action)
-      action.call(self, info, @header)
+      action.call(self, info)
       
       @blockes.each do |sno, cont|
         cont.traverse_code([info[0], info[1], sno], &action)
