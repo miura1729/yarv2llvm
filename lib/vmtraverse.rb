@@ -12,6 +12,10 @@ class Symbol
   end
 end
 
+def pppp(n)
+#  p n
+end
+
 class Context
   def initialize(local_vars)
     @local_vars = local_vars
@@ -30,71 +34,110 @@ end
 
 class DmyBlock
   def load(addr)
-    p "Load (#{addr})"
+    pppp "Load (#{addr})"
     addr
   end
 
   def store(value, addr)
-    p "Store (#{value}), (#{addr})"
+    pppp "Store (#{value}), (#{addr})"
     nil
   end
 
   def add(p1, p2)
-    p "add (#{p1}), (#{p2})"
+    pppp "add (#{p1}), (#{p2})"
   end
 
   def sub(p1, p2)
-    p "sub (#{p1}), (#{p2})"
+    pppp "sub (#{p1}), (#{p2})"
   end
 
   def mul(p1, p2)
-    p "mul (#{p1}), (#{p2})"
+    pppp "mul (#{p1}), (#{p2})"
   end
 
   def div(p1, p2)
-    p "div (#{p1}), (#{p2})"
+    pppp "div (#{p1}), (#{p2})"
   end
 
   def iseq_eq(p1, p2)
-    p "iseq_eq (#{p1}), (#{p2})"
+    pppp "iseq_eq (#{p1}), (#{p2})"
   end
 
   def alloca(type, num)
     @@num ||= 0
     @@num += 1
-    p "Alloca #{type}, #{num}"
+    pppp "Alloca #{type.type}, #{num}"
     "[#{@@num}]"
   end
 
   def create_block
-    p "create block"
+    pppp "create block"
     @@num += 1
     @@num
   end
 
   def set_insert_point
-    p "set_insert_point"
+    pppp "set_insert_point"
   end
 
   def cond_br(cond, th, el)
-    p "cond_br #{cond} #{th} #{el}"
+    pppp "cond_br #{cond} #{th} #{el}"
   end
 
   def return(rc)
-    p "return #{rc}"
+    pppp "return #{rc}"
   end
 
   def call(name, args)
-    p "call #{name}(#{args.join(',')})"
+    pppp "call #{name}(#{args.join(',')})"
   end
 end
 
 class RubyType
-  def initialize(type)
+  @@type_table = []
+  def initialize(type, name = nil)
+    @name = name
     @type = type
+    @flushed = false
+    @same_type = []
+    @@type_table.push self
   end
 
   attr_accessor :type
+  attr_accessor :flushed
+  attr :name
+
+  def add_same_type(type)
+    @same_type.push type
+  end
+
+  def self.flush
+    @@type_table.each do |ty|
+      ty.flushed = false
+    end
+
+    @@type_table.each do |ty|
+      ty.flush
+    end
+  end
+
+  def flush
+    if @flushed then
+      return
+    end
+
+    if @type then
+      @flushed = true
+      @same_type.each do |ty|
+        if ty.type and ty.type != @type then
+          raise "Type error #{ty.name}(#{ty.type}) and #{@name}(#{@type})"
+        else
+          ty.type = @type
+          ty.flush
+        end
+      end
+    end
+  end
 
   def self.fixnum
     RubyType.new(:fixnum)
@@ -154,7 +197,7 @@ class LLVMBuilder
   end
 
   def external_function(name, type)
-    p "external_function #{name} #{type}"
+    pppp "external_function #{name} #{type}"
   end
 end
 
@@ -167,7 +210,7 @@ class YarvVisitor
     @iseq.traverse_code([nil, nil, nil]) do |code, info|
       local = []
       ([nil, :self] + code.header['locals'].reverse).each_with_index do |n, i|
-        local[i] = {:name => n, :type => nil, :area => nil}
+        local[i] = {:name => n, :type => RubyType.new(nil, n), :area => nil}
       end
       visit_block_start(code, nil, local, nil, info)
 
@@ -226,7 +269,7 @@ class YarvTranslator<YarvVisitor
     @rescode = lambda {|b, context|
       context = oldrescode.call(b, context)
       context.local_vars.each_with_index {|vars, n|
-        lv = b.alloca(vars[:type].inspect, vars[:name])
+        lv = b.alloca(vars[:type], vars[:name])
         vars[:area] = lv
       }
       context
@@ -235,28 +278,36 @@ class YarvTranslator<YarvVisitor
   
   def visit_block_end(code, ins, local, ln, info)
     #block = @builder.define_function(info[1].to_s, Type.function(INT, [INT]))
-    p "define #{info[1]}"
+    pppp "define #{info[1]}"
+    RubyType.flush
     b = DmyBlock.new
-    p @stack
     context = @rescode.call(b, Context.new(local))
     p1 = @stack.pop
     if p1 then
       b.return(p1[1].call(b, context).rc)
+      pppp "ret type #{p1[0].type}"
     end
-    p "end"
+    pppp "end"
+    # write function prototype
+    numarg = code.header['misc'][:arg_size]
+    print "#{info[1]} :("
+    1.upto(numarg) do |n|
+      print "#{local[local.size - n][:type].type}, "
+    end
+    print ") -> #{p1[0].type}\n"
+    
     @rescode = lambda {|b, context| context}
   end
   
   def visit_default(code, ins, local, ln, info)
-#    p ins
+#    pppp ins
   end
   
   def visit_putobject(code, ins, local, ln, info)
     p1 = ins[1]
-    p RubyType.typeof(p1)
     @stack.push [RubyType.typeof(p1), 
       lambda {|b, context| 
-        p p1
+        pppp p1
         context.rc = p1.llvm 
         context.org = p1
         context
@@ -265,9 +316,7 @@ class YarvTranslator<YarvVisitor
   
   def visit_getlocal(code, ins, local, ln, info)
     p1 = ins[1]
-    if (type = local[p1][:type]) == nil then
-      type = local[p1][:type] = RubyType.new(nil)
-    end
+    type = local[p1][:type]
     @stack.push [type,
       lambda {|b, context|
         context.rc = b.load(context.local_vars[p1][:area])
@@ -283,17 +332,9 @@ class YarvTranslator<YarvVisitor
     src = @stack.pop
     srctype = src[0]
     srcvalue = src[1]
-    
-    if dsttype and dsttype != srctype
-      print "Type error #{ins}"
-    else
-      if srctype and dsttype == nil then
-        local[p1][:type] = srctype
-      
-      elsif srctype == nil and dsttype then
-        srctype.type = local[p1][:type].type
-      end
-    end
+
+    srctype.add_same_type(dsttype)
+    dsttype.add_same_type(srctype)
 
     oldrescode = @rescode
     @rescode = lambda {|b, context|
@@ -301,7 +342,6 @@ class YarvTranslator<YarvVisitor
       context = srcvalue.call(b, context)
       context.last_stack_value = context.rc
       lvar = context.local_vars[p1]
-      print "Store  #{lvar[:name]} -> #{lvar[:type].inspect} \n"
       context.rc = b.store(context.rc, lvar[:area])
       context.org = lvar[:name]
       context
@@ -327,8 +367,6 @@ class YarvTranslator<YarvVisitor
           p[n] = @stack.pop
           if p[n][0].type and p[n][0].type != argtype[n] then
             raise "arg error"
-          elsif p[n][0].nil? then
-            p[n][0] = RubyType.new(argtype[n])
           else
             p[n][0].type = argtype[n]
           end
@@ -375,33 +413,22 @@ class YarvTranslator<YarvVisitor
   end
   
   def check_same_type_2arg_static(p1, p2)
-    if p1[0] == nil then
-      if p2[0] == nil then
-        p1[0] = p2[0] = RubyType.new(nil)
-      else
-        p1[0] = p2[0]
-      end
-    else
-      if p2[0] == nil then
-        p2[0] = p1[0]
-      else
-        print "Different type" if p1[0] != p2[0]
-      end
-    end
+    p1[0].add_same_type(p2[0])
+    p2[0].add_same_type(p1[0])
   end
   
   def check_same_type_2arg_gencode(b, context, p1, p2)
-    if p1[0] == nil then
-      if p2[0] == nil then
+    if p1[0].type == nil then
+      if p2[0].type == nil then
         print "ambious type #{p2[1].call(b, context).org}\n"
       else
-        p1[0] = p2[0]
+        p1[0].type = p2[0].type
       end
     else
-      if p2[0] and p1[0] != p2[0] then
+      if p2[0].type and p1[0].type != p2[0].type then
         print "diff type #{p1[1].call(b, context).org}\n"
       else
-        p2[0] = p1[0]
+        p2[0].type = p1[0].type
       end
     end
   end
@@ -410,7 +437,7 @@ class YarvTranslator<YarvVisitor
     check_same_type_2arg_gencode(b, context, s1, s2)
     context = s1[1].call(b, context)
     s1val = context.rc
-    #        p s1[0]
+    #        pppp s1[0]
     context = s2[1].call(b, context)
     s2val = context.rc
 
@@ -495,6 +522,7 @@ is = RubyVM::InstructionSequence.compile( File.read(ARGV[0]), '<test>', 1,
          :specialized_instruction  => true,
       }).to_a
 iseq = InstSeqTree.new(nil, is)
+#p iseq.to_a
 YarvTranslator.new(iseq).run
 
 =begin
