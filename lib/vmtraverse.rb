@@ -200,8 +200,7 @@ class LLVMBuilder
   end
 
   def define_function(name, type)
-    @func = @module.get_or_insert_function(name,
-                                           Type.function(VALUE, [VALUE]))
+    @func = @module.get_or_insert_function(name, type)
 
     eb = @func.create_block
     eb.builder
@@ -220,6 +219,7 @@ class LLVMBuilder
   end
 
   def disassemble
+    @module.write_bitcode("yarv.bc")
     p @module
   end
 end
@@ -282,7 +282,7 @@ class YarvTranslator<YarvVisitor
     live =  @is_live
 
     @is_live = nil
-    if @expstack.size > 1 then
+    if @expstack.size > 0 then
       valexp = @expstack.pop
     end
     @rescode = lambda {|b, context|
@@ -330,6 +330,7 @@ class YarvTranslator<YarvVisitor
     if @is_live == nil then
       @is_live = true
     end
+    p @expstack.map {|n| n[1]}
   end
   
   def visit_block_start(code, ins, local, ln, info)
@@ -356,21 +357,21 @@ class YarvTranslator<YarvVisitor
     RubyType.flush
 
     numarg = code.header['misc'][:arg_size]
-#=begin
+=begin
     # write function prototype
     print "#{info[1]} :("
     1.upto(numarg) do |n|
       print "#{local[-n][:type].type}, "
     end
     print ") -> #{@expstack.last[0].type}\n"
-#=end
+=end
 
     argtype = []
     1.upto(numarg) do |n|
       argtype[n - 1] = local[-n][:type].type
     end
 
-    if @expstack.last then
+    if @expstack.last and info[1] then
       b = @builder.define_function(info[1].to_s, 
                                    Type.function(@expstack.last[0].type, 
                                                  argtype))
@@ -485,13 +486,24 @@ class YarvTranslator<YarvVisitor
     s1 = @expstack.pop
     oldrescode = @rescode
     lab = ins[1]
+    valexp = nil
+    if @expstack.size > 0 then
+      valexp = @expstack.pop
+    end
+    bval = nil
     @is_live = false
+    iflab = nil
     @rescode = lambda {|b, context|
       oldrescode.call(b, context)
       eblock = @builder.create_block
+      iflab = context.curln
       context.curln = (context.curln.to_s + "_1").to_sym
       context.blocks[context.curln] = eblock
       tblock = get_or_create_block(lab, b, context)
+      if valexp then
+        bval = [valexp[0], valexp[1].call(b, context).rc]
+        context.block_value[iflab] = bval
+      end
       b.cond_br(s1[1].call(b, context).rc, eblock, tblock)
       context.jump_hist[lab] ||= []
       context.jump_hist[lab].push context.curln
@@ -499,13 +511,21 @@ class YarvTranslator<YarvVisitor
 
       context
     }
+    if valexp then
+      @expstack.push [valexp[0], 
+        lambda {|b, context| 
+          context.rc = context.block_value[iflab][1]
+          context}]
+
+    end
   end
 
   def visit_jump(code, ins, local, ln, info)
     lab = ins[1]
+    fmlab = nil
     oldrescode = @rescode
     valexp = nil
-    if @expstack.size > 1 then
+    if @expstack.size > 0 then
       valexp = @expstack.pop
     end
     bval = nil
@@ -515,7 +535,8 @@ class YarvTranslator<YarvVisitor
       jblock = get_or_create_block(lab, b, context)
       if valexp then
         bval = [valexp[0], valexp[1].call(b, context).rc]
-        context.block_value[context.curln] = bval
+        fmlab = context.curln
+        context.block_value[fmlab] = bval
       end
       b.br(jblock)
       context.jump_hist[lab] ||= []
@@ -526,7 +547,9 @@ class YarvTranslator<YarvVisitor
     if valexp then
       @expstack.push [valexp[0], 
         lambda {|b, context| 
-          context.block_value[context.curln][0]}]
+          context.rc = context.block_value[fmlab][1]
+          context
+        }]
 
     end
   end
