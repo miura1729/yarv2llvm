@@ -13,7 +13,7 @@ class Symbol
 end
 
 def pppp(n)
-#  p n
+  p n
 end
 
 class Context
@@ -206,6 +206,10 @@ class LLVMBuilder
     eb.builder
   end
 
+  def arguments
+    @func.arguments
+  end
+
   def create_block
     @func.create_block
   end
@@ -270,6 +274,7 @@ class YarvTranslator<YarvVisitor
   end
   
   def get_or_create_block(ln, b, context)
+    p context.blocks
     if context.blocks[ln] then
       context.blocks[ln]
     else
@@ -330,7 +335,7 @@ class YarvTranslator<YarvVisitor
     if @is_live == nil then
       @is_live = true
     end
-    p @expstack.map {|n| n[1]}
+    # p @expstack.map {|n| n[1]}
   end
   
   def visit_block_start(code, ins, local, ln, info)
@@ -339,6 +344,7 @@ class YarvTranslator<YarvVisitor
     end
 
     oldrescode = @rescode
+    numarg = code.header['misc'][:arg_size]
     @rescode = lambda {|b, context|
       context = oldrescode.call(b, context)
       context.local_vars.each_with_index {|vars, n|
@@ -349,6 +355,14 @@ class YarvTranslator<YarvVisitor
           vars[:area] = nil
         end
       }
+
+      # Copy argument in reg. to allocated area
+      arg = @builder.arguments
+      lvars = context.local_vars
+      1.upto(numarg) do |n|
+        b.store(arg[n - 1], lvars[-n][:area])
+      end
+
       context
     }
   end
@@ -371,11 +385,12 @@ class YarvTranslator<YarvVisitor
       argtype[n - 1] = local[-n][:type].type
     end
 
+    # pppp "define #{info[1]}"
+    p @expstack
     if @expstack.last and info[1] then
       b = @builder.define_function(info[1].to_s, 
                                    Type.function(@expstack.last[0].type, 
                                                  argtype))
-      pppp "define #{info[1]}"
 #      b = DmyBlock.new
       context = @rescode.call(b, Context.new(local))
       p1 = @expstack.pop
@@ -391,6 +406,16 @@ class YarvTranslator<YarvVisitor
 #    pppp ins
   end
   
+  def visit_putnil(code, ins, local, ln, info)
+    # Nil is not support yet.
+=begin
+    @expstack.push [RubyType.typeof(nil), 
+      lambda {|b, context| 
+        nil
+      }]
+=end
+  end
+
   def visit_putobject(code, ins, local, ln, info)
     p1 = ins[1]
     @expstack.push [RubyType.typeof(p1), 
@@ -505,6 +530,47 @@ class YarvTranslator<YarvVisitor
         context.block_value[iflab] = bval
       end
       b.cond_br(s1[1].call(b, context).rc, eblock, tblock)
+      context.jump_hist[lab] ||= []
+      context.jump_hist[lab].push context.curln
+      b.set_insert_point(eblock)
+
+      context
+    }
+    if valexp then
+      @expstack.push [valexp[0], 
+        lambda {|b, context| 
+          context.rc = context.block_value[iflab][1]
+          context}]
+
+    end
+  end
+
+  def visit_branchif(code, ins, local, ln, info)
+    s1 = @expstack.pop
+    oldrescode = @rescode
+    lab = ins[1]
+    valexp = nil
+    if @expstack.size > 0 then
+      valexp = @expstack.pop
+    end
+    bval = nil
+#    @is_live = false
+    iflab = nil
+    @rescode = lambda {|b, context|
+      oldrescode.call(b, context)
+      tblock = get_or_create_block(lab, b, context)
+      iflab = context.curln
+
+      eblock = @builder.create_block
+      while context.blocks[context.curln] do
+        context.curln = (context.curln.to_s + "_1").to_sym
+      end
+      context.blocks[context.curln] = eblock
+      if valexp then
+        bval = [valexp[0], valexp[1].call(b, context).rc]
+        context.block_value[iflab] = bval
+      end
+      b.cond_br(s1[1].call(b, context).rc, tblock, eblock)
       context.jump_hist[lab] ||= []
       context.jump_hist[lab].push context.curln
       b.set_insert_point(eblock)
@@ -678,6 +744,46 @@ class YarvTranslator<YarvVisitor
       }
     ]
   end
+
+  def visit_opt_lt(code, ins, local, ln, info)
+    s2 = @expstack.pop
+    s1 = @expstack.pop
+    check_same_type_2arg_static(s1, s2)
+    
+    @expstack.push [nil, 
+      lambda {|b, context|
+        s1val, s2val, context = gen_common_opt_2arg(b, context, s1, s2)
+        case s1[0].type
+          when Type::FloatTy
+          context.rc = b.fcmp_ult(s1val, s2val)
+
+          when Type::Int32Ty
+          context.rc = b.icmp_slt(s1val, s2val)
+        end
+        context
+      }
+    ]
+  end
+  
+  def visit_opt_gt(code, ins, local, ln, info)
+    s2 = @expstack.pop
+    s1 = @expstack.pop
+    check_same_type_2arg_static(s1, s2)
+    
+    @expstack.push [nil, 
+      lambda {|b, context|
+        s1val, s2val, context = gen_common_opt_2arg(b, context, s1, s2)
+        case s1[0].type
+          when Type::FloatTy
+          context.rc = b.fcmp_ugt(s1val, s2val)
+
+          when Type::Int32Ty
+          context.rc = b.icmp_sgt(s1val, s2val)
+        end
+        context
+      }
+    ]
+  end
 end
 
 include VMLib
@@ -687,5 +793,5 @@ is = RubyVM::InstructionSequence.compile( File.read(ARGV[0]), '<test>', 1,
          :specialized_instruction  => true,
       }).to_a
 iseq = InstSeqTree.new(nil, is)
-#p iseq.to_a
+p iseq.to_a
 YarvTranslator.new(iseq).run
