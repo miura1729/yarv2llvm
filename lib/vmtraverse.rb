@@ -1,3 +1,4 @@
+require 'tempfile'
 require 'llvm'
 
 require 'instruction'
@@ -208,8 +209,10 @@ class LLVMBuilder
       b.return(x)
     end
     MethodDefinition::RubyMethodStub[name] = {
+      :sname => sname,
       :stub => @stubfunc,
-      :argt => argt}
+      :argt => argt,
+      :type => stype}
   end
 
   def define_function(name, rett, argt)
@@ -240,6 +243,17 @@ class LLVMBuilder
       rc
     else
       @externed_function[name] = @module.external_function(name, type)
+    end
+  end
+
+  def optimize
+    bitout =  Tempfile.new('bit')
+    @module.write_bitcode("#{bitout.path}")
+    File.popen("/usr/local/bin/opt -O3 -f #{bitout.path}") {|fp|
+      @module = LLVM::Module.read_bitcode(fp.read)
+    }
+    MethodDefinition::RubyMethodStub.each do |nm, val|
+      val[:stub] = @module.get_or_insert_function(val[:sname], val[:type])
     end
   end
 
@@ -293,7 +307,9 @@ class YarvTranslator<YarvVisitor
   def run
     super
 
+    @builder.optimize
 #    @builder.disassemble
+    
   end
   
   def get_or_create_block(ln, b, context)
@@ -895,17 +911,15 @@ def llvmfib(n)
   if n < 2 then
     1
   else
-    fib(n - 1) + fib(n - 2) + 0
+    llvmfib(n - 1) + llvmfib(n - 2) + 0
   end
 end
 EOS
 )
-
 Benchmark.bm do |x|
-  x.report("Ruby   "){  fib(35)}
-  x.report("llvm   "){  llvmfib(35)}
+  x.report("Ruby   "){  p fib(35)}
+  x.report("llvm   "){  p llvmfib(35)}
 end
-
 end # __FILE__ == $0
 
 
