@@ -3,8 +3,9 @@ require 'llvm'
 require 'instruction'
 require 'methoddef'
 
-include LLVM
-include RubyInternals
+def pppp(n)
+#  p n
+end
 
 class Symbol
   def llvm
@@ -12,9 +13,9 @@ class Symbol
   end
 end
 
-def pppp(n)
-  p n
-end
+module YARV2LLVM
+include LLVM
+include RubyInternals
 
 class Context
   def initialize(local)
@@ -101,77 +102,58 @@ class RubyType
   @@type_table = []
   def initialize(type, name = nil)
     @name = name
-    @type = sym2type(type)
-    @flushed = false
+    @type = type
+    @resolveed = false
     @same_type = []
     @@type_table.push self
   end
 
   attr_accessor :type
-  attr_accessor :flushed
+  attr_accessor :resolveed
   attr :name
 
   def add_same_type(type)
     @same_type.push type
   end
 
-  def self.flush
+  def self.resolve
     @@type_table.each do |ty|
-      ty.flushed = false
+      ty.resolveed = false
     end
 
     @@type_table.each do |ty|
-      ty.flush
+      ty.resolve
     end
   end
 
-  def flush
-    if @flushed then
+  def resolve
+    if @resolveed then
       return
     end
 
     if @type then
-      @flushed = true
+      @resolveed = true
       @same_type.each do |ty|
         if ty.type and ty.type != @type then
           raise "Type error #{ty.name}(#{ty.type}) and #{@name}(#{@type})"
         else
           ty.type = @type
-          ty.flush
+          ty.resolve
         end
       end
     end
   end
 
   def self.fixnum
-    RubyType.new(:fixnum)
+    RubyType.new(Type::Int32Ty)
   end
 
   def self.float
-    RubyType.new(:float)
+    RubyType.new(Type::FloatTy)
   end
 
   def self.symbol
-    RubyType.new(:symbol)
-  end
-
-  def sym2type(sym)
-    case sym
-    when :fixnum
-      Type::Int32Ty
-
-    when :float
-      Type::FloatTy
-
-    when :symbol
-      Type::VALUE
-
-    when nil
-      nil
-
-    else
-      raise "Unkonw type #{sym}"
-    end
+    RubyType.new(Type::VALUE)
   end
 
   def self.typeof(obj)
@@ -186,22 +168,61 @@ class RubyType
       RubyType.symbol
 
     else
-      RubyType.new(obj.class.to_s)
+      raise "Unsupported type #{obj}"
     end
   end
 end
 
 class LLVMBuilder
-  include RubyInternals
+  include RubyHelpers
   def initialize
     @module = LLVM::Module.new('yarv2llvm')
     @externed_function = {}
     ExecutionEngine.get(@module)
   end
 
-  def define_function(name, type)
-    @func = @module.get_or_insert_function(name, type)
+  RFLOAT = Type.struct([RBASIC, Type::FloatTy])
+  def make_stub(name, rett, argt, orgfunc)
+    sname = "__stub_" + name
+    stype = Type.function(Type::VALUE, [Type::VALUE] * argt.size)
+    @stubfunc = @module.get_or_insert_function(sname, stype)
+    eb = @stubfunc.create_block
+    b = eb.builder
+    argv = []
+    argt.each_with_index do |ar, n|
+      case ar
+      when Type::FloatTy
+        argv.push b.struct_gep(@stubfunc.arguments[n], 1)
 
+      when Type::Int32Ty
+        x = b.lshr(@stubfunc.arguments[n], 1.llvm)
+        argv.push x
+      end
+    end
+    ret = b.call(orgfunc, *argv)
+    case rett
+    when Type::FloatTy
+    when Type::Int32Ty
+      x = b.shl(ret, 1.llvm)
+      x = b.or(FIXNUM_FLAG, x)
+      b.return(x)
+    end
+    MethodDefinition::RubyMethodStub[name] = {
+      :stub => @stubfunc,
+      :argt => argt}
+  end
+
+  def define_function(name, rett, argt)
+    type = Type.function(rett, argt)
+    @func = @module.get_or_insert_function(name, type)
+    @stub = make_stub(name, rett, argt, @func)
+
+    MethodDefinition::RubyMethod[name.to_sym] = {
+      :rettype => rett,
+      :argtype => argt,
+      :func   => @func,
+    }
+      
     eb = @func.create_block
     eb.builder
   end
@@ -264,17 +285,18 @@ class YarvTranslator<YarvVisitor
     @expstack = []
     @rescode = lambda {|b, context| context}
     @builder = LLVMBuilder.new
+    @jump_hist = {}
+    @prev_label = nil
     @is_live = nil
   end
 
   def run
     super
 
-    @builder.disassemble
+#    @builder.disassemble
   end
   
   def get_or_create_block(ln, b, context)
-    p context.blocks
     if context.blocks[ln] then
       context.blocks[ln]
     else
@@ -290,6 +312,8 @@ class YarvTranslator<YarvVisitor
     if @expstack.size > 0 then
       valexp = @expstack.pop
     end
+    @jump_hist[ln] ||= []
+    @jump_hist[ln].push @prev_label
     @rescode = lambda {|b, context|
       context = oldrescode.call(b, context)
       blk = get_or_create_block(ln, b, context)
@@ -309,6 +333,11 @@ class YarvTranslator<YarvVisitor
 
     if live and valexp then
 #      check_same_type_2arg_static(r1, r2)
+      n = 0
+      while n < @jump_hist[ln].size - 1 do
+#        valexp[0].add_same_type(@expstack[@expstack.size-n - 1][0])
+        n += 1
+      end
       @expstack.push [valexp[0],
         lambda {|b, context|
           blocks = []
@@ -334,6 +363,7 @@ class YarvTranslator<YarvVisitor
     # don't call before visit_block_start call.
     if @is_live == nil then
       @is_live = true
+      @prev_label = ln
     end
     # p @expstack.map {|n| n[1]}
   end
@@ -342,9 +372,18 @@ class YarvTranslator<YarvVisitor
     ([nil, :self] + code.header['locals'].reverse).each_with_index do |n, i|
       local[i] = {:name => n, :type => RubyType.new(nil, n), :area => nil}
     end
+    numarg = code.header['misc'][:arg_size]
+
+    # regist function to RubyCMthhod for recursive call
+    if info[1] then
+      if MethodDefinition::RubyMethod[info[1]] then
+        raise "#{info[1]} is already defined"
+      else
+        MethodDefinition::RubyMethod[info[1]]= {}
+      end
+    end
 
     oldrescode = @rescode
-    numarg = code.header['misc'][:arg_size]
     @rescode = lambda {|b, context|
       context = oldrescode.call(b, context)
       context.local_vars.each_with_index {|vars, n|
@@ -368,7 +407,7 @@ class YarvTranslator<YarvVisitor
   end
   
   def visit_block_end(code, ins, local, ln, info)
-    RubyType.flush
+    RubyType.resolve
 
     numarg = code.header['misc'][:arg_size]
 =begin
@@ -385,13 +424,11 @@ class YarvTranslator<YarvVisitor
       argtype[n - 1] = local[-n][:type].type
     end
 
-    # pppp "define #{info[1]}"
-    p @expstack
+    pppp "define #{info[1]}"
+    pppp @expstack
     if @expstack.last and info[1] then
       b = @builder.define_function(info[1].to_s, 
-                                   Type.function(@expstack.last[0].type, 
-                                                 argtype))
-#      b = DmyBlock.new
+                                   @expstack.last[0].type, argtype)
       context = @rescode.call(b, Context.new(local))
       p1 = @expstack.pop
       b.return(p1[1].call(b, context).rc)
@@ -461,15 +498,13 @@ class YarvTranslator<YarvVisitor
     }
   end
 
-  include MethodDefinition
-
   def visit_send(code, ins, local, ln, info)
     p1 = ins[1]
-    if SystemMethod[p1]
+    if MethodDefinition::SystemMethod[p1]
       return
     end
 
-    if funcinfo = CMethod[p1] then
+    if funcinfo = MethodDefinition::CMethod[p1] then
       rettype = RubyType.new(funcinfo[:rettype])
       argtype = funcinfo[:argtype].map {|ts| RubyType.new(ts)}
       cname = funcinfo[:cname]
@@ -505,6 +540,25 @@ class YarvTranslator<YarvVisitor
         return
       end
     end
+    if MethodDefinition::RubyMethod[p1] then
+      pppp "RubyMethod called #{p1.inspect}"
+      p = []
+      0.upto(ins[2] - 1) do |n|
+        p[n] = @expstack.pop
+      end
+      @expstack.push [RubyType.new(rettype),
+        lambda {|b, context|
+          minfo = MethodDefinition::RubyMethod[p1]
+          func = minfo[:func]
+          args = []
+          p.each do |pe|
+            args.push pe[1].call(b, context).rc
+          end
+          context.rc = b.call(func, *args)
+          context
+        }]
+      return
+    end
   end
 
   def visit_branchunless(code, ins, local, ln, info)
@@ -518,6 +572,8 @@ class YarvTranslator<YarvVisitor
     bval = nil
     @is_live = false
     iflab = nil
+    @jump_hist[lab] ||= []
+    @jump_hist[lab].push ln
     @rescode = lambda {|b, context|
       oldrescode.call(b, context)
       eblock = @builder.create_block
@@ -556,6 +612,8 @@ class YarvTranslator<YarvVisitor
     bval = nil
 #    @is_live = false
     iflab = nil
+    @jump_hist[lab] ||= []
+    @jump_hist[lab].push ln
     @rescode = lambda {|b, context|
       oldrescode.call(b, context)
       tblock = get_or_create_block(lab, b, context)
@@ -596,6 +654,8 @@ class YarvTranslator<YarvVisitor
     end
     bval = nil
     @is_live = false
+    @jump_hist[lab] ||= []
+    @jump_hist[lab].push ln
     @rescode = lambda {|b, context|
       oldrescode.call(b, context)
       jblock = get_or_create_block(lab, b, context)
@@ -666,7 +726,6 @@ class YarvTranslator<YarvVisitor
     s2 = @expstack.pop
     s1 = @expstack.pop
     #    p @expstack
-    STDOUT.flush
     check_same_type_2arg_static(s1, s2)
     
     @expstack.push [s1[0], 
@@ -786,12 +845,67 @@ class YarvTranslator<YarvVisitor
   end
 end
 
-include VMLib
-is = RubyVM::InstructionSequence.compile( File.read(ARGV[0]), '<test>', 1, 
-      {  :peephole_optimization    => true,
-         :inline_const_cache       => false,
-         :specialized_instruction  => true,
-      }).to_a
-iseq = InstSeqTree.new(nil, is)
-p iseq.to_a
-YarvTranslator.new(iseq).run
+def compile_file(fn)
+  is = RubyVM::InstructionSequence.compile( File.read(fn), fn, 1, 
+            {  :peephole_optimization    => true,
+               :inline_const_cache       => false,
+               :specialized_instruction  => true,}).to_a
+  compcommon(is)
+end
+
+def compile(str)
+  is = RubyVM::InstructionSequence.compile( str, "<llvm2ruby>", 1, 
+            {  :peephole_optimization    => true,
+               :inline_const_cache       => false,
+               :specialized_instruction  => true,}).to_a
+  compcommon(is)
+end
+
+def compcommon(is)
+  iseq = VMLib::InstSeqTree.new(nil, is)
+  YarvTranslator.new(iseq).run
+  MethodDefinition::RubyMethodStub.each do |key, m|
+    name = key
+    n = 0
+    args = m[:argt].map {|x|  n += 1; "p" + n.to_s}.join(',')
+    df = "def #{key}(#{args});LLVM::ExecutionEngine.run_function(YARV2LLVM::MethodDefinition::RubyMethodStub['#{key}'][:stub], #{args});end" 
+    eval df, TOPLEVEL_BINDING
+  end
+end
+
+module_function :compile_file
+module_function :compile
+module_function :compcommon
+
+end
+
+if __FILE__ == $0 then
+require 'benchmark'
+
+def fib(n)
+  if n < 2 then
+    1
+  else
+    fib(n - 1) + fib(n - 2)
+  end
+end
+
+YARV2LLVM::compile( <<EOS
+def llvmfib(n)
+  if n < 2 then
+    1
+  else
+    fib(n - 1) + fib(n - 2) + 0
+  end
+end
+EOS
+)
+
+Benchmark.bm do |x|
+  x.report("Ruby   "){  fib(35)}
+  x.report("llvm   "){  llvmfib(35)}
+end
+
+end # __FILE__ == $0
+
+
