@@ -1,8 +1,8 @@
 require 'tempfile'
 require 'llvm'
 
-require 'instruction'
-require 'methoddef'
+require 'lib/instruction'
+require 'lib/methoddef'
 
 def pppp(n)
 #  p n
@@ -26,7 +26,6 @@ class Context
     @blocks = {}
     @block_value = {}
     @last_stack_value = nil
-    @jump_hist = {}
     @curln = nil
   end
 
@@ -35,7 +34,6 @@ class Context
   attr_accessor :org
   attr_accessor :blocks
   attr_accessor :last_stack_value
-  attr_accessor :jump_hist
   attr_accessor :curln
   attr_accessor :block_value
 end
@@ -272,15 +270,21 @@ class YarvVisitor
     @iseq.traverse_code([nil, nil, nil]) do |code, info|
       local = []
       visit_block_start(code, nil, local, nil, info)
-
+      curln = nil
       code.lblock_list.each do |ln|
         visit_local_block_start(code, ln, local, ln, info)
 
+        curln = ln
         code.lblock[ln].each do |ins|
           opname = ins[0].to_s
-          send(("visit_" + opname).to_sym, code, ins, local, ln, info)
-        end
+          send(("visit_" + opname).to_sym, code, ins, local, curln, info)
 
+          case ins[0]
+          when :branchif, :branchunless, :jump
+            curln = (curln.to_s + "_1").to_sym
+          end
+        end
+#        ln = curln
         visit_local_block_end(code, ln, local, ln, info)
       end
 
@@ -307,7 +311,7 @@ class YarvTranslator<YarvVisitor
   def run
     super
 
-#    @builder.optimize
+    @builder.optimize
     @builder.disassemble
     
   end
@@ -340,8 +344,6 @@ class YarvTranslator<YarvVisitor
           context.block_value[context.curln] = bval
         end
         b.br(blk)
-        context.jump_hist[ln] ||= []
-        context.jump_hist[ln].push context.curln
       end
       context.curln = ln
       b.set_insert_point(blk)
@@ -351,7 +353,8 @@ class YarvTranslator<YarvVisitor
     if valexp then
       n = 0
       v2 = nil
-      while n < @jump_hist[ln].size - 1 do
+      commer_label = @jump_hist[ln]
+      while n < commer_label.size - 1 do
         if v2 = @expstack[@expstack.size - n - 1] then
           valexp[0].add_same_type(v2[0])
           v2[0].add_same_type(valexp[0])
@@ -360,10 +363,10 @@ class YarvTranslator<YarvVisitor
       end
       @expstack.push [valexp[0],
         lambda {|b, context|
-          if context.curln then
-            rc = b.phi(context.block_value[context.jump_hist[ln][0]][0].type)
+          if ln then
+            rc = b.phi(context.block_value[commer_label[0]][0].type)
             
-            context.jump_hist[ln].reverse.each do |lab|
+            commer_label.reverse.each do |lab|
               rc.add_incoming(context.block_value[lab][1], context.blocks[lab])
             end
 
@@ -595,7 +598,7 @@ class YarvTranslator<YarvVisitor
     @is_live = false
     iflab = nil
     @jump_hist[lab] ||= []
-    @jump_hist[lab].push ln
+    @jump_hist[lab].push (ln.to_s + "_1").to_sym
     @rescode = lambda {|b, context|
       oldrescode.call(b, context)
       eblock = @builder.create_block
@@ -608,8 +611,6 @@ class YarvTranslator<YarvVisitor
         context.block_value[iflab] = bval
       end
       b.cond_br(s1[1].call(b, context).rc, eblock, tblock)
-      context.jump_hist[lab] ||= []
-      context.jump_hist[lab].push context.curln
       b.set_insert_point(eblock)
 
       context
@@ -635,24 +636,20 @@ class YarvTranslator<YarvVisitor
 #    @is_live = false
     iflab = nil
     @jump_hist[lab] ||= []
-    @jump_hist[lab].push ln
+    @jump_hist[lab].push (ln.to_s + "_1").to_sym
     @rescode = lambda {|b, context|
       oldrescode.call(b, context)
       tblock = get_or_create_block(lab, b, context)
       iflab = context.curln
 
       eblock = @builder.create_block
-      while context.blocks[context.curln] do
-        context.curln = (context.curln.to_s + "_1").to_sym
-      end
+      context.curln = (context.curln.to_s + "_1").to_sym
       context.blocks[context.curln] = eblock
       if valexp then
         bval = [valexp[0], valexp[1].call(b, context).rc]
         context.block_value[iflab] = bval
       end
       b.cond_br(s1[1].call(b, context).rc, tblock, eblock)
-      context.jump_hist[lab] ||= []
-      context.jump_hist[lab].push context.curln
       b.set_insert_point(eblock)
 
       context
@@ -687,8 +684,6 @@ class YarvTranslator<YarvVisitor
         context.block_value[fmlab] = bval
       end
       b.br(jblock)
-      context.jump_hist[lab] ||= []
-      context.jump_hist[lab].push context.curln
 
       context
     }
@@ -884,7 +879,7 @@ end
 
 def compcommon(is)
   iseq = VMLib::InstSeqTree.new(nil, is)
-  # p iseq.to_a
+  p iseq.to_a
   YarvTranslator.new(iseq).run
   MethodDefinition::RubyMethodStub.each do |key, m|
     name = key
@@ -898,32 +893,5 @@ end
 module_function :compile_file
 module_function :compile
 module_function :compcommon
-
 end
 
-if __FILE__ == $0 then
-require 'benchmark'
-
-def fib(n)
-  if n < 2 then
-    1
-  else
-    fib(n - 1) + fib(n - 2)
-  end
-end
-
-YARV2LLVM::compile( <<EOS
-def llvmfib(n)
-  if n < 2 then
-    1
-  else
-    llvmfib(n - 1) + llvmfib(n - 2)
-  end
-end
-EOS
-)
-Benchmark.bm do |x|
-  x.report("Ruby   "){  p fib(35)}
-  x.report("llvm   "){  p llvmfib(35)}
-end
-end # __FILE__ == $0
