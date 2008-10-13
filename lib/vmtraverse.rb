@@ -307,8 +307,8 @@ class YarvTranslator<YarvVisitor
   def run
     super
 
-    @builder.optimize
-#    @builder.disassemble
+#    @builder.optimize
+    @builder.disassemble
     
   end
   
@@ -325,9 +325,10 @@ class YarvTranslator<YarvVisitor
     live =  @is_live
 
     @is_live = nil
-    if @expstack.size > 0 then
+    if live and @expstack.size > 0 then
       valexp = @expstack.pop
     end
+
     @jump_hist[ln] ||= []
     @jump_hist[ln].push @prev_label
     @rescode = lambda {|b, context|
@@ -347,16 +348,18 @@ class YarvTranslator<YarvVisitor
       context
     }
 
-    if live and valexp then
-#      check_same_type_2arg_static(r1, r2)
+    if valexp then
       n = 0
+      v2 = nil
       while n < @jump_hist[ln].size - 1 do
-#        valexp[0].add_same_type(@expstack[@expstack.size-n - 1][0])
+        if v2 = @expstack[@expstack.size - n - 1] then
+          valexp[0].add_same_type(v2[0])
+          v2[0].add_same_type(valexp[0])
+        end
         n += 1
       end
       @expstack.push [valexp[0],
         lambda {|b, context|
-          blocks = []
           if context.curln then
             rc = b.phi(context.block_value[context.jump_hist[ln][0]][0].type)
             
@@ -516,7 +519,10 @@ class YarvTranslator<YarvVisitor
 
   def visit_send(code, ins, local, ln, info)
     p1 = ins[1]
-    if MethodDefinition::SystemMethod[p1]
+    if funcinfo = MethodDefinition::SystemMethod[p1] then
+      funcinfo[:args].downto(1) do |n|
+        @expstack.pop
+      end
       return
     end
 
@@ -687,12 +693,11 @@ class YarvTranslator<YarvVisitor
       context
     }
     if valexp then
-      @expstack.push [valexp[0], 
+      @expstack.push [valexp[0],
         lambda {|b, context| 
           context.rc = context.block_value[fmlab][1]
           context
         }]
-
     end
   end
 
@@ -879,6 +884,7 @@ end
 
 def compcommon(is)
   iseq = VMLib::InstSeqTree.new(nil, is)
+  # p iseq.to_a
   YarvTranslator.new(iseq).run
   MethodDefinition::RubyMethodStub.each do |key, m|
     name = key
@@ -911,7 +917,7 @@ def llvmfib(n)
   if n < 2 then
     1
   else
-    llvmfib(n - 1) + llvmfib(n - 2) + 0
+    llvmfib(n - 1) + llvmfib(n - 2)
   end
 end
 EOS
@@ -921,5 +927,3 @@ Benchmark.bm do |x|
   x.report("llvm   "){  p llvmfib(35)}
 end
 end # __FILE__ == $0
-
-
