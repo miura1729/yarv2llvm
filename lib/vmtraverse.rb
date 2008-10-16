@@ -1,23 +1,9 @@
-require 'tempfile'
-require 'llvm'
-
-require 'lib/instruction'
-require 'lib/methoddef'
-
-def pppp(n)
-#  p n
-end
-
-class Symbol
-  def llvm
-    immediate
-  end
-end
+#!/bin/ruby 
+#
+#  Traverse YARV instruction array
+#
 
 module YARV2LLVM
-include LLVM
-include RubyInternals
-
 class Context
   def initialize(local)
     @local_vars = local
@@ -38,140 +24,6 @@ class Context
   attr_accessor :block_value
 end
 
-class DmyBlock
-  def load(addr)
-    pppp "Load (#{addr})"
-    addr
-  end
-
-  def store(value, addr)
-    pppp "Store (#{value}), (#{addr})"
-    nil
-  end
-
-  def add(p1, p2)
-    pppp "add (#{p1}), (#{p2})"
-  end
-
-  def sub(p1, p2)
-    pppp "sub (#{p1}), (#{p2})"
-  end
-
-  def mul(p1, p2)
-    pppp "mul (#{p1}), (#{p2})"
-  end
-
-  def div(p1, p2)
-    pppp "div (#{p1}), (#{p2})"
-  end
-
-  def icmp_eq(p1, p2)
-    pppp "icmp_eq (#{p1}), (#{p2})"
-  end
-
-  def fcmp_ueq(p1, p2)
-    pppp "fcmp_eq (#{p1}), (#{p2})"
-  end
-
-  def alloca(type, num)
-    @@num ||= 0
-    @@num += 1
-    pppp "Alloca #{type}, #{num}"
-    "[#{@@num}]"
-  end
-
-  def set_insert_point(n)
-    pppp "set_insert_point #{n}"
-  end
-
-  def cond_br(cond, th, el)
-    pppp "cond_br #{cond} #{th} #{el}"
-  end
-
-  def return(rc)
-    pppp "return #{rc}"
-  end
-
-  def call(name, *args)
-    pppp "call #{name}(#{args.join(',')})"
-  end
-end
-
-class RubyType
-  @@type_table = []
-  def initialize(type, name = nil)
-    @name = name
-    @type = type
-    @resolveed = false
-    @same_type = []
-    @@type_table.push self
-  end
-
-  attr_accessor :type
-  attr_accessor :resolveed
-  attr :name
-
-  def add_same_type(type)
-    @same_type.push type
-  end
-
-  def self.resolve
-    @@type_table.each do |ty|
-      ty.resolveed = false
-    end
-
-    @@type_table.each do |ty|
-      ty.resolve
-    end
-  end
-
-  def resolve
-    if @resolveed then
-      return
-    end
-
-    if @type then
-      @resolveed = true
-      @same_type.each do |ty|
-        if ty.type and ty.type != @type then
-          raise "Type error #{ty.name}(#{ty.type}) and #{@name}(#{@type})"
-        else
-          ty.type = @type
-          ty.resolve
-        end
-      end
-    end
-  end
-
-  def self.fixnum
-    RubyType.new(Type::Int32Ty)
-  end
-
-  def self.float
-    RubyType.new(Type::FloatTy)
-  end
-
-  def self.symbol
-    RubyType.new(Type::VALUE)
-  end
-
-  def self.typeof(obj)
-    case obj
-    when Fixnum
-      RubyType.fixnum
-
-    when Float
-      RubyType.float
-
-    when Symbol
-      RubyType.symbol
-
-    else
-      raise "Unsupported type #{obj}"
-    end
-  end
-end
-
 class LLVMBuilder
   include RubyHelpers
   def initialize
@@ -183,7 +35,7 @@ class LLVMBuilder
   RFLOAT = Type.struct([RBASIC, Type::FloatTy])
   def make_stub(name, rett, argt, orgfunc)
     sname = "__stub_" + name
-    stype = Type.function(Type::VALUE, [Type::VALUE] * argt.size)
+    stype = Type.function(VALUE, [VALUE] * argt.size)
     @stubfunc = @module.get_or_insert_function(sname, stype)
     eb = @stubfunc.create_block
     b = eb.builder
@@ -256,7 +108,7 @@ class LLVMBuilder
   end
 
   def disassemble
-    @module.write_bitcode("yarv.bc")
+    # @module.write_bitcode("yarv.bc")
     p @module
   end
 end
@@ -311,7 +163,7 @@ class YarvTranslator<YarvVisitor
   def run
     super
 
-    @builder.optimize
+#    @builder.optimize
     @builder.disassemble
     
   end
@@ -364,7 +216,7 @@ class YarvTranslator<YarvVisitor
       @expstack.push [valexp[0],
         lambda {|b, context|
           if ln then
-            rc = b.phi(context.block_value[commer_label[0]][0].type)
+            rc = b.phi(context.block_value[commer_label[0]][0].type.llvm)
             
             commer_label.reverse.each do |lab|
               rc.add_incoming(context.block_value[lab][1], context.blocks[lab])
@@ -410,7 +262,7 @@ class YarvTranslator<YarvVisitor
       context = oldrescode.call(b, context)
       context.local_vars.each_with_index {|vars, n|
         if vars[:type].type then
-          lv = b.alloca(vars[:type].type, 1)
+          lv = b.alloca(vars[:type].type.llvm, 1)
           vars[:area] = lv
         else
           vars[:area] = nil
@@ -443,14 +295,14 @@ class YarvTranslator<YarvVisitor
 
     argtype = []
     1.upto(numarg) do |n|
-      argtype[n - 1] = local[-n][:type].type
+      argtype[n - 1] = local[-n][:type].type.llvm
     end
 
     pppp "define #{info[1]}"
     pppp @expstack
     if @expstack.last and info[1] then
       b = @builder.define_function(info[1].to_s, 
-                                   @expstack.last[0].type, argtype)
+                                   @expstack.last[0].type.llvm, argtype)
       context = @rescode.call(b, Context.new(local))
       p1 = @expstack.pop
       b.return(p1[1].call(b, context).rc)
@@ -482,6 +334,15 @@ class YarvTranslator<YarvVisitor
         pppp p1
         context.rc = p1.llvm 
         context.org = p1
+        context
+      }]
+  end
+
+  def visit_newarray(code, ins, local, ln, info)
+    p1 = ins[1]
+    @expstack.push [RubyType.new(ArrayType.new(nil)),
+      lambda {|b, context|
+        context.rc = 1.llvm
         context
       }]
   end
@@ -529,14 +390,18 @@ class YarvTranslator<YarvVisitor
       return
     end
 
+    if funcinfo = MethodDefinition::InlineMethod[p1] then
+      funcinfo[:inline_proc_traverse].call
+    end
+
     if funcinfo = MethodDefinition::CMethod[p1] then
       rettype = RubyType.new(funcinfo[:rettype])
       argtype = funcinfo[:argtype].map {|ts| RubyType.new(ts)}
       cname = funcinfo[:cname]
       
       if argtype.size == ins[2] then
-        argtype2 = argtype.map {|tc| tc.type}
-        ftype = Type.function(rettype.type, argtype2)
+        argtype2 = argtype.map {|tc| tc.type.llvm}
+        ftype = Type.function(rettype.type.llvm, argtype2)
         func = @builder.external_function(cname, ftype)
 
         p = []
@@ -789,7 +654,7 @@ class YarvTranslator<YarvVisitor
     @expstack.push [s1[0], 
       lambda {|b, context|
         s1val, s2val, context = gen_common_opt_2arg(b, context, s1, s2)
-        case s1[0].type
+        case s1[0].type.llvm
         when Type::FloatTy
           context.rc = b.fdiv(s1val, s2val)
         when Type::Int32TY
@@ -808,7 +673,7 @@ class YarvTranslator<YarvVisitor
     @expstack.push [nil, 
       lambda {|b, context|
         s1val, s2val, context = gen_common_opt_2arg(b, context, s1, s2)
-        case s1[0].type
+        case s1[0].type.llvm
           when Type::FloatTy
           context.rc = b.fcmp_ueq(s1val, s2val)
 
@@ -828,7 +693,7 @@ class YarvTranslator<YarvVisitor
     @expstack.push [nil, 
       lambda {|b, context|
         s1val, s2val, context = gen_common_opt_2arg(b, context, s1, s2)
-        case s1[0].type
+        case s1[0].type.llvm
           when Type::FloatTy
           context.rc = b.fcmp_ult(s1val, s2val)
 
@@ -848,13 +713,32 @@ class YarvTranslator<YarvVisitor
     @expstack.push [nil, 
       lambda {|b, context|
         s1val, s2val, context = gen_common_opt_2arg(b, context, s1, s2)
-        case s1[0].type
+        case s1[0].type.llvm
           when Type::FloatTy
           context.rc = b.fcmp_ugt(s1val, s2val)
 
           when Type::Int32Ty
           context.rc = b.icmp_sgt(s1val, s2val)
         end
+        context
+      }
+    ]
+  end
+
+  def visit_opt_aref(code, ins, local, ln, info)
+    idx = @expstack.pop
+    arr = @expstack.pop
+    fix = RubyType.fixnum
+    idx[0].add_same_type(fix)
+    fix.add_same_type(idx[0])
+    RubyType.resolve
+    if arr[0].type == nil then
+      arr[0].type = ArrayType.new(nil)
+    end
+    
+    @expstack.push [arr[0].type.element_type, 
+      lambda {|b, context|
+        context.rc = 1.llvm
         context
       }
     ]

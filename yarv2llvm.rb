@@ -3,7 +3,7 @@
 # yarv2llvm convert yarv to LLVM and define LLVM executable as Ruby method.
 #
 #
-require 'lib/vmtraverse.rb'
+require 'lib/yarv2llvm'
 
 if __FILE__ == $0 then
 require 'benchmark'
@@ -18,6 +18,9 @@ end
 
 YARV2LLVM::compile( <<EOS
 def llvmfib(n)
+  a = []
+  a[0] + 1
+#  a[1] = 1
   if n < 2 then
     1
   else
