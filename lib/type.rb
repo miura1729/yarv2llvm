@@ -7,6 +7,9 @@ module YARV2LLVM
   include LLVM
 
 class RubyType
+  include LLVM
+  include RubyHelpers
+
   @@type_table = []
   def initialize(type, name = nil)
     @name = name
@@ -20,6 +23,14 @@ class RubyType
     @resolveed = false
     @same_type = []
     @@type_table.push self
+  end
+
+  def inspect2
+    if @type then
+      @type.inspect2
+    else
+      'nil'
+    end
   end
 
   attr_accessor :type
@@ -67,7 +78,7 @@ class RubyType
   end
 
   def self.symbol
-    RubyType.new(RubyInternals::VALUE)
+    RubyType.new(VALUE)
   end
 
   def self.typeof(obj)
@@ -92,6 +103,19 @@ class PrimitiveType
     @type = type
   end
 
+  def inspect2
+    case @type
+    when Type::Int32Ty
+      "Int32Ty"
+    when Type::FloatTy
+      "FloatTy"
+    when Type::VALUE
+      "VALUE"
+    else
+      @type.inspect2
+    end
+  end
+
   def llvm
     @type
   end
@@ -101,13 +125,24 @@ class ComplexType
 end
 
 class ArrayType<ComplexType
+  include LLVM
+  include RubyHelpers
+
   def initialize(etype)
     @element_type = RubyType.new(etype)
   end
   attr :element_type
 
+  def inspect2
+    if @element_type then
+      "Array of #{@element_type.inspect2}"
+    else
+      "Array of nil"
+    end
+  end
+
   def llvm
-    RubyInternals::P_VALUE
+    VALUE
   end
 end
 end

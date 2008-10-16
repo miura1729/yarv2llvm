@@ -24,95 +24,6 @@ class Context
   attr_accessor :block_value
 end
 
-class LLVMBuilder
-  include RubyHelpers
-  def initialize
-    @module = LLVM::Module.new('yarv2llvm')
-    @externed_function = {}
-    ExecutionEngine.get(@module)
-  end
-
-  RFLOAT = Type.struct([RBASIC, Type::FloatTy])
-  def make_stub(name, rett, argt, orgfunc)
-    sname = "__stub_" + name
-    stype = Type.function(VALUE, [VALUE] * argt.size)
-    @stubfunc = @module.get_or_insert_function(sname, stype)
-    eb = @stubfunc.create_block
-    b = eb.builder
-    argv = []
-    argt.each_with_index do |ar, n|
-      case ar
-      when Type::FloatTy
-        argv.push b.struct_gep(@stubfunc.arguments[n], 1)
-
-      when Type::Int32Ty
-        x = b.lshr(@stubfunc.arguments[n], 1.llvm)
-        argv.push x
-      end
-    end
-    ret = b.call(orgfunc, *argv)
-    case rett
-    when Type::FloatTy
-    when Type::Int32Ty
-      x = b.shl(ret, 1.llvm)
-      x = b.or(FIXNUM_FLAG, x)
-      b.return(x)
-    end
-    MethodDefinition::RubyMethodStub[name] = {
-      :sname => sname,
-      :stub => @stubfunc,
-      :argt => argt,
-      :type => stype}
-  end
-
-  def define_function(name, rett, argt)
-    type = Type.function(rett, argt)
-    @func = @module.get_or_insert_function(name, type)
-    @stub = make_stub(name, rett, argt, @func)
-
-    MethodDefinition::RubyMethod[name.to_sym] = {
-      :rettype => rett,
-      :argtype => argt,
-      :func   => @func,
-    }
-      
-    eb = @func.create_block
-    eb.builder
-  end
-
-  def arguments
-    @func.arguments
-  end
-
-  def create_block
-    @func.create_block
-  end
-
-  def external_function(name, type)
-    if rc = @externed_function[name] then
-      rc
-    else
-      @externed_function[name] = @module.external_function(name, type)
-    end
-  end
-
-  def optimize
-    bitout =  Tempfile.new('bit')
-    @module.write_bitcode("#{bitout.path}")
-    File.popen("/usr/local/bin/opt -O3 -f #{bitout.path}") {|fp|
-      @module = LLVM::Module.read_bitcode(fp.read)
-    }
-    MethodDefinition::RubyMethodStub.each do |nm, val|
-      val[:stub] = @module.get_or_insert_function(val[:sname], val[:type])
-    end
-  end
-
-  def disassemble
-    # @module.write_bitcode("yarv.bc")
-    p @module
-  end
-end
-
 class YarvVisitor
   def initialize(iseq)
     @iseq = iseq
@@ -150,6 +61,9 @@ class YarvVisitor
 end
 
 class YarvTranslator<YarvVisitor
+  include LLVM
+  include RubyHelpers
+
   def initialize(iseq)
     super(iseq)
     @expstack = []
@@ -284,14 +198,16 @@ class YarvTranslator<YarvVisitor
     RubyType.resolve
 
     numarg = code.header['misc'][:arg_size]
-=begin
+#=begin
     # write function prototype
-    print "#{info[1]} :("
-    1.upto(numarg) do |n|
-      print "#{local[-n][:type].type}, "
+    if info[1] then
+      print "#{info[1]} :("
+      1.upto(numarg) do |n|
+        print "#{local[-n][:type].inspect2}, "
+      end
+      print ") -> #{@expstack.last[0].inspect2}\n"
     end
-    print ") -> #{@expstack.last[0].type}\n"
-=end
+#=end
 
     argtype = []
     1.upto(numarg) do |n|
@@ -339,10 +255,25 @@ class YarvTranslator<YarvVisitor
   end
 
   def visit_newarray(code, ins, local, ln, info)
-    p1 = ins[1]
+    nele = ins[1]
+    inits = []
+    nele.times {|n|
+      v = @expstack.pop
+      inits.push v
+    }
+    inits.reverse!
     @expstack.push [RubyType.new(ArrayType.new(nil)),
       lambda {|b, context|
-        context.rc = 1.llvm
+        if nele == 0 then
+          ftype = Type.function(VALUE, [])
+          func = @builder.external_function('rb_ary_new', ftype)
+          rc = b.call(func)
+          context.rc = rc
+          pppp "newarray END"
+        else
+          # TODO: eval inits and call rb_ary_new4
+          raise "Initialized array not implemented"
+        end
         context
       }]
   end
@@ -371,12 +302,14 @@ class YarvTranslator<YarvVisitor
 
     oldrescode = @rescode
     @rescode = lambda {|b, context|
+      pppp "Setlocal start"
       context = oldrescode.call(b, context)
       context = srcvalue.call(b, context)
       context.last_stack_value = context.rc
       lvar = context.local_vars[p1]
       context.rc = b.store(context.rc, lvar[:area])
       context.org = lvar[:name]
+      pppp "Setlocal end"
       context
     }
   end
@@ -738,8 +671,20 @@ class YarvTranslator<YarvVisitor
     
     @expstack.push [arr[0].type.element_type, 
       lambda {|b, context|
-        context.rc = 1.llvm
-        context
+        pppp "aref start"
+        if arr[0].type.is_a?(ArrayType) then
+          context = idx[1].call(b, context)
+          idxp = context.rc
+          context = arr[1].call(b, context)
+          arrp = context.rc
+          ftype = Type.function(VALUE, [VALUE, Type::Int32Ty])
+          func = @builder.external_function('rb_ary_entry', ftype)
+          context.rc = b.call(func, arrp, idxp)
+          context
+        else
+          # Todo: Hash table?
+          raise "Not impremented"
+        end
       }
     ]
   end
@@ -768,8 +713,14 @@ def compcommon(is)
   MethodDefinition::RubyMethodStub.each do |key, m|
     name = key
     n = 0
-    args = m[:argt].map {|x|  n += 1; "p" + n.to_s}.join(',')
-    df = "def #{key}(#{args});LLVM::ExecutionEngine.run_function(YARV2LLVM::MethodDefinition::RubyMethodStub['#{key}'][:stub], #{args});end" 
+    if m[:argt] == [] then
+      args = ""
+    else
+      args = m[:argt].map {|x|  n += 1; "p" + n.to_s}.join(',')
+      args = ', ' + args
+    end
+    df = "def #{key}(#{args});LLVM::ExecutionEngine.run_function(YARV2LLVM::MethodDefinition::RubyMethodStub['#{key}'][:stub]#{args});end" 
+    pppp df
     eval df, TOPLEVEL_BINDING
   end
 end

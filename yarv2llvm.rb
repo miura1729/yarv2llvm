@@ -17,15 +17,16 @@ def fib(n)
 end
 
 YARV2LLVM::compile( <<EOS
-def llvmfib(n)
+def llvmfib()
   a = []
-  a[0] + 1
+  b = a[0] + 1
 #  a[1] = 1
-  if n < 2 then
-    1
-  else
-    llvmfib(n - 1) + llvmfib(n - 2)
-  end
+#  if n < 2 then
+#    1
+#  else
+#N    llvmfib(n - 1) + llvmfib(n - 2)
+#  end
+  a
 end
 EOS
 )
