@@ -1,6 +1,6 @@
 class DmyBlock
   def load(addr)
-    pppp "Load (#{addr})"
+    pppp "Load (#{addr}) "
     addr
   end
 

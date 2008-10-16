@@ -14,7 +14,7 @@ module MethodDefinition
   # method inline or need special process
   InlineMethod =  {
     :[]= => {
-      :argtype => [ArrayType.new(nil), Type::Int32Ty],
+      :argtype => [ArrayType.new(nil), Type::Int32Ty, nil],
       :inline_proc_traverse => 
           lambda {
             val = @expstack.pop
