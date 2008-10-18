@@ -60,7 +60,7 @@ class RubyType
       @resolveed = true
       @same_type.each do |ty|
         if ty.type and ty.type.llvm != @type.llvm then
-          raise "Type error #{ty.name}(#{ty.type}) and #{@name}(#{@type})"
+          raise "Type error #{ty.name}(#{ty.type.inspect2}) and #{@name}(#{@type.inspect2})"
         else
           ty.type = @type
           ty.resolve
@@ -74,7 +74,7 @@ class RubyType
   end
 
   def self.float
-    RubyType.new(Type::FloatTy)
+    RubyType.new(Type::DoubleTy)
   end
 
   def self.symbol
@@ -99,20 +99,70 @@ class RubyType
 end
 
 class PrimitiveType
+  include LLVM
+  include RubyHelpers
+
   def initialize(type)
     @type = type
   end
 
+  TYPE_HANDLER = {
+    Type::Int32Ty =>
+      {:inspect => "Int32Ty",
+
+       :to_value => lambda {|val, b, context|
+         x = b.shl(val, 1.llvm)
+         b.or(FIXNUM_FLAG, x)
+       },
+
+       :from_value => lambda {|val, b, context|
+         x = b.lshr(val, 1.llvm)
+       },
+      },
+
+    Type::DoubleTy =>
+      {:inspect => "DoubleTy",
+
+       :to_value => lambda {|val, b, context|
+        atype = [Type::DoubleTy]
+        ftype = Type.function(VALUE, atype)
+        func = context.builder.external_function('rb_float_new', ftype)
+        b.call(func, val)
+       },
+
+       :from_value => lambda {|val, b, context|
+        val_ptr = b.int_to_ptr(val, P_RFLOAT)
+        dp = b.struct_gep(val_ptr, 1)
+        b.load(dp)
+       },
+      },
+
+    VALUE =>
+      {:inspect => "VALUE",
+
+       :to_value => lambda {|val, b, context|
+        val
+       },
+
+       :from_value => lambda {|val, b, context|
+        val
+       },
+      },
+  }
+
+  def to_value(val, b, context)
+    TYPE_HANDLER[@type][:to_value].call(val, b, context)
+  end
+
+  def from_value(val, b, context)
+    TYPE_HANDLER[@type][:from_value].call(val, b, context)
+  end
+
   def inspect2
-    case @type
-    when Type::Int32Ty
-      "Int32Ty"
-    when Type::FloatTy
-      "FloatTy"
-    when Type::VALUE
-      "VALUE"
+    if rc = TYPE_HANDLER[@type] then
+      rc[:inspect]
     else
-      @type.inspect2
+      self.inspect
     end
   end
 
@@ -122,6 +172,13 @@ class PrimitiveType
 end
 
 class ComplexType
+  def to_value(val, b, context)
+    val
+  end
+
+  def from_value(val, b, context)
+    val
+  end
 end
 
 class ArrayType<ComplexType

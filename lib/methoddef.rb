@@ -15,15 +15,15 @@ module MethodDefinition
   InlineMethod =  {
     :[]= => {
       :argtype => [ArrayType.new(nil), Type::Int32Ty, nil],
-      :inline_proc_traverse => 
-          lambda {
-            val = @expstack.pop
-            idx = @expstack.pop
-            arr = @expstack.pop
-            @expstack.push [arr[0].type.elemeht_type, 0.llvm]
-          },
-      :inline_proc_codegen =>
-        lambda {|b, context|
+      :inline_proc => 
+        lambda {
+        val = @expstack.pop
+        idx = @expstack.pop
+        arr = @expstack.pop
+        RubyType.resolve
+        val[0].add_same_type(arr[0].type.element_type)
+        arr[0].type.element_type.add_same_type(val[0])
+        @expstack.push [val[0].type, 0.llvm]
       },
     }
   }
@@ -31,9 +31,9 @@ module MethodDefinition
   # can be maped to C function
   CMethod = {
     :sqrt => 
-      {:rettype => Type::FloatTy,
-      :argtype => [Type::FloatTy],
-      :cname => "sqrtf"}
+      {:rettype => Type::DoubleTy,
+      :argtype => [Type::DoubleTy],
+      :cname => "sqrt"}
   }
 
   # definition by yarv2llvm and arg/return type is C type (int, float, ...)

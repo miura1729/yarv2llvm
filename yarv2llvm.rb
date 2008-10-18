@@ -17,22 +17,27 @@ def fib(n)
 end
 
 YARV2LLVM::compile( <<EOS
-def llvmfib()
-  a = []
-  b = a[0] + 1
-#  a[1] = 1
-#  if n < 2 then
-#    1
-#  else
-#N    llvmfib(n - 1) + llvmfib(n - 2)
-#  end
-  a
+
+
+def fact(n)
+  n
 end
+
+def llvmfib(n)
+  fact(3.9)
+  if n < 2 then
+    1
+  else
+    llvmfib(n - 1) + llvmfib(n - 2)
+  end
+end
+
 EOS
 )
 Benchmark.bm do |x|
   x.report("Ruby   "){  p fib(35)}
   x.report("llvm   "){  p llvmfib(35)}
 end
+p fact(5.9)
 end # __FILE__ == $0
 

@@ -5,7 +5,7 @@
 
 module YARV2LLVM
 class Context
-  def initialize(local)
+  def initialize(local, builder)
     @local_vars = local
     @rc = nil
     @org = nil
@@ -13,6 +13,7 @@ class Context
     @block_value = {}
     @last_stack_value = nil
     @curln = nil
+    @builder = builder
   end
 
   attr_accessor :local_vars
@@ -22,6 +23,7 @@ class Context
   attr_accessor :last_stack_value
   attr_accessor :curln
   attr_accessor :block_value
+  attr :builder
 end
 
 class YarvVisitor
@@ -66,9 +68,10 @@ class YarvTranslator<YarvVisitor
 
   def initialize(iseq)
     super(iseq)
+    @builder = LLVMBuilder.new
     @expstack = []
     @rescode = lambda {|b, context| context}
-    @builder = LLVMBuilder.new
+    @code_gen = {}
     @jump_hist = {}
     @prev_label = nil
     @is_live = nil
@@ -76,7 +79,9 @@ class YarvTranslator<YarvVisitor
 
   def run
     super
-
+    @code_gen.each do |fname, gen|
+      gen.call
+    end
 #    @builder.optimize
     @builder.disassemble
     
@@ -86,7 +91,7 @@ class YarvTranslator<YarvVisitor
     if context.blocks[ln] then
       context.blocks[ln]
     else
-      context.blocks[ln] = @builder.create_block
+      context.blocks[ln] = context.builder.create_block
     end
   end
   
@@ -133,7 +138,8 @@ class YarvTranslator<YarvVisitor
             rc = b.phi(context.block_value[commer_label[0]][0].type.llvm)
             
             commer_label.reverse.each do |lab|
-              rc.add_incoming(context.block_value[lab][1], context.blocks[lab])
+              rc.add_incoming(context.block_value[lab][1], 
+                              context.blocks[lab])
             end
 
             context.rc = rc
@@ -167,7 +173,14 @@ class YarvTranslator<YarvVisitor
       if MethodDefinition::RubyMethod[info[1]] then
         raise "#{info[1]} is already defined"
       else
-        MethodDefinition::RubyMethod[info[1]]= {}
+        argt = []
+        1.upto(numarg) do |n|
+          argt[n - 1] = local[-n][:type]
+        end
+        MethodDefinition::RubyMethod[info[1]]= {
+          :argtype => argt,
+          :rettype => RubyType.new(nil, :ret)
+        }
       end
     end
 
@@ -184,7 +197,7 @@ class YarvTranslator<YarvVisitor
       }
 
       # Copy argument in reg. to allocated area
-      arg = @builder.arguments
+      arg = context.builder.arguments
       lvars = context.local_vars
       1.upto(numarg) do |n|
         b.store(arg[n - 1], lvars[-n][:area])
@@ -198,7 +211,7 @@ class YarvTranslator<YarvVisitor
     RubyType.resolve
 
     numarg = code.header['misc'][:arg_size]
-#=begin
+=begin
     # write function prototype
     if info[1] then
       print "#{info[1]} :("
@@ -207,25 +220,31 @@ class YarvTranslator<YarvVisitor
       end
       print ") -> #{@expstack.last[0].inspect2}\n"
     end
-#=end
+=end
 
     argtype = []
     1.upto(numarg) do |n|
-      argtype[n - 1] = local[-n][:type].type.llvm
+      argtype[n - 1] = local[-n][:type]
     end
 
-    pppp "define #{info[1]}"
-    pppp @expstack
     if @expstack.last and info[1] then
-      b = @builder.define_function(info[1].to_s, 
-                                   @expstack.last[0].type.llvm, argtype)
-      context = @rescode.call(b, Context.new(local))
-      p1 = @expstack.pop
-      b.return(p1[1].call(b, context).rc)
-      pppp "ret type #{p1[0].type}"
-      pppp "end"
+      retexp = @expstack.pop
+      code = @rescode
+      @code_gen[info[1]] = lambda {
+        pppp "define #{info[1]}"
+        pppp @expstack
+      
+        b = @builder.define_function(info[1].to_s, 
+                                   retexp[0], argtype)
+        context = code.call(b, Context.new(local, @builder))
+        b.return(retexp[1].call(b, context).rc)
+
+        pppp "ret type #{retexp[0].type}"
+        pppp "end"
+      }
     end
 
+    @expstack = []
     @rescode = lambda {|b, context| context}
   end
   
@@ -266,7 +285,7 @@ class YarvTranslator<YarvVisitor
       lambda {|b, context|
         if nele == 0 then
           ftype = Type.function(VALUE, [])
-          func = @builder.external_function('rb_ary_new', ftype)
+          func = context.builder.external_function('rb_ary_new', ftype)
           rc = b.call(func)
           context.rc = rc
           pppp "newarray END"
@@ -324,7 +343,7 @@ class YarvTranslator<YarvVisitor
     end
 
     if funcinfo = MethodDefinition::InlineMethod[p1] then
-      funcinfo[:inline_proc_traverse].call
+      instance_eval &funcinfo[:inline_proc]
     end
 
     if funcinfo = MethodDefinition::CMethod[p1] then
@@ -363,18 +382,24 @@ class YarvTranslator<YarvVisitor
         return
       end
     end
-    if MethodDefinition::RubyMethod[p1] then
+
+    if minfo = MethodDefinition::RubyMethod[p1] then
       pppp "RubyMethod called #{p1.inspect}"
-      p = []
+      para = []
       0.upto(ins[2] - 1) do |n|
-        p[n] = @expstack.pop
+        v = @expstack.pop
+
+        v[0].add_same_type(minfo[:argtype][n])
+        minfo[:argtype][n].add_same_type(v[0])
+
+        para[n] = v
       end
-      @expstack.push [RubyType.new(rettype),
+      @expstack.push [minfo[:rettype],
         lambda {|b, context|
           minfo = MethodDefinition::RubyMethod[p1]
           func = minfo[:func]
           args = []
-          p.each do |pe|
+          para.each do |pe|
             args.push pe[1].call(b, context).rc
           end
           context.rc = b.call(func, *args)
@@ -399,7 +424,7 @@ class YarvTranslator<YarvVisitor
     @jump_hist[lab].push (ln.to_s + "_1").to_sym
     @rescode = lambda {|b, context|
       oldrescode.call(b, context)
-      eblock = @builder.create_block
+      eblock = context.builder.create_block
       iflab = context.curln
       context.curln = (context.curln.to_s + "_1").to_sym
       context.blocks[context.curln] = eblock
@@ -440,7 +465,7 @@ class YarvTranslator<YarvVisitor
       tblock = get_or_create_block(lab, b, context)
       iflab = context.curln
 
-      eblock = @builder.create_block
+      eblock = context.builder.create_block
       context.curln = (context.curln.to_s + "_1").to_sym
       context.blocks[context.curln] = eblock
       if valexp then
@@ -588,7 +613,7 @@ class YarvTranslator<YarvVisitor
       lambda {|b, context|
         s1val, s2val, context = gen_common_opt_2arg(b, context, s1, s2)
         case s1[0].type.llvm
-        when Type::FloatTy
+        when Type::DoubleTy
           context.rc = b.fdiv(s1val, s2val)
         when Type::Int32TY
           context.rc = b.sdiv(s1val, s2val)
@@ -607,7 +632,7 @@ class YarvTranslator<YarvVisitor
       lambda {|b, context|
         s1val, s2val, context = gen_common_opt_2arg(b, context, s1, s2)
         case s1[0].type.llvm
-          when Type::FloatTy
+          when Type::DoubleTy
           context.rc = b.fcmp_ueq(s1val, s2val)
 
           when Type::Int32Ty
@@ -627,7 +652,7 @@ class YarvTranslator<YarvVisitor
       lambda {|b, context|
         s1val, s2val, context = gen_common_opt_2arg(b, context, s1, s2)
         case s1[0].type.llvm
-          when Type::FloatTy
+          when Type::DoubleTy
           context.rc = b.fcmp_ult(s1val, s2val)
 
           when Type::Int32Ty
@@ -647,7 +672,7 @@ class YarvTranslator<YarvVisitor
       lambda {|b, context|
         s1val, s2val, context = gen_common_opt_2arg(b, context, s1, s2)
         case s1[0].type.llvm
-          when Type::FloatTy
+          when Type::DoubleTy
           context.rc = b.fcmp_ugt(s1val, s2val)
 
           when Type::Int32Ty
@@ -678,7 +703,7 @@ class YarvTranslator<YarvVisitor
           context = arr[1].call(b, context)
           arrp = context.rc
           ftype = Type.function(VALUE, [VALUE, Type::Int32Ty])
-          func = @builder.external_function('rb_ary_entry', ftype)
+          func = context.builder.external_function('rb_ary_entry', ftype)
           context.rc = b.call(func, arrp, idxp)
           context
         else
@@ -708,18 +733,19 @@ end
 
 def compcommon(is)
   iseq = VMLib::InstSeqTree.new(nil, is)
-  p iseq.to_a
+  pppp iseq.to_a
   YarvTranslator.new(iseq).run
   MethodDefinition::RubyMethodStub.each do |key, m|
     name = key
     n = 0
     if m[:argt] == [] then
       args = ""
+      args2 = ""
     else
       args = m[:argt].map {|x|  n += 1; "p" + n.to_s}.join(',')
-      args = ', ' + args
+      args2 = ', ' + args
     end
-    df = "def #{key}(#{args});LLVM::ExecutionEngine.run_function(YARV2LLVM::MethodDefinition::RubyMethodStub['#{key}'][:stub]#{args});end" 
+    df = "def #{key}(#{args});LLVM::ExecutionEngine.run_function(YARV2LLVM::MethodDefinition::RubyMethodStub['#{key}'][:stub]#{args2});end" 
     pppp df
     eval df, TOPLEVEL_BINDING
   end
@@ -729,4 +755,3 @@ module_function :compile_file
 module_function :compile
 module_function :compcommon
 end
-
