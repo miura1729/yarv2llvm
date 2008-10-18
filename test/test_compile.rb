@@ -20,12 +20,19 @@ EOS
 
   def test_array
     YARV2LLVM::compile(<<-EOS
-def arr()
+def arr(n)
   a = []
-  a[1] + 1
+  a[0] = 0
+  a[1] = 1
+  a[2] = 4
+  a[3] = 9
+  a[n]
 end
 EOS
 )
-   assert_equal(arr, 1)
+   assert_equal(arr(0), 0)
+   assert_equal(arr(1), 1)
+   assert_equal(arr(2), 4)
+   assert_equal(arr(3), 9)
   end
 end

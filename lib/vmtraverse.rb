@@ -704,7 +704,8 @@ class YarvTranslator<YarvVisitor
           arrp = context.rc
           ftype = Type.function(VALUE, [VALUE, Type::Int32Ty])
           func = context.builder.external_function('rb_ary_entry', ftype)
-          context.rc = b.call(func, arrp, idxp)
+          av = b.call(func, arrp, idxp)
+          context.rc = arr[0].type.element_type.type.from_value(av, b, context)
           context
         else
           # Todo: Hash table?
