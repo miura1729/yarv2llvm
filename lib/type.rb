@@ -11,8 +11,10 @@ class RubyType
   include RubyHelpers
 
   @@type_table = []
-  def initialize(type, name = nil)
+
+  def initialize(type, lno = nil, name = nil)
     @name = name
+    @line_no = lno
     if type == nil 
       @type = nil
     elsif type.is_a?(ComplexType) then
@@ -36,6 +38,7 @@ class RubyType
   attr_accessor :type
   attr_accessor :resolveed
   attr :name
+  attr :line_no
 
   def add_same_type(type)
     @same_type.push type
@@ -60,7 +63,7 @@ class RubyType
       @resolveed = true
       @same_type.each do |ty|
         if ty.type and ty.type.llvm != @type.llvm then
-          raise "Type error #{ty.name}(#{ty.type.inspect2}) and #{@name}(#{@type.inspect2})"
+          raise "Type error #{ty.name}(#{ty.type.inspect2}) defined in #{ty.line_no} and #{@name}(#{@type.inspect2}) define in #{@line_no}"
         else
           ty.type = @type
           ty.resolve
@@ -69,31 +72,31 @@ class RubyType
     end
   end
 
-  def self.fixnum
-    RubyType.new(Type::Int32Ty)
+  def self.fixnum(lno = nil)
+    RubyType.new(Type::Int32Ty, lno)
   end
 
-  def self.float
-    RubyType.new(Type::DoubleTy)
+  def self.float(lno = nil)
+    RubyType.new(Type::DoubleTy, lno)
   end
 
-  def self.symbol
-    RubyType.new(VALUE)
+  def self.symbol(lno = nil)
+    RubyType.new(VALUE, lno)
   end
 
-  def self.typeof(obj)
+  def self.typeof(obj, lno = nil)
     case obj
     when Fixnum
-      RubyType.fixnum
+      RubyType.fixnum(lno)
 
     when Float
-      RubyType.float
+      RubyType.float(lno)
 
     when Symbol
-      RubyType.symbol
+      RubyType.symbol(lno)
 
     else
-      raise "Unsupported type #{obj}"
+      raise "Unsupported type #{obj} in #{lno}"
     end
   end
 end

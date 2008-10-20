@@ -18,7 +18,6 @@ end
 
 YARV2LLVM::compile( <<EOS
 
-
 def fact(n)
   n
 end

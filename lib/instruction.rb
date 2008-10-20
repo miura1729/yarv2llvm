@@ -193,15 +193,15 @@ module VMLib
       action.call(self, info)
       
       @blockes.each do |sno, cont|
-        cont.traverse_code([info[0], info[1], sno], &action)
+        cont.traverse_code([info[0], info[1], sno, nil], &action)
       end
 
       @klasses.each do |name, cont|
-        cont.traverse_code([name, nil, nil], &action)
+        cont.traverse_code([name, nil, nil, nil], &action)
       end
       
       @methodes.each do |name, cont|
-        cont.traverse_code([info[0], name, nil], &action)
+        cont.traverse_code([info[0], name, nil, nil], &action)
       end
     end
 

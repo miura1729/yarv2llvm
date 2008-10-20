@@ -32,7 +32,7 @@ class YarvVisitor
   end
 
   def run
-    @iseq.traverse_code([nil, nil, nil]) do |code, info|
+    @iseq.traverse_code([nil, nil, nil, nil]) do |code, info|
       local = []
       visit_block_start(code, nil, local, nil, info)
       curln = nil
@@ -41,8 +41,12 @@ class YarvVisitor
 
         curln = ln
         code.lblock[ln].each do |ins|
-          opname = ins[0].to_s
-          send(("visit_" + opname).to_sym, code, ins, local, curln, info)
+          if ins.is_a?(Fixnum) then
+            info[3] = ins
+          else
+            opname = ins[0].to_s
+            send(("visit_" + opname).to_sym, code, ins, local, curln, info)
+          end
 
           case ins[0]
           when :branchif, :branchunless, :jump
@@ -82,8 +86,8 @@ class YarvTranslator<YarvVisitor
     @code_gen.each do |fname, gen|
       gen.call
     end
-#    @builder.optimize
-    @builder.disassemble
+    @builder.optimize
+#    @builder.disassemble
     
   end
   
@@ -164,14 +168,17 @@ class YarvTranslator<YarvVisitor
   
   def visit_block_start(code, ins, local, ln, info)
     ([nil, :self] + code.header['locals'].reverse).each_with_index do |n, i|
-      local[i] = {:name => n, :type => RubyType.new(nil, n), :area => nil}
+      local[i] = {
+        :name => n, 
+        :type => RubyType.new(nil, n, info[3]), 
+        :area => nil}
     end
     numarg = code.header['misc'][:arg_size]
 
     # regist function to RubyCMthhod for recursive call
     if info[1] then
       if MethodDefinition::RubyMethod[info[1]] then
-        raise "#{info[1]} is already defined"
+        raise "#{info[1]} is already defined in #{info[3]}"
       else
         argt = []
         1.upto(numarg) do |n|
@@ -179,7 +186,7 @@ class YarvTranslator<YarvVisitor
         end
         MethodDefinition::RubyMethod[info[1]]= {
           :argtype => argt,
-          :rettype => RubyType.new(nil, :ret)
+          :rettype => RubyType.new(nil, :ret, info[3])
         }
       end
     end
@@ -264,7 +271,7 @@ class YarvTranslator<YarvVisitor
 
   def visit_putobject(code, ins, local, ln, info)
     p1 = ins[1]
-    @expstack.push [RubyType.typeof(p1), 
+    @expstack.push [RubyType.typeof(p1, info[3]), 
       lambda {|b, context| 
         pppp p1
         context.rc = p1.llvm 
@@ -281,7 +288,7 @@ class YarvTranslator<YarvVisitor
       inits.push v
     }
     inits.reverse!
-    @expstack.push [RubyType.new(ArrayType.new(nil)),
+    @expstack.push [RubyType.new(ArrayType.new(nil), info[3]),
       lambda {|b, context|
         if nele == 0 then
           ftype = Type.function(VALUE, [])
@@ -291,7 +298,7 @@ class YarvTranslator<YarvVisitor
           pppp "newarray END"
         else
           # TODO: eval inits and call rb_ary_new4
-          raise "Initialized array not implemented"
+          raise "Initialized array not implemented in #{info[3]}"
         end
         context
       }]
@@ -347,8 +354,8 @@ class YarvTranslator<YarvVisitor
     end
 
     if funcinfo = MethodDefinition::CMethod[p1] then
-      rettype = RubyType.new(funcinfo[:rettype])
-      argtype = funcinfo[:argtype].map {|ts| RubyType.new(ts)}
+      rettype = RubyType.new(funcinfo[:rettype], info[3])
+      argtype = funcinfo[:argtype].map {|ts| RubyType.new(ts, info[3])}
       cname = funcinfo[:cname]
       
       if argtype.size == ins[2] then
@@ -360,7 +367,7 @@ class YarvTranslator<YarvVisitor
         0.upto(ins[2] - 1) do |n|
           p[n] = @expstack.pop
           if p[n][0].type and p[n][0].type != argtype[n].type then
-            raise "arg error"
+            raise "arg error in #{info[3]}"
           else
             p[n][0].add_same_type argtype[n]
             argtype[n].add_same_type p[n][0]
@@ -686,7 +693,7 @@ class YarvTranslator<YarvVisitor
   def visit_opt_aref(code, ins, local, ln, info)
     idx = @expstack.pop
     arr = @expstack.pop
-    fix = RubyType.fixnum
+    fix = RubyType.fixnum(info[3])
     idx[0].add_same_type(fix)
     fix.add_same_type(idx[0])
     RubyType.resolve
@@ -709,7 +716,7 @@ class YarvTranslator<YarvVisitor
           context
         else
           # Todo: Hash table?
-          raise "Not impremented"
+          raise "Not impremented in #{info[3]}"
         end
       }
     ]

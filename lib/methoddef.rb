@@ -27,7 +27,7 @@ module MethodDefinition
           oldrescode = @rescode
           @rescode = lambda {|b, context|
             context = oldrescode.call(b, context)
-            ftype = Type.function(VOID, [VALUE, Type::Int32Ty, VALUE])
+            ftype = Type.function(Type::VoidTy, [VALUE, Type::Int32Ty, VALUE])
             func = context.builder.external_function('rb_ary_store', ftype)
             context = val[1].call(b, context)
             v = context.rc
@@ -39,7 +39,7 @@ module MethodDefinition
             context
           }
         },
-        },
+    },
   }
   
   # can be maped to C function

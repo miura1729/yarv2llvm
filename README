@@ -2,9 +2,36 @@ yarv2llvm -- Yarv to LLVM Translater
 
 -- Description
   yarv2llvm is Yarv to LLVM translater. 
+  yarv2llvm will try for type inference.
 
--- Bugs
-  This is paperware yet.
+-- Install
+  yarv2llvm has need of llvmruby of ruby gem version
+  (http://github.com/tombagby/llvmruby/tree/master)
+  
+   1. Install llvmruby
+
+   2. Copy yarv2llvm.rb and ./lib/*.* to any directory which is in 
+      the ruby library path.
+
+-- Usage
+
+   require 'yarv2llvm'
+   YARV2LLVM::compile("Method definition in string")
+   method(args)
+
+   For example
+
+   require 'yarv2llvm'
+   YARV2LLVM::compile('def fact(n);if n == 0 then 1 else n * fact(n -1);end;end')   
+   p fact(5)  # -> 120
+
+-- Limit
+  This is program is only supported Fixnum and Float.
+  You can use Array type if you are luckey.
+
+-- BUGS
+  If you apply bad program for yarv2llvm, you must break the code from
+  yarv2llvm.
    
 -- Author
    Miura Hideki (miura1729)
