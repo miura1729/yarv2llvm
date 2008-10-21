@@ -51,4 +51,31 @@ EOS
 )
    assert_equal(dtest(2.0), (Math.sqrt(2.0) * 2.0 + 1.0) / 3.0)
  end
+
+  def test_while
+    YARV2LLVM::compile(<<-EOS
+def while_test(n)
+  i = 0
+  r = 0
+  while i < n do
+    i = i + 1
+    r = r + i
+  end
+  r
+end
+EOS
+)
+   assert_equal(while_test(10), 55)
+ end
+
+  def test_dup_instruction
+    YARV2LLVM::compile(<<-EOS
+def dup(n)
+  n = n + 0
+  a = n
+end
+EOS
+)
+   assert_equal(dup(10), 10)
+ end
 end

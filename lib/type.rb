@@ -72,31 +72,31 @@ class RubyType
     end
   end
 
-  def self.fixnum(lno = nil)
-    RubyType.new(Type::Int32Ty, lno)
+  def self.fixnum(lno = nil, name = nil)
+    RubyType.new(Type::Int32Ty, lno, name)
   end
 
-  def self.float(lno = nil)
-    RubyType.new(Type::DoubleTy, lno)
+  def self.float(lno = nil, name = nil)
+    RubyType.new(Type::DoubleTy, lno, name)
   end
 
-  def self.symbol(lno = nil)
-    RubyType.new(VALUE, lno)
+  def self.symbol(lno = nil, name = nil)
+    RubyType.new(VALUE, lno, name)
   end
 
-  def self.typeof(obj, lno = nil)
+  def self.typeof(obj, lno = nil, name = nil)
     case obj
     when Fixnum
-      RubyType.fixnum(lno)
+      RubyType.fixnum(lno, name)
 
     when Float
-      RubyType.float(lno)
+      RubyType.float(lno, name)
 
     when Symbol
-      RubyType.symbol(lno)
+      RubyType.symbol(lno, name)
 
     else
-      raise "Unsupported type #{obj} in #{lno}"
+      raise "Unsupported type #{obj} in #{lno} (#{name})"
     end
   end
 end

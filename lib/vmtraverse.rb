@@ -11,7 +11,6 @@ class Context
     @org = nil
     @blocks = {}
     @block_value = {}
-    @last_stack_value = nil
     @curln = nil
     @builder = builder
   end
@@ -20,7 +19,6 @@ class Context
   attr_accessor :rc
   attr_accessor :org
   attr_accessor :blocks
-  attr_accessor :last_stack_value
   attr_accessor :curln
   attr_accessor :block_value
   attr :builder
@@ -170,7 +168,7 @@ class YarvTranslator<YarvVisitor
     ([nil, :self] + code.header['locals'].reverse).each_with_index do |n, i|
       local[i] = {
         :name => n, 
-        :type => RubyType.new(nil, n, info[3]), 
+        :type => RubyType.new(nil, info[3], n),
         :area => nil}
     end
     numarg = code.header['misc'][:arg_size]
@@ -186,7 +184,7 @@ class YarvTranslator<YarvVisitor
         end
         MethodDefinition::RubyMethod[info[1]]= {
           :argtype => argt,
-          :rettype => RubyType.new(nil, :ret, info[3])
+          :rettype => RubyType.new(nil, info[3], "return type")
         }
       end
     end
@@ -271,7 +269,7 @@ class YarvTranslator<YarvVisitor
 
   def visit_putobject(code, ins, local, ln, info)
     p1 = ins[1]
-    @expstack.push [RubyType.typeof(p1, info[3]), 
+    @expstack.push [RubyType.typeof(p1, info[3], p1), 
       lambda {|b, context| 
         pppp p1
         context.rc = p1.llvm 
@@ -331,7 +329,6 @@ class YarvTranslator<YarvVisitor
       pppp "Setlocal start"
       context = oldrescode.call(b, context)
       context = srcvalue.call(b, context)
-      context.last_stack_value = context.rc
       lvar = context.local_vars[p1]
       context.rc = b.store(context.rc, lvar[:area])
       context.org = lvar[:name]
@@ -354,7 +351,7 @@ class YarvTranslator<YarvVisitor
     end
 
     if funcinfo = MethodDefinition::CMethod[p1] then
-      rettype = RubyType.new(funcinfo[:rettype], info[3])
+      rettype = RubyType.new(funcinfo[:rettype], info[3], "return type of #{p1}")
       argtype = funcinfo[:argtype].map {|ts| RubyType.new(ts, info[3])}
       cname = funcinfo[:cname]
       
@@ -407,7 +404,8 @@ class YarvTranslator<YarvVisitor
           func = minfo[:func]
           args = []
           para.each do |pe|
-            args.push pe[1].call(b, context).rc
+            context = pe[1].call(b, context)
+            args.push context.rc
           end
           context.rc = b.call(func, *args)
           context
@@ -437,7 +435,8 @@ class YarvTranslator<YarvVisitor
       context.blocks[context.curln] = eblock
       tblock = get_or_create_block(lab, b, context)
       if valexp then
-        bval = [valexp[0], valexp[1].call(b, context).rc]
+        context = valexp[1].call(b, context)
+        bval = [valexp[0], context.rc]
         context.block_value[iflab] = bval
       end
       b.cond_br(s1[1].call(b, context).rc, eblock, tblock)
@@ -528,12 +527,19 @@ class YarvTranslator<YarvVisitor
 
   def visit_dup(code, ins, local, ln, info)
     s1 = @expstack.pop
+    stacktop_value = nil
     @expstack.push [s1[0],
       lambda {|b, context|
-        context.rc = context.last_stack_value
+        context.rc = stacktop_value
         context
       }]
-    @expstack.push s1
+
+    @expstack.push [s1[0],
+      lambda {|b, context|
+        context = s1[1].call(b, context)
+        stacktop_value = context.rc
+        context
+      }]
   end
   
   def check_same_type_2arg_static(p1, p2)

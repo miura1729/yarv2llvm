@@ -17,15 +17,16 @@ def fib(n)
 end
 
 YARV2LLVM::compile( <<EOS
-
+=begin
 def fact(n)
   n
 end
+=end
 
 def llvmfib(n)
-  fact(3.9)
+#  fact(3.9)
   if n < 2 then
-    1
+    1.0
   else
     llvmfib(n - 1) + llvmfib(n - 2)
   end
@@ -37,6 +38,6 @@ Benchmark.bm do |x|
   x.report("Ruby   "){  p fib(35)}
   x.report("llvm   "){  p llvmfib(35)}
 end
-p fact(5.9)
+#p fact(5.0)
 end # __FILE__ == $0
 
