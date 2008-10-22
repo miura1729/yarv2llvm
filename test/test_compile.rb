@@ -2,7 +2,6 @@ require 'test/unit'
 require 'yarv2llvm'
 
 class CompileTests < Test::Unit::TestCase
-  
 
   def test_fib
     YARV2LLVM::compile(<<-EOS
@@ -77,5 +76,40 @@ end
 EOS
 )
    assert_equal(dup(10), 10)
+ end
+
+  def ari3(n)
+    ((n + n) * n - n) % ((n + n * n) / n)
+  end
+
+  def test_arithmetic
+    YARV2LLVM::compile(<<-EOS
+def ari(n)
+  ((n + n) * n - n) % ((n + n * n) / n) + 0
+end
+def ari2(n)
+  ((n + n) * n - n) % ((n + n * n) / n) + 0.0
+end
+EOS
+)
+   assert_equal(ari(10), ari3(10))
+   assert_equal(ari2(10.0), ari3(10.0))
+ end
+
+  def test_compare
+    YARV2LLVM::compile(<<-EOS
+def compare(n, m)
+  n = n + 0
+  m = m + 0
+  ((n < m) ? 1 : 0) +
+  ((n <= m) ? 2 : 0) +
+  ((n > m) ? 4 : 0) +
+  ((n >= m) ? 8 : 0)
+end
+EOS
+)
+   assert_equal(compare(0, 1), 3)
+   assert_equal(compare(1, 1), 10)
+   assert_equal(compare(1, 0), 12)
  end
 end

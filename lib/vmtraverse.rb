@@ -84,7 +84,7 @@ class YarvTranslator<YarvVisitor
     @code_gen.each do |fname, gen|
       gen.call
     end
-    @builder.optimize
+#    @builder.optimize
 #    @builder.disassemble
     
   end
@@ -134,6 +134,7 @@ class YarvTranslator<YarvVisitor
         end
         n += 1
       end
+      @expstack.pop
       @expstack.push [valexp[0],
         lambda {|b, context|
           if ln then
@@ -249,57 +250,12 @@ class YarvTranslator<YarvVisitor
       }
     end
 
-    @expstack = []
+#    @expstack = []
     @rescode = lambda {|b, context| context}
   end
   
   def visit_default(code, ins, local, ln, info)
 #    pppp ins
-  end
-  
-  def visit_putnil(code, ins, local, ln, info)
-    # Nil is not support yet.
-=begin
-    @expstack.push [RubyType.typeof(nil), 
-      lambda {|b, context| 
-        nil
-      }]
-=end
-  end
-
-  def visit_putobject(code, ins, local, ln, info)
-    p1 = ins[1]
-    @expstack.push [RubyType.typeof(p1, info[3], p1), 
-      lambda {|b, context| 
-        pppp p1
-        context.rc = p1.llvm 
-        context.org = p1
-        context
-      }]
-  end
-
-  def visit_newarray(code, ins, local, ln, info)
-    nele = ins[1]
-    inits = []
-    nele.times {|n|
-      v = @expstack.pop
-      inits.push v
-    }
-    inits.reverse!
-    @expstack.push [RubyType.new(ArrayType.new(nil), info[3]),
-      lambda {|b, context|
-        if nele == 0 then
-          ftype = Type.function(VALUE, [])
-          func = context.builder.external_function('rb_ary_new', ftype)
-          rc = b.call(func)
-          context.rc = rc
-          pppp "newarray END"
-        else
-          # TODO: eval inits and call rb_ary_new4
-          raise "Initialized array not implemented in #{info[3]}"
-        end
-        context
-      }]
   end
   
   def visit_getlocal(code, ins, local, ln, info)
@@ -337,6 +293,112 @@ class YarvTranslator<YarvVisitor
     }
   end
 
+  # getspecial
+  # setspecial
+  # getdynamic
+  # setdynamic
+  # getinstancevariable
+  # setinstancevariable
+  # getclassvariable
+  # setclassvariable
+  # getconstant
+  # setconstant
+  # getglobal
+  # setglobal
+
+  def visit_putnil(code, ins, local, ln, info)
+    # Nil is not support yet.
+=begin
+    @expstack.push [RubyType.typeof(nil), 
+      lambda {|b, context| 
+        nil
+      }]
+=end
+  end
+
+  # putself
+
+  def visit_putobject(code, ins, local, ln, info)
+    p1 = ins[1]
+    @expstack.push [RubyType.typeof(p1, info[3], p1), 
+      lambda {|b, context| 
+        pppp p1
+        context.rc = p1.llvm 
+        context.org = p1
+        context
+      }]
+  end
+
+  # putspecialobject
+  # putiseq
+  # putstring
+  # concatstrings
+  # tostring
+  # toregexp
+
+  def visit_newarray(code, ins, local, ln, info)
+    nele = ins[1]
+    inits = []
+    nele.times {|n|
+      v = @expstack.pop
+      inits.push v
+    }
+    inits.reverse!
+    @expstack.push [RubyType.new(ArrayType.new(nil), info[3]),
+      lambda {|b, context|
+        if nele == 0 then
+          ftype = Type.function(VALUE, [])
+          func = context.builder.external_function('rb_ary_new', ftype)
+          rc = b.call(func)
+          context.rc = rc
+          pppp "newarray END"
+        else
+          # TODO: eval inits and call rb_ary_new4
+          raise "Initialized array not implemented in #{info[3]}"
+        end
+        context
+      }]
+  end
+  
+  # duparray
+  # expandarray
+  # concatarray
+  # splatarray
+  # checkincludearray
+  # newhash
+  # newrange
+
+  # pop
+  
+  def visit_dup(code, ins, local, ln, info)
+    s1 = @expstack.pop
+    stacktop_value = nil
+    @expstack.push [s1[0],
+      lambda {|b, context|
+        context.rc = stacktop_value
+        context
+      }]
+
+    @expstack.push [s1[0],
+      lambda {|b, context|
+        context = s1[1].call(b, context)
+        stacktop_value = context.rc
+        context
+      }]
+  end
+
+  # dupn
+  # swap
+  # reput
+  # topn
+  # setn
+  # adjuststack
+  
+  # defined
+  # trace
+
+  # defineclass
+  
   def visit_send(code, ins, local, ln, info)
     p1 = ins[1]
     if funcinfo = MethodDefinition::SystemMethod[p1] then
@@ -414,42 +476,43 @@ class YarvTranslator<YarvVisitor
     end
   end
 
-  def visit_branchunless(code, ins, local, ln, info)
-    s1 = @expstack.pop
-    oldrescode = @rescode
+  # invokesuper
+  # invokeblock
+  # leave
+  # finish
+
+  # throw
+
+  def visit_jump(code, ins, local, ln, info)
     lab = ins[1]
+    fmlab = nil
+    oldrescode = @rescode
     valexp = nil
     if @expstack.size > 0 then
       valexp = @expstack.pop
     end
     bval = nil
     @is_live = false
-    iflab = nil
     @jump_hist[lab] ||= []
-    @jump_hist[lab].push (ln.to_s + "_1").to_sym
+    @jump_hist[lab].push ln
     @rescode = lambda {|b, context|
       oldrescode.call(b, context)
-      eblock = context.builder.create_block
-      iflab = context.curln
-      context.curln = (context.curln.to_s + "_1").to_sym
-      context.blocks[context.curln] = eblock
-      tblock = get_or_create_block(lab, b, context)
+      jblock = get_or_create_block(lab, b, context)
       if valexp then
-        context = valexp[1].call(b, context)
-        bval = [valexp[0], context.rc]
-        context.block_value[iflab] = bval
+        bval = [valexp[0], valexp[1].call(b, context).rc]
+        fmlab = context.curln
+        context.block_value[fmlab] = bval
       end
-      b.cond_br(s1[1].call(b, context).rc, eblock, tblock)
-      b.set_insert_point(eblock)
+      b.br(jblock)
 
       context
     }
     if valexp then
-      @expstack.push [valexp[0], 
+      @expstack.push [valexp[0],
         lambda {|b, context| 
-          context.rc = context.block_value[iflab][1]
-          context}]
-
+          context.rc = context.block_value[fmlab][1]
+          context
+        }]
     end
   end
 
@@ -492,55 +555,50 @@ class YarvTranslator<YarvVisitor
     end
   end
 
-  def visit_jump(code, ins, local, ln, info)
-    lab = ins[1]
-    fmlab = nil
+  def visit_branchunless(code, ins, local, ln, info)
+    s1 = @expstack.pop
     oldrescode = @rescode
+    lab = ins[1]
     valexp = nil
     if @expstack.size > 0 then
       valexp = @expstack.pop
     end
     bval = nil
     @is_live = false
+    iflab = nil
     @jump_hist[lab] ||= []
-    @jump_hist[lab].push ln
+    @jump_hist[lab].push (ln.to_s + "_1").to_sym
     @rescode = lambda {|b, context|
       oldrescode.call(b, context)
-      jblock = get_or_create_block(lab, b, context)
+      eblock = context.builder.create_block
+      iflab = context.curln
+      context.curln = (context.curln.to_s + "_1").to_sym
+      context.blocks[context.curln] = eblock
+      tblock = get_or_create_block(lab, b, context)
       if valexp then
-        bval = [valexp[0], valexp[1].call(b, context).rc]
-        fmlab = context.curln
-        context.block_value[fmlab] = bval
+        context = valexp[1].call(b, context)
+        bval = [valexp[0], context.rc]
+        context.block_value[iflab] = bval
       end
-      b.br(jblock)
+      b.cond_br(s1[1].call(b, context).rc, eblock, tblock)
+      b.set_insert_point(eblock)
 
       context
     }
     if valexp then
-      @expstack.push [valexp[0],
+      @expstack.push [valexp[0], 
         lambda {|b, context| 
-          context.rc = context.block_value[fmlab][1]
-          context
-        }]
+          context.rc = context.block_value[iflab][1]
+          context}]
+
     end
   end
 
-  def visit_dup(code, ins, local, ln, info)
-    s1 = @expstack.pop
-    stacktop_value = nil
-    @expstack.push [s1[0],
-      lambda {|b, context|
-        context.rc = stacktop_value
-        context
-      }]
-
-    @expstack.push [s1[0],
-      lambda {|b, context|
-        context = s1[1].call(b, context)
-        stacktop_value = context.rc
-        context
-      }]
-  end
+  # getinlinecache
+  # onceinlinecache
+  # setinlinecache
+  # opt_case_dispatch
+  # opt_checkenv
   
   def check_same_type_2arg_static(p1, p2)
     p1[0].add_same_type(p2[0])
@@ -628,8 +686,29 @@ class YarvTranslator<YarvVisitor
         case s1[0].type.llvm
         when Type::DoubleTy
           context.rc = b.fdiv(s1val, s2val)
-        when Type::Int32TY
+        when Type::Int32Ty
           context.rc = b.sdiv(s1val, s2val)
+        end
+        context
+      }
+    ]
+  end
+
+  def visit_opt_mod(code, ins, local, ln, info)
+    s2 = @expstack.pop
+    s1 = @expstack.pop
+    check_same_type_2arg_static(s1, s2)
+    
+    @expstack.push [s1[0], 
+      lambda {|b, context|
+        s1val, s2val, context = gen_common_opt_2arg(b, context, s1, s2)
+        # It is right only s1 and s2 is possitive.
+        # It must generate more complex code when s1 and s2 are negative.
+        case s1[0].type.llvm
+        when Type::DoubleTy
+          context.rc = b.frem(s1val, s2val)
+        when Type::Int32Ty
+          context.rc = b.srem(s1val, s2val)
         end
         context
       }
@@ -656,6 +735,26 @@ class YarvTranslator<YarvVisitor
     ]
   end
 
+  def visit_opt_neq(code, ins, local, ln, info)
+    s2 = @expstack.pop
+    s1 = @expstack.pop
+    check_same_type_2arg_static(s1, s2)
+    
+    @expstack.push [nil, 
+      lambda {|b, context|
+        s1val, s2val, context = gen_common_opt_2arg(b, context, s1, s2)
+        case s1[0].type.llvm
+          when Type::DoubleTy
+          context.rc = b.fcmp_une(s1val, s2val)
+
+          when Type::Int32Ty
+          context.rc = b.icmp_ne(s1val, s2val)
+        end
+        context
+      }
+    ]
+  end
+
   def visit_opt_lt(code, ins, local, ln, info)
     s2 = @expstack.pop
     s1 = @expstack.pop
@@ -670,6 +769,26 @@ class YarvTranslator<YarvVisitor
 
           when Type::Int32Ty
           context.rc = b.icmp_slt(s1val, s2val)
+        end
+        context
+      }
+    ]
+  end
+
+  def visit_opt_le(code, ins, local, ln, info)
+    s2 = @expstack.pop
+    s1 = @expstack.pop
+    check_same_type_2arg_static(s1, s2)
+    
+    @expstack.push [nil, 
+      lambda {|b, context|
+        s1val, s2val, context = gen_common_opt_2arg(b, context, s1, s2)
+        case s1[0].type.llvm
+          when Type::DoubleTy
+          context.rc = b.fcmp_ule(s1val, s2val)
+
+          when Type::Int32Ty
+          context.rc = b.icmp_sle(s1val, s2val)
         end
         context
       }
@@ -695,6 +814,29 @@ class YarvTranslator<YarvVisitor
       }
     ]
   end
+
+  def visit_opt_ge(code, ins, local, ln, info)
+    s2 = @expstack.pop
+    s1 = @expstack.pop
+    check_same_type_2arg_static(s1, s2)
+    
+    @expstack.push [nil, 
+      lambda {|b, context|
+        s1val, s2val, context = gen_common_opt_2arg(b, context, s1, s2)
+        case s1[0].type.llvm
+          when Type::DoubleTy
+          context.rc = b.fcmp_uge(s1val, s2val)
+
+          when Type::Int32Ty
+          context.rc = b.icmp_sge(s1val, s2val)
+        end
+        context
+      }
+    ]
+  end
+
+
+  # otp_ltlt
 
   def visit_opt_aref(code, ins, local, ln, info)
     idx = @expstack.pop
@@ -727,6 +869,17 @@ class YarvTranslator<YarvVisitor
       }
     ]
   end
+
+  # opt_aset
+  # opt_length
+  # opt_succ
+  # opt_not
+  # opt_regexpmatch1
+  # opt_regexpmatch2
+  # opt_call_c_function
+  
+  # bitblt
+  # answer
 end
 
 def compile_file(fn)
