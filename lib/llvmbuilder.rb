@@ -42,11 +42,6 @@ class LLVMBuilder
   end
 
   def define_function(name, rett, argt)
-    rett2 = MethodDefinition::RubyMethod[name.to_sym][:rettype]
-    rett2.add_same_type rett
-    rett.add_same_type rett2
-    RubyType.resolve
-
     argtl = argt.map {|a| a.type.llvm}
     rettl = rett.type.llvm
     type = Type.function(rettl, argtl)
@@ -57,6 +52,11 @@ class LLVMBuilder
 
     eb = @func.create_block
     eb.builder
+  end
+
+  def get_or_insert_function(name, type)
+    ns = name.to_s
+    @module.get_or_insert_function(ns, type)
   end
 
   def arguments

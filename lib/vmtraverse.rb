@@ -31,6 +31,9 @@ class YarvVisitor
 
   def run
     @iseq.traverse_code([nil, nil, nil, nil]) do |code, info|
+      if code.header['type'] == :block
+        info[1] = (info[1].to_s + '_block').to_sym
+      end
       local = []
       visit_block_start(code, nil, local, nil, info)
       curln = nil
@@ -68,9 +71,10 @@ class YarvTranslator<YarvVisitor
   include LLVM
   include RubyHelpers
 
-  def initialize(iseq)
+  def initialize(iseq, bind)
     super(iseq)
     @builder = LLVMBuilder.new
+    @binding = bind
     @expstack = []
     @rescode = lambda {|b, context| context}
     @code_gen = {}
@@ -176,17 +180,28 @@ class YarvTranslator<YarvVisitor
 
     # regist function to RubyCMthhod for recursive call
     if info[1] then
-      if MethodDefinition::RubyMethod[info[1]] then
-        raise "#{info[1]} is already defined in #{info[3]}"
-      else
+      minfo = MethodDefinition::RubyMethod[info[1]]
+      if minfo == nil then
         argt = []
         1.upto(numarg) do |n|
           argt[n - 1] = local[-n][:type]
         end
         MethodDefinition::RubyMethod[info[1]]= {
+          :defined => true,
           :argtype => argt,
-          :rettype => RubyType.new(nil, info[3], "return type")
+          :rettype => RubyType.new(nil, info[3], "return type of #{info[1]}")
         }
+      elsif minfo[:defined] then
+        raise "#{info[1]} is already defined in #{info[3]}"
+
+      else
+        # already Call but defined(forward call)
+        argt = minfo[:argtype]
+        1.upto(numarg) do |n|
+          argt[n - 1].add_same_type local[-n][:type]
+          local[-n][:type].add_same_type argt[n - 1]
+        end
+        minfo[:defined] = true
       end
     end
 
@@ -217,16 +232,6 @@ class YarvTranslator<YarvVisitor
     RubyType.resolve
 
     numarg = code.header['misc'][:arg_size]
-=begin
-    # write function prototype
-    if info[1] then
-      print "#{info[1]} :("
-      1.upto(numarg) do |n|
-        print "#{local[-n][:type].inspect2}, "
-      end
-      print ") -> #{@expstack.last[0].inspect2}\n"
-    end
-=end
 
     argtype = []
     1.upto(numarg) do |n|
@@ -236,6 +241,22 @@ class YarvTranslator<YarvVisitor
     if @expstack.last and info[1] then
       retexp = @expstack.pop
       code = @rescode
+      rett2 = MethodDefinition::RubyMethod[info[1]][:rettype]
+      rett2.add_same_type retexp[0]
+      retexp[0].add_same_type rett2
+      RubyType.resolve
+
+=begin
+    # write function prototype
+    if info[1] then
+      print "#{info[1]} :("
+      1.upto(numarg) do |n|
+        print "#{local[-n][:type].inspect2}, "
+      end
+      print ") -> #{retexp[0].inspect2}\n"
+    end
+=end
+
       @code_gen[info[1]] = lambda {
         pppp "define #{info[1]}"
         pppp @expstack
@@ -410,6 +431,7 @@ class YarvTranslator<YarvVisitor
 
     if funcinfo = MethodDefinition::InlineMethod[p1] then
       instance_eval &funcinfo[:inline_proc]
+      return
     end
 
     if funcinfo = MethodDefinition::CMethod[p1] then
@@ -425,12 +447,8 @@ class YarvTranslator<YarvVisitor
         p = []
         0.upto(ins[2] - 1) do |n|
           p[n] = @expstack.pop
-          if p[n][0].type and p[n][0].type != argtype[n].type then
-            raise "arg error in #{info[3]}"
-          else
-            p[n][0].add_same_type argtype[n]
-            argtype[n].add_same_type p[n][0]
-          end
+          p[n][0].add_same_type argtype[n]
+          argtype[n].add_same_type p[n][0]
         end
           
         @expstack.push [rettype,
@@ -474,6 +492,36 @@ class YarvTranslator<YarvVisitor
         }]
       return
     end
+
+    # Undefined method, it may be forward call.
+    para = []
+    0.upto(ins[2] - 1) do |n|
+      v = @expstack.pop
+      para[n] = v
+    end
+    rett = RubyType.new(nil, info[3], "Return type of #{p1}")
+    @expstack.push [rett,
+      lambda {|b, context|
+        argtype = para.map {|ele|
+          ele[0].type.llvm
+        }
+        ftype = Type.function(rett.type.llvm, argtype)
+        func = context.builder.get_or_insert_function(p1, ftype)
+        args = []
+        para.each do |pe|
+          context = pe[1].call(b, context)
+          args.push context.rc
+        end
+        context.rc = b.call(func, *args)
+        context
+      }]
+    MethodDefinition::RubyMethod[p1]= {
+      :defined => false,
+      :argtype => para.map {|ele| ele[0]},
+      :rettype => rett
+    }
+
+    return
   end
 
   # invokesuper
@@ -882,26 +930,33 @@ class YarvTranslator<YarvVisitor
   # answer
 end
 
-def compile_file(fn)
+def compile_file(fn, bind = TOPLEVEL_BINDING)
   is = RubyVM::InstructionSequence.compile( File.read(fn), fn, 1, 
             {  :peephole_optimization    => true,
                :inline_const_cache       => false,
                :specialized_instruction  => true,}).to_a
-  compcommon(is)
+  compcommon(is, bind)
 end
 
-def compile(str)
-  is = RubyVM::InstructionSequence.compile( str, "<llvm2ruby>", 1, 
+def compile(str, bind = TOPLEVEL_BINDING)
+  line = 1
+  file = "<llvm2ruby>"
+  if /^(.+?):(\d+)(?::in `(.*)')?/ =~ caller[0] then
+    file = $1
+    line = $2.to_i + 1
+    method = $3
+  end
+  is = RubyVM::InstructionSequence.compile( str, file, line, 
             {  :peephole_optimization    => true,
                :inline_const_cache       => false,
                :specialized_instruction  => true,}).to_a
-  compcommon(is)
+  compcommon(is, bind)
 end
 
-def compcommon(is)
+def compcommon(is, bind)
   iseq = VMLib::InstSeqTree.new(nil, is)
   pppp iseq.to_a
-  YarvTranslator.new(iseq).run
+  YarvTranslator.new(iseq, bind).run
   MethodDefinition::RubyMethodStub.each do |key, m|
     name = key
     n = 0
@@ -914,7 +969,7 @@ def compcommon(is)
     end
     df = "def #{key}(#{args});LLVM::ExecutionEngine.run_function(YARV2LLVM::MethodDefinition::RubyMethodStub['#{key}'][:stub]#{args2});end" 
     pppp df
-    eval df, TOPLEVEL_BINDING
+    eval df, bind
   end
 end
 

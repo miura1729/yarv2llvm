@@ -63,7 +63,10 @@ class RubyType
       @resolveed = true
       @same_type.each do |ty|
         if ty.type and ty.type.llvm != @type.llvm then
-          raise "Type error #{ty.name}(#{ty.type.inspect2}) defined in #{ty.line_no} and #{@name}(#{@type.inspect2}) define in #{@line_no}"
+          mess = "Type conflict \n"
+          mess += "  #{ty.name}(#{ty.type.inspect2}) defined in #{ty.line_no} \n"
+          mess += "  #{@name}(#{@type.inspect2}) define in #{@line_no} \n"
+          raise mess
         else
           ty.type = @type
           ty.resolve

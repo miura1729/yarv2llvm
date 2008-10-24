@@ -78,7 +78,7 @@ EOS
    assert_equal(dup(10), 10)
  end
 
-  def ari3(n)
+  def arru(n)
     ((n + n) * n - n) % ((n + n * n) / n)
   end
 
@@ -87,13 +87,13 @@ EOS
 def ari(n)
   ((n + n) * n - n) % ((n + n * n) / n) + 0
 end
-def ari2(n)
+def arf(n)
   ((n + n) * n - n) % ((n + n * n) / n) + 0.0
 end
 EOS
 )
-   assert_equal(ari(10), ari3(10))
-   assert_equal(ari2(10.0), ari3(10.0))
+   assert_equal(ari(10), arru(10))
+   assert_equal(arf(10.0), arru(10.0))
  end
 
   def test_compare
@@ -112,4 +112,18 @@ EOS
    assert_equal(compare(1, 1), 10)
    assert_equal(compare(1, 0), 12)
  end
+
+def test_forward_call
+    YARV2LLVM::compile(<<-EOS
+def f1(n)
+  f2(n + 0.5) 
+end
+
+def f2(n)
+  n
+end
+EOS
+)
+   assert_equal(f1(1.0), 1.5)
+end
 end
