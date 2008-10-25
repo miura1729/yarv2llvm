@@ -87,6 +87,10 @@ class RubyType
     RubyType.new(VALUE, lno, name)
   end
 
+  def self.value(lno = nil, name = nil)
+    RubyType.new(VALUE, lno, name)
+  end
+
   def self.typeof(obj, lno = nil, name = nil)
     case obj
     when Fixnum
@@ -97,6 +101,9 @@ class RubyType
 
     when Symbol
       RubyType.symbol(lno, name)
+
+    when Object
+      RubyType.value(lno, name)
 
     else
       raise "Unsupported type #{obj} in #{lno} (#{name})"

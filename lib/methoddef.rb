@@ -23,8 +23,9 @@ module MethodDefinition
           RubyType.resolve
           val[0].add_same_type(arr[0].type.element_type)
           arr[0].type.element_type.add_same_type(val[0])
-
+            
           oldrescode = @rescode
+          v = nil
           @rescode = lambda {|b, context|
             context = oldrescode.call(b, context)
             ftype = Type.function(Type::VoidTy, [VALUE, Type::Int32Ty, VALUE])
@@ -38,7 +39,11 @@ module MethodDefinition
             b.call(func, a, i, val[0].type.to_value(v, b, context))
             context
           }
-        },
+          @expstack.push [val[0],
+            lambda {|b, context|
+              context.rc = v
+              context}]
+      },
     },
   }
   

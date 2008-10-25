@@ -32,7 +32,7 @@ class YarvVisitor
   def run
     @iseq.traverse_code([nil, nil, nil, nil]) do |code, info|
       if code.header['type'] == :block
-        info[1] = (info[1].to_s + '_block').to_sym
+        info[1] = (info[1].to_s + '_block_' + info[2].to_s).to_sym
       end
       local = []
       visit_block_start(code, nil, local, nil, info)
@@ -322,7 +322,17 @@ class YarvTranslator<YarvVisitor
   # setinstancevariable
   # getclassvariable
   # setclassvariable
-  # getconstant
+
+  def visit_getconstant(code, ins, local, ln, info)
+    val = eval(ins[1].to_s, @binding)
+    @expstack.push [RubyType.typeof(val, info[3], ins[1]),
+      lambda {|b, context|
+        context.rc = val.llvm
+        context.org = ins[1]
+        context
+      }]
+  end
+
   # setconstant
   # getglobal
   # setglobal
@@ -389,7 +399,9 @@ class YarvTranslator<YarvVisitor
   # newhash
   # newrange
 
-  # pop
+  def visit_pop(code, ins, local, ln, info)
+    @expstack.pop
+  end
   
   def visit_dup(code, ins, local, ln, info)
     s1 = @expstack.pop
@@ -421,21 +433,23 @@ class YarvTranslator<YarvVisitor
   # defineclass
   
   def visit_send(code, ins, local, ln, info)
-    p1 = ins[1]
-    if funcinfo = MethodDefinition::SystemMethod[p1] then
+    mname = ins[1]
+    isfunc = ((ins[4] & 8) != 0) # true: function type, false: method type
+    
+    if funcinfo = MethodDefinition::SystemMethod[mname] then
       funcinfo[:args].downto(1) do |n|
         @expstack.pop
       end
       return
     end
 
-    if funcinfo = MethodDefinition::InlineMethod[p1] then
+    if funcinfo = MethodDefinition::InlineMethod[mname] then
       instance_eval &funcinfo[:inline_proc]
       return
     end
 
-    if funcinfo = MethodDefinition::CMethod[p1] then
-      rettype = RubyType.new(funcinfo[:rettype], info[3], "return type of #{p1}")
+    if funcinfo = MethodDefinition::CMethod[mname] then
+      rettype = RubyType.new(funcinfo[:rettype], info[3], "return type of #{mname}")
       argtype = funcinfo[:argtype].map {|ts| RubyType.new(ts, info[3])}
       cname = funcinfo[:cname]
       
@@ -467,8 +481,8 @@ class YarvTranslator<YarvVisitor
       end
     end
 
-    if minfo = MethodDefinition::RubyMethod[p1] then
-      pppp "RubyMethod called #{p1.inspect}"
+    if minfo = MethodDefinition::RubyMethod[mname] then
+      pppp "RubyMethod called #{mname.inspect}"
       para = []
       0.upto(ins[2] - 1) do |n|
         v = @expstack.pop
@@ -478,9 +492,12 @@ class YarvTranslator<YarvVisitor
 
         para[n] = v
       end
+      if !isfunc then
+        @expstack.pop
+      end
       @expstack.push [minfo[:rettype],
         lambda {|b, context|
-          minfo = MethodDefinition::RubyMethod[p1]
+          minfo = MethodDefinition::RubyMethod[mname]
           func = minfo[:func]
           args = []
           para.each do |pe|
@@ -499,14 +516,14 @@ class YarvTranslator<YarvVisitor
       v = @expstack.pop
       para[n] = v
     end
-    rett = RubyType.new(nil, info[3], "Return type of #{p1}")
+    rett = RubyType.new(nil, info[3], "Return type of #{mname}")
     @expstack.push [rett,
       lambda {|b, context|
         argtype = para.map {|ele|
           ele[0].type.llvm
         }
         ftype = Type.function(rett.type.llvm, argtype)
-        func = context.builder.get_or_insert_function(p1, ftype)
+        func = context.builder.get_or_insert_function(mname, ftype)
         args = []
         para.each do |pe|
           context = pe[1].call(b, context)
@@ -515,7 +532,7 @@ class YarvTranslator<YarvVisitor
         context.rc = b.call(func, *args)
         context
       }]
-    MethodDefinition::RubyMethod[p1]= {
+    MethodDefinition::RubyMethod[mname]= {
       :defined => false,
       :argtype => para.map {|ele| ele[0]},
       :rettype => rett

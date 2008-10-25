@@ -126,4 +126,20 @@ EOS
 )
    assert_equal(f1(1.0), 1.5)
 end
+=begin
+def test_send_with_block
+    YARV2LLVM::compile(<<-EOS
+def send_with_block(n)
+  m = 1
+  n = n + 0
+  n.times do |i|
+    i + 1
+  end + 0
+  m
+end
+EOS
+)
+   assert_equal(send_with_block(100), 5050)
+end
+=end
 end
