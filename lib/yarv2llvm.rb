@@ -2,6 +2,7 @@ require 'rubygems'
 require 'tempfile'
 require 'llvm'
 
+require 'lib/llvmutil.rb'
 require 'lib/instruction.rb'
 require 'lib/type.rb'
 require 'lib/llvmbuilder.rb'

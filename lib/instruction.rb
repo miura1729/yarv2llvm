@@ -17,7 +17,8 @@ module VMLib
 #        iseq    Instruction Sequence, Normally the result of 
 #                VM::InstructionSequence.compile(...) or 
 #                VM::InstructionSequence.compile_file(...)
-    def initialize(parent = nil, iseq = nil)
+    def initialize(parent = nil, iseq = nil, info = [nil, nil, nil])
+      @info = info
       @klasses = {}
       @methodes = {}
       @blockes = {}
@@ -47,6 +48,7 @@ module VMLib
     attr :lblock_list
     attr :body
     attr :parent
+    attr :info
     
     def init_from_ary(ary)
       i = 0
@@ -70,21 +72,21 @@ module VMLib
 
           when :defineclass
             if inst[2] then
-              obj = InstSeqTree.new(self)
+              obj = InstSeqTree.new(self, nil, [inst[1], nil, nil])
               obj.init_from_ary(inst[2])
               @klasses[inst[1]] = obj
             end
 
           when :definemethod
             if inst[2] then
-              obj = InstSeqTree.new(self)
+              obj = InstSeqTree.new(self, nil, [@info[0], inst[1], nil])
               obj.init_from_ary(inst[2])
               @methodes[inst[1]] = obj
             end
 
           when :putiseq
             if inst[1] then
-              obj = InstSeqTree.new(self)
+              obj = InstSeqTree.new(self, nil, [@info[0], stacktop, nil])
               obj.init_from_ary(inst[1])
               @methodes[stacktop] = obj
             end
@@ -94,7 +96,7 @@ module VMLib
           # égÇÌÇÍÇÈÅB
           when :send
             if inst[3] then
-              obj = InstSeqTree.new(self)
+              obj = InstSeqTree.new(self, nil, [@info[0], @info[1], @cur_send_no])
               obj.init_from_ary(inst[3])
               @blockes[@cur_send_no]= obj
               inst[3] = [inst[3], @cur_send_no]
@@ -105,7 +107,7 @@ module VMLib
             
           when :invokesuper
             if inst[2] then
-              obj = InstSeqTree.new(self)
+              obj = InstSeqTree.new(self, nil, [@info[0], @info[1], @cur_send_no])
               obj.init_from_ary(inst[2])
               @blockes[@cur_send_no] = obj
               inst[2] = [inst[3], @cur_send_no]

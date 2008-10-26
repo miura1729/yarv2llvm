@@ -1,5 +1,8 @@
 module YARV2LLVM
 module LLVMUtil
+  include LLVM
+  include RubyHelpers
+
   def get_or_create_block(ln, b, context)
     if context.blocks[ln] then
       context.blocks[ln]
@@ -43,7 +46,11 @@ module LLVMUtil
   def make_frame_struct(local)
     member = []
     local.each do |ele|
-      member.push ele[:type].llvm
+      if ele[:type].type then
+        member.push ele[:type].type.llvm
+      else
+        member.push VALUE
+      end
     end
     Type.struct(member)
   end
