@@ -130,10 +130,14 @@ end
 def test_send_with_block
     YARV2LLVM::compile(<<-EOS
 def send_with_block(n)
+  a = 0
   m = 1
   n = n + 0
   n.times do |i|
-    i + 1
+    i + a + 1
+  end + 0
+  n.times do |i|
+    i + a + 1
   end + 0
   m
 end

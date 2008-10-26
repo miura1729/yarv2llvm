@@ -22,6 +22,7 @@ class Context
   attr_accessor :curln
   attr_accessor :block_value
   attr :builder
+  attr :frame_struct
 end
 
 class YarvVisitor
@@ -31,9 +32,12 @@ class YarvVisitor
 
   def run
     @iseq.traverse_code([nil, nil, nil, nil]) do |code, info|
-      if code.header['type'] == :block
-        info[1] = (info[1].to_s + '_block_' + info[2].to_s).to_sym
+      ccde = code
+      while ccde.header['type'] == :block
+        info[1] = (info[1].to_s + '_blk_' + ccde.info[2].to_s).to_sym
+        ccde = ccde.parent
       end
+
       local = []
       visit_block_start(code, nil, local, nil, info)
       curln = nil
@@ -54,7 +58,6 @@ class YarvVisitor
             curln = (curln.to_s + "_1").to_sym
           end
         end
-#        ln = curln
         visit_local_block_end(code, ln, local, ln, info)
       end
 
@@ -70,103 +73,58 @@ end
 class YarvTranslator<YarvVisitor
   include LLVM
   include RubyHelpers
+  include LLVMUtil
 
   def initialize(iseq, bind)
     super(iseq)
+
+    # Pack of utilty method for llvm code generation
     @builder = LLVMBuilder.new
+    
+    # bindig of caller of LLVM::compile function.
     @binding = bind
+
+    # Expression stack. YARV stack operation is simulated by this stack.
     @expstack = []
+
+    # Generate function of llvm code for current block
     @rescode = lambda {|b, context| context}
-    @code_gen = {}
-    @jump_hist = {}
+
+    # Hash function name to generate function.
+    # When this value call by call method, generate llvm code correspond 
+    # to function name.
+    @generated_code = {}
+
+    # Hash name of local block to name of local block jump to the 
+    # local block of the key
+    @jump_from = {}
+    
+    # Name of prevous local block. This uses 
+    # This variable uses only record @jump_from. This process need
+    # name of current local block and previous local block.
     @prev_label = nil
+
+    # True means reach end of block thus must insert jump instruction
+    # False meams not reach end of block thus insert nothing
+    # nil means under processing and don't kown true or false.
     @is_live = nil
+
+    # Struct of frame. Various size of variable in the frame, so to access
+    # the frame it is define the struct of frame as structure of LLVM.
+    @frame_struct = {}
+
+    # Hash code object to local variable information.
+    @locals = {}
   end
 
   def run
     super
-    @code_gen.each do |fname, gen|
+    @generated_code.each do |fname, gen|
       gen.call
     end
 #    @builder.optimize
-#    @builder.disassemble
+    @builder.disassemble
     
-  end
-  
-  def get_or_create_block(ln, b, context)
-    if context.blocks[ln] then
-      context.blocks[ln]
-    else
-      context.blocks[ln] = context.builder.create_block
-    end
-  end
-  
-  def visit_local_block_start(code, ins, local, ln, info)
-    oldrescode = @rescode
-    live =  @is_live
-
-    @is_live = nil
-    if live and @expstack.size > 0 then
-      valexp = @expstack.pop
-    end
-
-    @jump_hist[ln] ||= []
-    @jump_hist[ln].push @prev_label
-    @rescode = lambda {|b, context|
-      context = oldrescode.call(b, context)
-      blk = get_or_create_block(ln, b, context)
-      if live then
-        if valexp then
-          bval = [valexp[0], valexp[1].call(b, context).rc]
-          context.block_value[context.curln] = bval
-        end
-        b.br(blk)
-      end
-      context.curln = ln
-      b.set_insert_point(blk)
-      context
-    }
-
-    if valexp then
-      n = 0
-      v2 = nil
-      commer_label = @jump_hist[ln]
-      while n < commer_label.size - 1 do
-        if v2 = @expstack[@expstack.size - n - 1] then
-          valexp[0].add_same_type(v2[0])
-          v2[0].add_same_type(valexp[0])
-        end
-        n += 1
-      end
-      @expstack.pop
-      @expstack.push [valexp[0],
-        lambda {|b, context|
-          if ln then
-            rc = b.phi(context.block_value[commer_label[0]][0].type.llvm)
-            
-            commer_label.reverse.each do |lab|
-              rc.add_incoming(context.block_value[lab][1], 
-                              context.blocks[lab])
-            end
-
-            context.rc = rc
-          end
-          context
-        }]
-    end
-  end
-  
-  def visit_local_block_end(code, ins, local, ln, info)
-    # This if-block inform next calling visit_local_block_start
-    # must generate jump statement.
-    # You may worry generate wrong jump statement but return
-    # statement. But in this situration, visit_local_block_start
-    # don't call before visit_block_start call.
-    if @is_live == nil then
-      @is_live = true
-      @prev_label = ln
-    end
-    # p @expstack.map {|n| n[1]}
   end
   
   def visit_block_start(code, ins, local, ln, info)
@@ -176,6 +134,20 @@ class YarvTranslator<YarvVisitor
         :type => RubyType.new(nil, info[3], n),
         :area => nil}
     end
+
+    # Argument parametor |...| is omitted.
+    an = code.header['locals'].size + 1
+    dn = code.header['misc'][:local_size]
+    if an < dn then
+      (dn - an).times do |i|
+        local.push({
+          :type => RubyType.new(nil),
+          :area => nil
+        })
+      end
+    end
+
+    @locals[code] = local
     numarg = code.header['misc'][:arg_size]
 
     # regist function to RubyCMthhod for recursive call
@@ -208,11 +180,20 @@ class YarvTranslator<YarvVisitor
     oldrescode = @rescode
     @rescode = lambda {|b, context|
       context = oldrescode.call(b, context)
+
+      # Make structure corrsponding struct of stack frame
+      frst = make_frame_struct(context.local_vars)
+      frstp = Type.pointer(frst)
+      @frame_struct[code] = frstp
+
+      # Generate allocate instance
       context.local_vars.each_with_index {|vars, n|
         if vars[:type].type then
           lv = b.alloca(vars[:type].type.llvm, 1)
           vars[:area] = lv
         else
+          # Dummy for access by YARV instructon information.
+          lv = b.alloca(VALUE, 1)
           vars[:area] = nil
         end
       }
@@ -257,7 +238,7 @@ class YarvTranslator<YarvVisitor
     end
 =end
 
-      @code_gen[info[1]] = lambda {
+      @generated_code[info[1]] = lambda {
         pppp "define #{info[1]}"
         pppp @expstack
       
@@ -275,49 +256,139 @@ class YarvTranslator<YarvVisitor
     @rescode = lambda {|b, context| context}
   end
   
+  def visit_local_block_start(code, ins, local, ln, info)
+    oldrescode = @rescode
+    live =  @is_live
+
+    @is_live = nil
+    if live and @expstack.size > 0 then
+      valexp = @expstack.pop
+    end
+
+    @jump_from[ln] ||= []
+    @jump_from[ln].push @prev_label
+    @rescode = lambda {|b, context|
+      context = oldrescode.call(b, context)
+      blk = get_or_create_block(ln, b, context)
+      if live then
+        if valexp then
+          bval = [valexp[0], valexp[1].call(b, context).rc]
+          context.block_value[context.curln] = bval
+        end
+        b.br(blk)
+      end
+      context.curln = ln
+      b.set_insert_point(blk)
+      context
+    }
+
+    if valexp then
+      n = 0
+      v2 = nil
+      commer_label = @jump_from[ln]
+      while n < commer_label.size - 1 do
+        if v2 = @expstack[@expstack.size - n - 1] then
+          valexp[0].add_same_type(v2[0])
+          v2[0].add_same_type(valexp[0])
+        end
+        n += 1
+      end
+      @expstack.pop
+      @expstack.push [valexp[0],
+        lambda {|b, context|
+          if ln then
+            rc = b.phi(context.block_value[commer_label[0]][0].type.llvm)
+            
+            commer_label.reverse.each do |lab|
+              rc.add_incoming(context.block_value[lab][1], 
+                              context.blocks[lab])
+            end
+
+            context.rc = rc
+          end
+          context
+        }]
+    end
+  end
+  
+  def visit_local_block_end(code, ins, local, ln, info)
+    # This if-block inform next calling visit_local_block_start
+    # must generate jump statement.
+    # You may worry generate wrong jump statement but return
+    # statement. But in this situration, visit_local_block_start
+    # don't call before visit_block_start call.
+    if @is_live == nil then
+      @is_live = true
+      @prev_label = ln
+    end
+    # p @expstack.map {|n| n[1]}
+  end
+  
   def visit_default(code, ins, local, ln, info)
 #    pppp ins
   end
-  
+
   def visit_getlocal(code, ins, local, ln, info)
-    p1 = ins[1]
-    type = local[p1][:type]
-    @expstack.push [type,
-      lambda {|b, context|
-        context.rc = b.load(context.local_vars[p1][:area])
-        context.org = local[p1][:name]
-        context
-      }]
+    voff = ins[1]
+    if code.header['type'] == :block then
+      acode = code
+      slev = 0
+      while acode.header['type'] == :block
+        acode = acode.parent
+        slev = slev + 1
+      end
+      get_from_parent(voff, slev, acode, ln, info)
+    else
+      get_from_local(voff, local, ln, info)
+    end
   end
   
   def visit_setlocal(code, ins, local, ln, info)
-    p1 = ins[1]
-    dsttype = local[p1][:type]
-    
+    voff = ins[1]
     src = @expstack.pop
-    srctype = src[0]
-    srcvalue = src[1]
 
-    srctype.add_same_type(dsttype)
-    dsttype.add_same_type(srctype)
+    if code.header['type'] == :block then
+      acode = code
+      slev = 0
+      while acode.header['type'] == :block
+        acode = acode.parent
+        slev = slev + 1
+      end
+      store_from_parent(voff, slev, src, acode, ln, info)
 
-    oldrescode = @rescode
-    @rescode = lambda {|b, context|
-      pppp "Setlocal start"
-      context = oldrescode.call(b, context)
-      context = srcvalue.call(b, context)
-      lvar = context.local_vars[p1]
-      context.rc = b.store(context.rc, lvar[:area])
-      context.org = lvar[:name]
-      pppp "Setlocal end"
-      context
-    }
+    else
+      store_from_local(voff, src, local, ln, info)
+    end
   end
 
   # getspecial
   # setspecial
-  # getdynamic
-  # setdynamic
+
+  def visit_getdynamic(code, ins, local, ln, info)
+    slev = ins[2]
+    voff = ins[1]
+    if slev == 0 then
+      get_from_local(voff, local, ln, info)
+    else
+      acode = code
+      slev.times { acode = acode.parent}
+      get_from_parent(voff, slev, acode, ln, info)
+    end
+  end
+
+  def visit_setdynamic(code, ins, local, ln, info)
+    slev = ins[2]
+    voff = ins[1]
+    src = @expstack.pop
+    if slev == 0 then
+      store_from_local(voff, src, local, ln, info)
+    else
+      acode = code
+      slev.times { acode = acode.parent}
+      store_from_parent(voff, slev, src, acode, ln, info)
+    end
+  end
+
   # getinstancevariable
   # setinstancevariable
   # getclassvariable
@@ -558,8 +629,8 @@ class YarvTranslator<YarvVisitor
     end
     bval = nil
     @is_live = false
-    @jump_hist[lab] ||= []
-    @jump_hist[lab].push ln
+    @jump_from[lab] ||= []
+    @jump_from[lab].push ln
     @rescode = lambda {|b, context|
       oldrescode.call(b, context)
       jblock = get_or_create_block(lab, b, context)
@@ -592,8 +663,8 @@ class YarvTranslator<YarvVisitor
     bval = nil
 #    @is_live = false
     iflab = nil
-    @jump_hist[lab] ||= []
-    @jump_hist[lab].push (ln.to_s + "_1").to_sym
+    @jump_from[lab] ||= []
+    @jump_from[lab].push (ln.to_s + "_1").to_sym
     @rescode = lambda {|b, context|
       oldrescode.call(b, context)
       tblock = get_or_create_block(lab, b, context)
@@ -631,8 +702,8 @@ class YarvTranslator<YarvVisitor
     bval = nil
     @is_live = false
     iflab = nil
-    @jump_hist[lab] ||= []
-    @jump_hist[lab].push (ln.to_s + "_1").to_sym
+    @jump_from[lab] ||= []
+    @jump_from[lab].push (ln.to_s + "_1").to_sym
     @rescode = lambda {|b, context|
       oldrescode.call(b, context)
       eblock = context.builder.create_block
@@ -665,38 +736,6 @@ class YarvTranslator<YarvVisitor
   # opt_case_dispatch
   # opt_checkenv
   
-  def check_same_type_2arg_static(p1, p2)
-    p1[0].add_same_type(p2[0])
-    p2[0].add_same_type(p1[0])
-  end
-  
-  def check_same_type_2arg_gencode(b, context, p1, p2)
-    if p1[0].type == nil then
-      if p2[0].type == nil then
-        print "ambious type #{p2[1].call(b, context).org}\n"
-      else
-        p1[0].type = p2[0].type
-      end
-    else
-      if p2[0].type and p1[0].type != p2[0].type then
-        print "diff type #{p1[1].call(b, context).org}\n"
-      else
-        p2[0].type = p1[0].type
-      end
-    end
-  end
-
-  def gen_common_opt_2arg(b, context, s1, s2)
-    check_same_type_2arg_gencode(b, context, s1, s2)
-    context = s1[1].call(b, context)
-    s1val = context.rc
-    #        pppp s1[0]
-    context = s2[1].call(b, context)
-    s2val = context.rc
-
-    [s1val, s2val, context]
-  end
-
   def visit_opt_plus(code, ins, local, ln, info)
     s2 = @expstack.pop
     s1 = @expstack.pop
@@ -945,6 +984,90 @@ class YarvTranslator<YarvVisitor
   
   # bitblt
   # answer
+
+  private
+
+  def get_from_local(voff, local, ln, info)
+    type = local[voff][:type]
+    @expstack.push [type,
+      lambda {|b, context|
+        context.rc = b.load(context.local_vars[voff][:area])
+        context.org = local[voff][:name]
+        context
+      }]
+  end
+
+  def store_from_local(voff, src, local, ln, info)
+    dsttype = local[voff][:type]
+    srctype = src[0]
+    srcvalue = src[1]
+
+    srctype.add_same_type(dsttype)
+    dsttype.add_same_type(srctype)
+
+    oldrescode = @rescode
+    @rescode = lambda {|b, context|
+      pppp "Setlocal start"
+      context = oldrescode.call(b, context)
+      context = srcvalue.call(b, context)
+      lvar = context.local_vars[voff]
+      context.rc = b.store(context.rc, lvar[:area])
+      context.org = lvar[:name]
+      pppp "Setlocal end"
+      context
+    }
+  end
+
+  def get_from_parent(voff, slev, acode, ln, info)
+    alocal = @locals[acode][voff]
+    type = alocal[:type]
+
+    @expstack.push [type,
+      lambda {|b, context|
+        ftype = Type.function(P_CHAR, [Type::Int32Ty])
+        func = context.builder.external_function('llvm.frameaddress', ftype)
+        fcp = b.call(func, slev.llvm)
+
+        frstruct = @frame_struct[acode]
+        fi = b.ptr_to_int(fcp, MACHINE_WORD)
+        frame = b.int_to_ptr(fi, frstruct)
+
+        varp = b.struct_gep(frame, voff)
+        context.rc = b.load(varp)
+        context.org = alocal[:name]
+        context
+      }]
+  end
+
+  def store_from_parent(voff, slev, src, acode, ln, info)
+    alocal = @locals[acode][voff]
+    dsttype = alocal[:type]
+
+    srctype = src[0]
+    srcvalue = src[1]
+
+    srctype.add_same_type(dsttype)
+    dsttype.add_same_type(srctype)
+
+    oldrescode = @rescode
+    @rescode = lambda {|b, context|
+      context = oldrescode.call(b, context)
+      context = srcvalue.call(b, context)
+      rval = context.rc
+      
+      ftype = Type.function(P_CHAR, [Type::Int32Ty])
+      func = context.builder.external_function('llvm.frameaddress', ftype)
+      fcp = b.call(func, slev.llvm)
+      frstruct = @frame_struct[acode]
+      fi = b.ptr_to_int(fcp, MACHINE_WORD)
+      frame = b.int_to_ptr(fi, frstruct)
+      
+      lvar = b.struct_gep(frame, voff)
+      context.rc = b.load(rval, lvar)
+      context.org = alocal[:name]
+      context
+    }
+  end
 end
 
 def compile_file(fn, bind = TOPLEVEL_BINDING)
@@ -972,7 +1095,7 @@ end
 
 def compcommon(is, bind)
   iseq = VMLib::InstSeqTree.new(nil, is)
-  pppp iseq.to_a
+  p iseq.to_a
   YarvTranslator.new(iseq, bind).run
   MethodDefinition::RubyMethodStub.each do |key, m|
     name = key
