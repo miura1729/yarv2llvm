@@ -8,13 +8,11 @@ module MethodDefinition
   SystemMethod = {
     :"core#define_method" => 
       {:args => 1}
-      
   }
   
   # method inline or need special process
   InlineMethod =  {
     :[]= => {
-      :argtype => [ArrayType.new(nil), Type::Int32Ty, nil],
       :inline_proc => 
         lambda {
           val = @expstack.pop
@@ -42,6 +40,25 @@ module MethodDefinition
           @expstack.push [val[0],
             lambda {|b, context|
               context.rc = v
+              context}]
+      },
+    },
+
+    :to_f => {
+      :inline_proc => 
+        lambda {
+          recv = @expstack.pop
+
+          @expstack.push [RubyType.float(@info[3], 'Return type of to_f'),
+            lambda {|b, context|
+              context = recv.call(b, context)
+              val = context.rc
+              case val[0].type.llvm
+              when Type::DoubleTy
+                context.rc = val
+              when Type::Int32Ty
+                context.rc = b.si_to_fp(val)
+              end
               context}]
       },
     },

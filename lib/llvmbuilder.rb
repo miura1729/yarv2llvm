@@ -41,12 +41,15 @@ class LLVMBuilder
       :type => stype}
   end
 
-  def define_function(name, rett, argt)
+  def define_function(name, rett, argt, is_mkstub)
     argtl = argt.map {|a| a.type.llvm}
     rettl = rett.type.llvm
     type = Type.function(rettl, argtl)
     @func = @module.get_or_insert_function(name, type)
-    @stub = make_stub(name, rett, argt, @func)
+    
+    if is_mkstub then
+      @stub = make_stub(name, rett, argt, @func)
+    end
 
     MethodDefinition::RubyMethod[name.to_sym][:func] = @func
 

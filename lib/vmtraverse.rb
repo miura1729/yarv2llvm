@@ -134,6 +134,7 @@ class YarvTranslator<YarvVisitor
         :type => RubyType.new(nil, info[3], n),
         :area => nil}
     end
+    local[0][:type] = RubyType.new(P_CHAR, info[3], "Parent frame")
 
     # Argument parametor |...| is omitted.
     an = code.header['locals'].size + 1
@@ -188,7 +189,10 @@ class YarvTranslator<YarvVisitor
 
       # Generate allocate instance
       context.local_vars.each_with_index {|vars, n|
-        if vars[:type].type then
+        if n == 0 then
+          lv = b.alloca(P_CHAR, 1)
+          vars[:area] = lv
+        elsif vars[:type].type then
           lv = b.alloca(vars[:type].type.llvm, 1)
           vars[:area] = lv
         else
@@ -204,6 +208,11 @@ class YarvTranslator<YarvVisitor
       1.upto(numarg) do |n|
         b.store(arg[n - 1], lvars[-n][:area])
       end
+      
+      # Store parent frame as argument
+      if code.header['type'] == :block then
+        b.store(arg[numarg], lvars[0][:area])
+      end
 
       context
     }
@@ -218,10 +227,13 @@ class YarvTranslator<YarvVisitor
     1.upto(numarg) do |n|
       argtype[n - 1] = local[-n][:type]
     end
+    if code.header['type'] == :block then
+      argtype[numarg] = local[0][:type]
+    end
 
     if @expstack.last and info[1] then
       retexp = @expstack.pop
-      code = @rescode
+      rescode = @rescode
       rett2 = MethodDefinition::RubyMethod[info[1]][:rettype]
       rett2.add_same_type retexp[0]
       retexp[0].add_same_type rett2
@@ -242,9 +254,28 @@ class YarvTranslator<YarvVisitor
         pppp "define #{info[1]}"
         pppp @expstack
       
+        1.upto(numarg) do |n|
+          if argtype[n - 1].type == nil then
+            raise "Argument type is ambious #{local[-n][:name]} of #{info[1]} in #{info[3]}"
+          end
+        end
+        if code.header['type'] == :block then
+          if argtype[numarg].type == nil then
+            raise "Argument type is ambious parsnt frame #{info[1]} in #{info[3]}"
+          end
+        end
+        if retexp[0].type == nil then
+          raise "Return type is ambious #{info[1]} in #{info[3]}"
+        end
+
+        is_mkstub = true
+        if code.header['type'] == :block then
+          is_mkstub = false
+        end
+
         b = @builder.define_function(info[1].to_s, 
-                                   retexp[0], argtype)
-        context = code.call(b, Context.new(local, @builder))
+                                   retexp[0], argtype, is_mkstub)
+        context = rescode.call(b, Context.new(local, @builder))
         b.return(retexp[1].call(b, context).rc)
 
         pppp "ret type #{retexp[0].type}"
@@ -515,6 +546,7 @@ class YarvTranslator<YarvVisitor
     end
 
     if funcinfo = MethodDefinition::InlineMethod[mname] then
+      @info = info
       instance_eval &funcinfo[:inline_proc]
       return
     end
@@ -1024,10 +1056,13 @@ class YarvTranslator<YarvVisitor
 
     @expstack.push [type,
       lambda {|b, context|
-        ftype = Type.function(P_CHAR, [Type::Int32Ty])
-        func = context.builder.external_function('llvm.frameaddress', ftype)
-        fcp = b.call(func, slev.llvm)
-
+#        ftype = Type.function(P_CHAR, [Type::Int32Ty])
+#        func = context.builder.external_function('llvm.frameaddress', ftype)
+#        fcp = b.call(func, slev.llvm)
+        fcp = context.local_vars[0][:area]
+        (slev - 1).times do
+          fcp = b.load(fcp)
+        end
         frstruct = @frame_struct[acode]
         fi = b.ptr_to_int(fcp, MACHINE_WORD)
         frame = b.int_to_ptr(fi, frstruct)
@@ -1055,9 +1090,13 @@ class YarvTranslator<YarvVisitor
       context = srcvalue.call(b, context)
       rval = context.rc
       
-      ftype = Type.function(P_CHAR, [Type::Int32Ty])
-      func = context.builder.external_function('llvm.frameaddress', ftype)
-      fcp = b.call(func, slev.llvm)
+#      ftype = Type.function(P_CHAR, [Type::Int32Ty])
+#      func = context.builder.external_function('llvm.frameaddress', ftype)
+#      fcp = b.call(func, slev.llvm)
+      fcp = context.local_vars[0][:area]
+      (slev - 1).times do
+        fcp = b.load(fcp)
+      end
       frstruct = @frame_struct[acode]
       fi = b.ptr_to_int(fcp, MACHINE_WORD)
       frame = b.int_to_ptr(fi, frstruct)
@@ -1095,7 +1134,7 @@ end
 
 def compcommon(is, bind)
   iseq = VMLib::InstSeqTree.new(nil, is)
-  p iseq.to_a
+#  p iseq.to_a
   YarvTranslator.new(iseq, bind).run
   MethodDefinition::RubyMethodStub.each do |key, m|
     name = key

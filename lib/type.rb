@@ -161,6 +161,18 @@ class PrimitiveType
         val
        },
       },
+
+    P_CHAR =>
+      {:inspect => "P_CHAR",
+
+       :to_value => lambda {|val, b, context|
+        raise "Cant convert P_CHAR to VALUE"
+       },
+
+       :from_value => lambda {|val, b, context|
+        raise "Cant convert VALUE to P_CHAR"
+       },
+      },
   }
 
   def to_value(val, b, context)
