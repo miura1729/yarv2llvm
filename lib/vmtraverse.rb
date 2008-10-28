@@ -5,7 +5,7 @@
 
 module YARV2LLVM
 class Context
-  def initialize(local, builder)
+  def initialize(local, builder, hyield)
     @local_vars = local
     @rc = nil
     @org = nil
@@ -13,6 +13,7 @@ class Context
     @block_value = {}
     @curln = nil
     @builder = builder
+    @hvae_yeild = hyield
   end
 
   attr_accessor :local_vars
@@ -21,6 +22,7 @@ class Context
   attr_accessor :blocks
   attr_accessor :curln
   attr_accessor :block_value
+  attr_accessor :have_yield
   attr :builder
   attr :frame_struct
 end
@@ -115,6 +117,10 @@ class YarvTranslator<YarvVisitor
 
     # Hash code object to local variable information.
     @locals = {}
+
+    # Trie means current method include 
+    # invokeblock instruction (yield statement)
+    @have_yield = false
   end
 
   def run
@@ -123,18 +129,21 @@ class YarvTranslator<YarvVisitor
       gen.call
     end
 #    @builder.optimize
-    @builder.disassemble
+#    @builder.disassemble
     
   end
   
   def visit_block_start(code, ins, local, ln, info)
-    ([nil, :self] + code.header['locals'].reverse).each_with_index do |n, i|
+    @have_yield = false
+    ([nil, nil, nil] + code.header['locals'].reverse).each_with_index do |n, i|
       local[i] = {
         :name => n, 
         :type => RubyType.new(nil, info[3], n),
         :area => nil}
     end
     local[0][:type] = RubyType.new(P_CHAR, info[3], "Parent frame")
+    local[1][:type] = RubyType.new(MACHINE_WORD, info[3], "Pointer to block")
+    local[2][:type] = RubyType.new(VALUE, info[3], "self")
 
     # Argument parametor |...| is omitted.
     an = code.header['locals'].size + 1
@@ -159,6 +168,7 @@ class YarvTranslator<YarvVisitor
         1.upto(numarg) do |n|
           argt[n - 1] = local[-n][:type]
         end
+        argt.push local[2][:type]
         MethodDefinition::RubyMethod[info[1]]= {
           :defined => true,
           :argtype => argt,
@@ -208,10 +218,15 @@ class YarvTranslator<YarvVisitor
       1.upto(numarg) do |n|
         b.store(arg[n - 1], lvars[-n][:area])
       end
-      
+
+#=begin
+      # Store self
+      b.store(arg[numarg], lvars[2][:area])
+#=end
       # Store parent frame as argument
-      if code.header['type'] == :block then
-        b.store(arg[numarg], lvars[0][:area])
+      if code.header['type'] == :block or context.have_yield then
+        b.store(arg[numarg + 1], lvars[0][:area])
+        b.store(arg[numarg + 2], lvars[1][:area])
       end
 
       context
@@ -227,8 +242,17 @@ class YarvTranslator<YarvVisitor
     1.upto(numarg) do |n|
       argtype[n - 1] = local[-n][:type]
     end
-    if code.header['type'] == :block then
-      argtype[numarg] = local[0][:type]
+
+#=begin
+    # Self
+    argtype.push local[2][:type]
+#=end
+    
+    if code.header['type'] == :block or @have_yield then
+      # Block frame
+      argtype.push local[0][:type]
+      # Block pointer
+      argtype.push local[1][:type]
     end
 
     if @expstack.last and info[1] then
@@ -249,6 +273,7 @@ class YarvTranslator<YarvVisitor
       print ") -> #{retexp[0].inspect2}\n"
     end
 =end
+      have_yield = @have_yield
 
       @generated_code[info[1]] = lambda {
         pppp "define #{info[1]}"
@@ -259,9 +284,17 @@ class YarvTranslator<YarvVisitor
             raise "Argument type is ambious #{local[-n][:name]} of #{info[1]} in #{info[3]}"
           end
         end
-        if code.header['type'] == :block then
-          if argtype[numarg].type == nil then
+#=begin
+        if argtype[numarg].type == nil then
+          raise "Argument type is ambious self #{info[1]} in #{info[3]}"
+        end
+#=end
+        if code.header['type'] == :block or have_yield then
+          if argtype[numarg + 1].type == nil then
             raise "Argument type is ambious parsnt frame #{info[1]} in #{info[3]}"
+          end
+          if argtype[numarg + 2].type == nil then
+            raise "Block function pointer is ambious parsnt frame #{info[1]} in #{info[3]}"
           end
         end
         if retexp[0].type == nil then
@@ -269,13 +302,14 @@ class YarvTranslator<YarvVisitor
         end
 
         is_mkstub = true
-        if code.header['type'] == :block then
+        if code.header['type'] == :block or have_yield then
           is_mkstub = false
         end
 
         b = @builder.define_function(info[1].to_s, 
                                    retexp[0], argtype, is_mkstub)
-        context = rescode.call(b, Context.new(local, @builder))
+        context = Context.new(local, @builder, have_yield)
+        context = rescode.call(b, context)
         b.return(retexp[1].call(b, context).rc)
 
         pppp "ret type #{retexp[0].type}"
@@ -449,7 +483,15 @@ class YarvTranslator<YarvVisitor
 =end
   end
 
-  # putself
+  def visit_putself(code, ins, local, ln, info)
+    type = RubyType.new(nil)
+    @expstack.push [type,
+      lambda  {|b, context|
+        slf = b.load(context.local_vars[2][:area])
+        context.org = "self"
+        context.rc = type.type.from_value(slf, b, context)
+        context}]
+  end
 
   def visit_putobject(code, ins, local, ln, info)
     p1 = ins[1]
@@ -574,8 +616,6 @@ class YarvTranslator<YarvVisitor
             p.each do |pe|
               args.push pe[1].call(b, context).rc
             end
-            # p cname
-            # print func
             context.rc = b.call(func, *args)
             context
           }
@@ -586,6 +626,8 @@ class YarvTranslator<YarvVisitor
 
     if minfo = MethodDefinition::RubyMethod[mname] then
       pppp "RubyMethod called #{mname.inspect}"
+      blk = ins[3]
+
       para = []
       0.upto(ins[2] - 1) do |n|
         v = @expstack.pop
@@ -595,9 +637,48 @@ class YarvTranslator<YarvVisitor
 
         para[n] = v
       end
+
+      v = nil
       if !isfunc then
-        @expstack.pop
+        v = @expstack.pop
+      else
+        v = [local[2][:type], lambda {|b, context|
+            context.rc = b.load(context.local_vars[2][:area])
+            context}]
       end
+#=begin
+      para.push [local[2][:type], lambda {|b, context|
+          context = v[1].call(b, context)
+          rc = v[0].type.to_value(context.rc, b, context)
+          context.rc = rc
+          context
+        }]
+#=end
+      if blk[0] then
+        para.push [local[0][:type], lambda {|b, context|
+            ftype = Type.function(P_CHAR, [Type::Int32Ty])
+            func = context.builder.external_function('llvm.frameaddress', ftype)
+            context.rc = b.call(func, 0.llvm)
+            context
+        }]
+
+        para.push [local[1][:type], lambda {|b, context|
+            blab = (info[1].to_s + '_blk_' + blk[1].to_s).to_sym
+            minfo = MethodDefinition::RubyMethod[blab]
+            func = minfo[:func]
+            if func == nil then
+              argtype = minfo[:argtype].map {|ele|
+                ele.type.llvm
+              }
+              rett = minfo[:rettype]
+              ftype = Type.function(rett.type.llvm, argtype)
+              func = context.builder.get_or_insert_function(blab.to_s, ftype)
+            end
+            context.rc = b.ptr_to_int(func, MACHINE_WORD)
+            context
+        }]
+      end
+
       @expstack.push [minfo[:rettype],
         lambda {|b, context|
           minfo = MethodDefinition::RubyMethod[mname]
@@ -619,6 +700,23 @@ class YarvTranslator<YarvVisitor
       v = @expstack.pop
       para[n] = v
     end
+
+    if !isfunc then
+      v = @expstack.pop
+    else
+      v = [local[2][:type], lambda {|b, context|
+            context.rc = b.load(context.local_vars[2][:area])
+            context}]
+    end
+#=begin
+    para.push [local[2][:type], lambda {|b, context|
+        context = v[1].call(b, context)
+        rc = v[0].type.to_value(context.rc, b, context)
+        context.rc = rc
+        context
+      }]
+#=end
+
     rett = RubyType.new(nil, info[3], "Return type of #{mname}")
     @expstack.push [rett,
       lambda {|b, context|
@@ -645,7 +743,11 @@ class YarvTranslator<YarvVisitor
   end
 
   # invokesuper
-  # invokeblock
+
+  def visit_invokeblock(code, ins, local, ln, info)
+    @have_yield = true
+  end
+
   # leave
   # finish
 
@@ -1020,6 +1122,10 @@ class YarvTranslator<YarvVisitor
   private
 
   def get_from_local(voff, local, ln, info)
+    # voff + 1 means yarv2llvm uses extra 3 arguments block 
+    # frame, block ptr, self
+    # Maybe in Ruby 1.9 extra arguments is 2. So offset is shifted.
+    voff = voff + 1
     type = local[voff][:type]
     @expstack.push [type,
       lambda {|b, context|
@@ -1030,6 +1136,7 @@ class YarvTranslator<YarvVisitor
   end
 
   def store_from_local(voff, src, local, ln, info)
+    voff = voff + 1
     dsttype = local[voff][:type]
     srctype = src[0]
     srcvalue = src[1]
@@ -1051,6 +1158,7 @@ class YarvTranslator<YarvVisitor
   end
 
   def get_from_parent(voff, slev, acode, ln, info)
+    voff = voff + 1
     alocal = @locals[acode][voff]
     type = alocal[:type]
 
@@ -1075,6 +1183,7 @@ class YarvTranslator<YarvVisitor
   end
 
   def store_from_parent(voff, slev, src, acode, ln, info)
+    voff = voff + 1
     alocal = @locals[acode][voff]
     dsttype = alocal[:type]
 
@@ -1139,15 +1248,16 @@ def compcommon(is, bind)
   MethodDefinition::RubyMethodStub.each do |key, m|
     name = key
     n = 0
+    m[:argt].pop
     if m[:argt] == [] then
       args = ""
-      args2 = ""
+      args2 = ", self"
     else
       args = m[:argt].map {|x|  n += 1; "p" + n.to_s}.join(',')
-      args2 = ', ' + args
+      args2 = ', ' + args + ", self"
     end
+#    df = "def #{key}(#{args});LLVM::ExecutionEngine.run_function(YARV2LLVM::MethodDefinition::RubyMethodStub['#{key}'][:stub]#{args2});end" 
     df = "def #{key}(#{args});LLVM::ExecutionEngine.run_function(YARV2LLVM::MethodDefinition::RubyMethodStub['#{key}'][:stub]#{args2});end" 
-    pppp df
     eval df, bind
   end
 end

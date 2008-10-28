@@ -26,7 +26,7 @@ end
 def llvmfib(n)
 #  fact(3.9)
   if n < 2 then
-    1.0
+    1
   else
     llvmfib(n - 1) + llvmfib(n - 2)
   end

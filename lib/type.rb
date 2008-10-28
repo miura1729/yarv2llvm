@@ -102,6 +102,12 @@ class RubyType
     when Symbol
       RubyType.symbol(lno, name)
 
+    when Class
+      RubyType.value(lno, name)
+
+    when Module
+      RubyType.value(lno, name)
+
     when Object
       RubyType.value(lno, name)
 
@@ -166,11 +172,13 @@ class PrimitiveType
       {:inspect => "P_CHAR",
 
        :to_value => lambda {|val, b, context|
+#        b.ptr_to_int(val, VALUE)
         raise "Cant convert P_CHAR to VALUE"
        },
 
        :from_value => lambda {|val, b, context|
-        raise "Cant convert VALUE to P_CHAR"
+#        b.int_to_ptr(val, P_CHAR)
+        raise "Cant convert VALE to P_CHAR"
        },
       },
   }

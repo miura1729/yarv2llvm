@@ -2,7 +2,7 @@ require 'test/unit'
 require 'yarv2llvm'
 
 class CompileTests < Test::Unit::TestCase
-
+#=begin
   def test_fib
     YARV2LLVM::compile(<<-EOS
 def fib(n)
@@ -126,9 +126,19 @@ EOS
 )
    assert_equal(f1(1.0), 1.5)
 end
-#=begin
+#=end
+=begin
 def test_send_with_block
     YARV2LLVM::compile(<<-EOS
+def times
+  i = 0
+  while i < self
+    yield i
+    i = i + 1
+  end
+  0
+end
+
 def send_with_block(n)
   a = 0
   m = 1
@@ -143,8 +153,8 @@ def send_with_block(n)
 end
 EOS
 )
-  p send_with_block(100)
-   assert_equal(send_with_block(100), 5050)
+#p send_with_block(100)
+assert_equal(send_with_block(100), 5050)
 end
-#=end
+=end
 end
