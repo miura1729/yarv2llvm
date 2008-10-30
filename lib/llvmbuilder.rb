@@ -12,10 +12,12 @@ class LLVMBuilder
   def initialize
     @module = LLVM::Module.new('yarv2llvm')
     @externed_function = {}
+    @func = nil
     ExecutionEngine.get(@module)
   end
 
   def make_stub(name, rett, argt, orgfunc)
+    pppp "Make stub #{name}"
     sname = "__stub_" + name
     stype = Type.function(VALUE, [VALUE] * argt.size)
     @stubfunc = @module.get_or_insert_function(sname, stype)
@@ -39,6 +41,7 @@ class LLVMBuilder
       :stub => @stubfunc,
       :argt => argt,
       :type => stype}
+    pppp "Make stub #{name} end"
   end
 
   def define_function(name, rett, argt, is_mkstub)

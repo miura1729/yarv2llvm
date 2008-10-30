@@ -55,4 +55,41 @@ module LLVMUtil
     Type.struct(member)
   end
 end
+
+module SendUtil
+  include LLVM
+  include RubyHelpers
+
+  def gen_call(func, arg, b, context)
+    args = []
+    arg.each do |pe|
+      args.push pe[1].call(b, context).rc
+    end
+    context.rc = b.call(func, *args)
+    context
+  end
+
+  def gen_get_framaddress(b, context)
+    ftype = Type.function(P_CHAR, [Type::Int32Ty])
+    func = context.builder.external_function('llvm.frameaddress', ftype)
+    context.rc = b.call(func, 0.llvm)
+    context
+  end
+
+  def gen_get_block_ptr(info, blk, b, context)
+    blab = (info[1].to_s + '_blk_' + blk[1].to_s).to_sym
+    minfo = MethodDefinition::RubyMethod[blab]
+    func2 = minfo[:func]
+    if func2 == nil then
+      argtype = minfo[:argtype].map {|ele|
+        ele.type.llvm
+      }
+      rett = minfo[:rettype]
+      ftype = Type.function(rett.type.llvm, argtype)
+      func2 = context.builder.get_or_insert_function(blab.to_s, ftype)
+    end
+    context.rc = b.ptr_to_int(func2, MACHINE_WORD)
+    context
+  end
+end
 end

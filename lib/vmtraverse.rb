@@ -219,10 +219,9 @@ class YarvTranslator<YarvVisitor
         b.store(arg[n - 1], lvars[-n][:area])
       end
 
-#=begin
       # Store self
       b.store(arg[numarg], lvars[2][:area])
-#=end
+
       # Store parent frame as argument
       if code.header['type'] == :block or context.have_yield then
         b.store(arg[numarg + 1], lvars[0][:area])
@@ -243,14 +242,13 @@ class YarvTranslator<YarvVisitor
       argtype[n - 1] = local[-n][:type]
     end
 
-#=begin
     # Self
     argtype.push local[2][:type]
-#=end
     
     if code.header['type'] == :block or @have_yield then
       # Block frame
       argtype.push local[0][:type]
+
       # Block pointer
       argtype.push local[1][:type]
     end
@@ -267,10 +265,11 @@ class YarvTranslator<YarvVisitor
     # write function prototype
     if info[1] then
       print "#{info[1]} :("
-      1.upto(numarg) do |n|
-        print "#{local[-n][:type].inspect2}, "
-      end
+      print argtype.map {|e|
+          e.inspect2
+        }.join(', ')
       print ") -> #{retexp[0].inspect2}\n"
+      p "foo"
     end
 =end
       have_yield = @have_yield
@@ -284,11 +283,11 @@ class YarvTranslator<YarvVisitor
             raise "Argument type is ambious #{local[-n][:name]} of #{info[1]} in #{info[3]}"
           end
         end
-#=begin
+
         if argtype[numarg].type == nil then
           raise "Argument type is ambious self #{info[1]} in #{info[3]}"
         end
-#=end
+
         if code.header['type'] == :block or have_yield then
           if argtype[numarg + 1].type == nil then
             raise "Argument type is ambious parsnt frame #{info[1]} in #{info[3]}"
@@ -296,6 +295,7 @@ class YarvTranslator<YarvVisitor
           if argtype[numarg + 2].type == nil then
             raise "Block function pointer is ambious parsnt frame #{info[1]} in #{info[3]}"
           end
+
         end
         if retexp[0].type == nil then
           raise "Return type is ambious #{info[1]} in #{info[3]}"
@@ -576,6 +576,7 @@ class YarvTranslator<YarvVisitor
 
   # defineclass
   
+  include SendUtil
   def visit_send(code, ins, local, ln, info)
     mname = ins[1]
     isfunc = ((ins[4] & 8) != 0) # true: function type, false: method type
@@ -612,12 +613,7 @@ class YarvTranslator<YarvVisitor
           
         @expstack.push [rettype,
           lambda {|b, context|
-            args = []
-            p.each do |pe|
-              args.push pe[1].call(b, context).rc
-            end
-            context.rc = b.call(func, *args)
-            context
+            gen_call(func, p, b, context)
           }
         ]
         return
@@ -646,36 +642,19 @@ class YarvTranslator<YarvVisitor
             context.rc = b.load(context.local_vars[2][:area])
             context}]
       end
-#=begin
       para.push [local[2][:type], lambda {|b, context|
           context = v[1].call(b, context)
           rc = v[0].type.to_value(context.rc, b, context)
           context.rc = rc
           context
         }]
-#=end
       if blk[0] then
         para.push [local[0][:type], lambda {|b, context|
-            ftype = Type.function(P_CHAR, [Type::Int32Ty])
-            func = context.builder.external_function('llvm.frameaddress', ftype)
-            context.rc = b.call(func, 0.llvm)
-            context
+            gen_get_framaddress(b, context)
         }]
 
         para.push [local[1][:type], lambda {|b, context|
-            blab = (info[1].to_s + '_blk_' + blk[1].to_s).to_sym
-            minfo = MethodDefinition::RubyMethod[blab]
-            func = minfo[:func]
-            if func == nil then
-              argtype = minfo[:argtype].map {|ele|
-                ele.type.llvm
-              }
-              rett = minfo[:rettype]
-              ftype = Type.function(rett.type.llvm, argtype)
-              func = context.builder.get_or_insert_function(blab.to_s, ftype)
-            end
-            context.rc = b.ptr_to_int(func, MACHINE_WORD)
-            context
+            gen_get_block_ptr(info, blk, b, context)
         }]
       end
 
@@ -683,18 +662,15 @@ class YarvTranslator<YarvVisitor
         lambda {|b, context|
           minfo = MethodDefinition::RubyMethod[mname]
           func = minfo[:func]
-          args = []
-          para.each do |pe|
-            context = pe[1].call(b, context)
-            args.push context.rc
-          end
-          context.rc = b.call(func, *args)
-          context
+          gen_call(func, para ,b, context)
         }]
       return
     end
 
     # Undefined method, it may be forward call.
+    pppp "RubyMethod forward called #{mname.inspect}"
+    blk = ins[3]
+
     para = []
     0.upto(ins[2] - 1) do |n|
       v = @expstack.pop
@@ -708,14 +684,23 @@ class YarvTranslator<YarvVisitor
             context.rc = b.load(context.local_vars[2][:area])
             context}]
     end
-#=begin
+
     para.push [local[2][:type], lambda {|b, context|
         context = v[1].call(b, context)
         rc = v[0].type.to_value(context.rc, b, context)
         context.rc = rc
         context
       }]
-#=end
+
+    if blk[0] then
+      para.push [local[0][:type], lambda {|b, context|
+            gen_get_framaddress(b, context)
+        }]
+      
+      para.push [local[1][:type], lambda {|b, context|
+            gen_get_block_ptr(info, b, context)
+        }]
+    end
 
     rett = RubyType.new(nil, info[3], "Return type of #{mname}")
     @expstack.push [rett,
@@ -726,12 +711,8 @@ class YarvTranslator<YarvVisitor
         ftype = Type.function(rett.type.llvm, argtype)
         func = context.builder.get_or_insert_function(mname, ftype)
         args = []
-        para.each do |pe|
-          context = pe[1].call(b, context)
-          args.push context.rc
-        end
-        context.rc = b.call(func, *args)
-        context
+        gen_call(func, para, b, context)
+
       }]
     MethodDefinition::RubyMethod[mname]= {
       :defined => false,
@@ -1243,7 +1224,7 @@ end
 
 def compcommon(is, bind)
   iseq = VMLib::InstSeqTree.new(nil, is)
-#  p iseq.to_a
+  #p iseq.to_a
   YarvTranslator.new(iseq, bind).run
   MethodDefinition::RubyMethodStub.each do |key, m|
     name = key

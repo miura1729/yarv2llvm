@@ -131,10 +131,10 @@ end
 def test_send_with_block
     YARV2LLVM::compile(<<-EOS
 def times
-  i = 0
-  while i < self
-    yield i
-    i = i + 1
+  j = 0
+  while j < self
+    yield j
+    j = j + 1
   end
   0
 end
@@ -147,7 +147,8 @@ def send_with_block(n)
 #    i + a + 1
 #  end + 0
   n.times do |i|
-    i + a + 1
+    i = 1
+    1
   end + 0
   m
 end
