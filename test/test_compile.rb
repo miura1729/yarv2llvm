@@ -133,7 +133,7 @@ def test_send_with_block
 def times
   j = 0
   while j < self
-    yield j
+    k = (yield j) + 0
     j = j + 1
   end
   0
@@ -141,16 +141,14 @@ end
 
 def send_with_block(n)
   a = 0
-  m = 1
   n = n + 0
 #  n.times do |i|
 #    i + a + 1
 #  end + 0
   n.times do |i|
-    i = 1
-    1
+    a = a + i
   end + 0
-  m
+  a
 end
 EOS
 )

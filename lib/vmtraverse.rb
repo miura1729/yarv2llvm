@@ -169,6 +169,10 @@ class YarvTranslator<YarvVisitor
           argt[n - 1] = local[-n][:type]
         end
         argt.push local[2][:type]
+        if code.header['type'] == :block or @have_yield then
+          argt.push local[0][:type]
+          argt.push local[1][:type]
+        end
         MethodDefinition::RubyMethod[info[1]]= {
           :defined => true,
           :argtype => argt,
@@ -184,6 +188,9 @@ class YarvTranslator<YarvVisitor
           argt[n - 1].add_same_type local[-n][:type]
           local[-n][:type].add_same_type argt[n - 1]
         end
+        argt[numarg - 1].add_same_type local[-numarg][:type]
+        local[-numarg][:type].add_same_type argt[numarg - 1]
+        
         minfo[:defined] = true
       end
     end
@@ -727,6 +734,43 @@ class YarvTranslator<YarvVisitor
 
   def visit_invokeblock(code, ins, local, ln, info)
     @have_yield = true
+
+    narg = ins[1]
+    arg = []
+    narg.times do |n|
+      arg.push @expstack.pop
+    end
+    arg.reverse!
+    slf = local[2]
+    arg.push [slf[:type], lambda {|b, context|
+        context.rc = b.load(slf[:area]) 
+        context}]
+    frame = local[0]
+    arg.push [frame[:type], lambda {|b, context|
+        context.rc = b.load(frame[:area])
+        context}]
+    bptr = local[1]
+    arg.push [bptr[:type], lambda {|b, context|
+        context.rc = b.load(bptr[:area])
+        context}]
+    
+    oldrescode = @rescode
+    rett = RubyType.new(nil, info[3], "Return type of yield")
+    @expstack.push [rett, lambda {|b, context|
+        oldrescode.call(b, context)
+        fptr_i = b.load(context.local_vars[1][:area])
+        ftype = Type.function(rett.type.llvm, 
+                              arg.map {|e| e[0].type.llvm})
+        fptype = Type.pointer(ftype)
+        fptr = b.int_to_ptr(fptr_i, fptype)
+        argval = []
+        arg.each do |e|
+          context = e[1].call(b, context)
+          argval.push context.rc
+        end
+        context.rc = b.call(fptr, *argval)
+        context
+      }]
   end
 
   # leave
@@ -1192,7 +1236,7 @@ class YarvTranslator<YarvVisitor
       frame = b.int_to_ptr(fi, frstruct)
       
       lvar = b.struct_gep(frame, voff)
-      context.rc = b.load(rval, lvar)
+      context.rc = b.store(rval, lvar)
       context.org = alocal[:name]
       context
     }
@@ -1224,7 +1268,7 @@ end
 
 def compcommon(is, bind)
   iseq = VMLib::InstSeqTree.new(nil, is)
-  #p iseq.to_a
+#  p iseq.to_a
   YarvTranslator.new(iseq, bind).run
   MethodDefinition::RubyMethodStub.each do |key, m|
     name = key
