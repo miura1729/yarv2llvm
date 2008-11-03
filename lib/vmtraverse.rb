@@ -554,7 +554,19 @@ class YarvTranslator<YarvVisitor
   # newrange
 
   def visit_pop(code, ins, local, ln, info)
-    @expstack.pop
+    exp = @expstack.pop
+    oldrescode = @rescode
+    @rescode = lambda {|b, context|
+      context = oldrescode.call(b, context)
+      if exp then
+        if exp[0].type == nil then
+          exp[0].type = PrimitiveType.new(VALUE)
+          exp[0].clear_same_type
+        end
+        context.rc = exp[1].call(b, context)
+      end
+      context
+    }
   end
   
   def visit_dup(code, ins, local, ln, info)

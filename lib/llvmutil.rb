@@ -73,8 +73,9 @@ module SendUtil
     ftype = Type.function(P_CHAR, [Type::Int32Ty])
     func = context.builder.external_function('llvm.frameaddress', ftype)
     fraw = b.call(func, 0.llvm)
-    # -24 is valid in x86, other archecture may change.
-    context.rc = b.gep(fraw, -24.llvm)
+    
+    stoff = (context.local_vars.size + 1) * 4
+    context.rc = b.gep(fraw, (-stoff).llvm)
     context
   end
 

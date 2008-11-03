@@ -43,6 +43,10 @@ class RubyType
   def add_same_type(type)
     @same_type.push type
   end
+  
+  def clear_same_type
+    @same_type = []
+  end
 
   def self.resolve
     @@type_table.each do |ty|
