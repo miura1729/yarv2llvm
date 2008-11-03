@@ -24,7 +24,7 @@ class LLVMBuilder
     eb = @stubfunc.create_block
     b = eb.builder
     argv = []
-    context = Context.new([], self, false)
+    context = Context.new([], self)
 
     argt.each_with_index do |ar, n|
       v = ar.type.from_value(@stubfunc.arguments[n], b, context)

@@ -72,7 +72,9 @@ module SendUtil
   def gen_get_framaddress(b, context)
     ftype = Type.function(P_CHAR, [Type::Int32Ty])
     func = context.builder.external_function('llvm.frameaddress', ftype)
-    context.rc = b.call(func, 0.llvm)
+    fraw = b.call(func, 0.llvm)
+    # -24 is valid in x86, other archecture may change.
+    context.rc = b.gep(fraw, -24.llvm)
     context
   end
 

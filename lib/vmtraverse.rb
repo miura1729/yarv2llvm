@@ -5,7 +5,7 @@
 
 module YARV2LLVM
 class Context
-  def initialize(local, builder, hyield)
+  def initialize(local, builder)
     @local_vars = local
     @rc = nil
     @org = nil
@@ -13,7 +13,6 @@ class Context
     @block_value = {}
     @curln = nil
     @builder = builder
-    @hvae_yeild = hyield
   end
 
   attr_accessor :local_vars
@@ -22,7 +21,6 @@ class Context
   attr_accessor :blocks
   attr_accessor :curln
   attr_accessor :block_value
-  attr_accessor :have_yield
   attr :builder
   attr :frame_struct
 end
@@ -230,7 +228,7 @@ class YarvTranslator<YarvVisitor
       b.store(arg[numarg], lvars[2][:area])
 
       # Store parent frame as argument
-      if code.header['type'] == :block or context.have_yield then
+      if arg[numarg + 1] then
         b.store(arg[numarg + 1], lvars[0][:area])
         b.store(arg[numarg + 2], lvars[1][:area])
       end
@@ -315,7 +313,7 @@ class YarvTranslator<YarvVisitor
 
         b = @builder.define_function(info[1].to_s, 
                                    retexp[0], argtype, is_mkstub)
-        context = Context.new(local, @builder, have_yield)
+        context = Context.new(local, @builder)
         context = rescode.call(b, context)
         b.return(retexp[1].call(b, context).rc)
 
@@ -336,7 +334,7 @@ class YarvTranslator<YarvVisitor
     if live and @expstack.size > 0 then
       valexp = @expstack.pop
     end
-
+    
     @jump_from[ln] ||= []
     @jump_from[ln].push @prev_label
     @rescode = lambda {|b, context|
@@ -369,6 +367,10 @@ class YarvTranslator<YarvVisitor
       @expstack.push [valexp[0],
         lambda {|b, context|
           if ln then
+            # foobar It is ad-hoc
+            if commer_label[0] == nil then
+              commer_label.shift
+            end
             rc = b.phi(context.block_value[commer_label[0]][0].type.llvm)
             
             commer_label.reverse.each do |lab|
@@ -483,9 +485,10 @@ class YarvTranslator<YarvVisitor
   def visit_putnil(code, ins, local, ln, info)
     # Nil is not support yet.
 =begin
-    @expstack.push [RubyType.typeof(nil), 
+    @expstack.push [RubyType.value(info[3], "nil"), 
       lambda {|b, context| 
-        nil
+        context.rc = 4.llvm   # 4 means nil
+        context
       }]
 =end
   end
@@ -754,10 +757,8 @@ class YarvTranslator<YarvVisitor
         context.rc = b.load(bptr[:area])
         context}]
     
-    oldrescode = @rescode
     rett = RubyType.new(nil, info[3], "Return type of yield")
     @expstack.push [rett, lambda {|b, context|
-        oldrescode.call(b, context)
         fptr_i = b.load(context.local_vars[1][:area])
         ftype = Type.function(rett.type.llvm, 
                               arg.map {|e| e[0].type.llvm})
@@ -1193,7 +1194,7 @@ class YarvTranslator<YarvVisitor
 #        func = context.builder.external_function('llvm.frameaddress', ftype)
 #        fcp = b.call(func, slev.llvm)
         fcp = context.local_vars[0][:area]
-        (slev - 1).times do
+        slev.times do
           fcp = b.load(fcp)
         end
         frstruct = @frame_struct[acode]
@@ -1228,7 +1229,7 @@ class YarvTranslator<YarvVisitor
 #      func = context.builder.external_function('llvm.frameaddress', ftype)
 #      fcp = b.call(func, slev.llvm)
       fcp = context.local_vars[0][:area]
-      (slev - 1).times do
+      (slev).times do
         fcp = b.load(fcp)
       end
       frstruct = @frame_struct[acode]
