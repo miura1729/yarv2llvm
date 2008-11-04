@@ -69,13 +69,17 @@ module SendUtil
     context
   end
 
-  def gen_get_framaddress(b, context)
+  def gen_get_framaddress(fstruct, b, context)
     ftype = Type.function(P_CHAR, [Type::Int32Ty])
     func = context.builder.external_function('llvm.frameaddress', ftype)
     fraw = b.call(func, 0.llvm)
-    
-    stoff = (context.local_vars.size + 1) * 4
-    context.rc = b.gep(fraw, (-stoff).llvm)
+
+    fraw2 = b.bit_cast(fraw, fstruct)
+    fraw2 = b.gep(fraw2, -1.llvm)
+    fraw = b.bit_cast(fraw2, P_CHAR)
+    fraw = b.gep(fraw, -4.llvm)
+   
+    context.rc = fraw
     context
   end
 

@@ -672,7 +672,7 @@ class YarvTranslator<YarvVisitor
         }]
       if blk[0] then
         para.push [local[0][:type], lambda {|b, context|
-            gen_get_framaddress(b, context)
+            gen_get_framaddress(@frame_struct[code], b, context)
         }]
 
         para.push [local[1][:type], lambda {|b, context|
@@ -716,7 +716,7 @@ class YarvTranslator<YarvVisitor
 
     if blk[0] then
       para.push [local[0][:type], lambda {|b, context|
-            gen_get_framaddress(b, context)
+            gen_get_framaddress(@frame_struct[code], b, context)
         }]
       
       para.push [local[1][:type], lambda {|b, context|
