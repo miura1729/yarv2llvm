@@ -93,7 +93,7 @@ class LLVMBuilder
   end
 
   def disassemble
-    # @module.write_bitcode("yarv.bc")
+    @module.write_bitcode("yarv.bc")
     p @module
   end
 end

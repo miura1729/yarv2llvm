@@ -13,6 +13,7 @@ class Context
     @block_value = {}
     @curln = nil
     @builder = builder
+    @current_frame = nil
   end
 
   attr_accessor :local_vars
@@ -21,6 +22,7 @@ class Context
   attr_accessor :blocks
   attr_accessor :curln
   attr_accessor :block_value
+  attr_accessor :current_frame
   attr :builder
   attr :frame_struct
 end
@@ -119,6 +121,7 @@ class YarvTranslator<YarvVisitor
     # Trie means current method include 
     # invokeblock instruction (yield statement)
     @have_yield = false
+    
   end
 
   def run
@@ -126,7 +129,7 @@ class YarvTranslator<YarvVisitor
     @generated_code.each do |fname, gen|
       gen.call
     end
-#    @builder.optimize
+    @builder.optimize
 #    @builder.disassemble
     
   end
@@ -201,20 +204,12 @@ class YarvTranslator<YarvVisitor
       frst = make_frame_struct(context.local_vars)
       frstp = Type.pointer(frst)
       @frame_struct[code] = frstp
-
-      # Generate allocate instance
+      curframe = b.alloca(frst, 1)
+      context.current_frame = curframe
+      # Generate pointer to variable access
       context.local_vars.each_with_index {|vars, n|
-        if n == 0 then
-          lv = b.alloca(P_CHAR, 1)
-          vars[:area] = lv
-        elsif vars[:type].type then
-          lv = b.alloca(vars[:type].type.llvm, 1)
-          vars[:area] = lv
-        else
-          # Dummy for access by YARV instructon information.
-          lv = b.alloca(VALUE, 1)
-          vars[:area] = nil
-        end
+        lv = b.struct_gep(curframe, n)
+        vars[:area] = lv
       }
 
       # Copy argument in reg. to allocated area
@@ -672,7 +667,10 @@ class YarvTranslator<YarvVisitor
         }]
       if blk[0] then
         para.push [local[0][:type], lambda {|b, context|
-            gen_get_framaddress(@frame_struct[code], b, context)
+#            gen_get_framaddress(@frame_struct[code], b, context)
+            fm = context.current_frame
+            context.rc = b.bit_cast(fm, P_CHAR)
+            context
         }]
 
         para.push [local[1][:type], lambda {|b, context|
@@ -716,7 +714,10 @@ class YarvTranslator<YarvVisitor
 
     if blk[0] then
       para.push [local[0][:type], lambda {|b, context|
-            gen_get_framaddress(@frame_struct[code], b, context)
+#            gen_get_framaddress(@frame_struct[code], b, context)
+          fm = context.current_frame
+          context.rc = b.bit_cast(fm, P_CHAR)
+          context
         }]
       
       para.push [local[1][:type], lambda {|b, context|
@@ -758,7 +759,7 @@ class YarvTranslator<YarvVisitor
     arg.reverse!
     slf = local[2]
     arg.push [slf[:type], lambda {|b, context|
-        context.rc = b.load(slf[:area]) 
+        context.rc = b.load(slf[:area])
         context}]
     frame = local[0]
     arg.push [frame[:type], lambda {|b, context|

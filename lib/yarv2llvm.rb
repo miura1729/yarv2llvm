@@ -29,3 +29,25 @@ module LLVM::RubyInternals
   RFLOAT = Type.struct([RBASIC, Type::DoubleTy])
   P_RFLOAT = Type.pointer(RFLOAT)
 end
+
+=begin
+class LLVM::Builder
+  alias :org_load :load
+  def load(rptr, volatilep = nil)
+    begin
+      org_load(rptr, volatilep)
+    rescue ArgumentError
+      org_load(rptr)
+    end
+  end
+
+  alias :org_store :store
+  def store(val, rptr, volatilep = nil)
+    begin
+      org_store(val, rptr, volatilep)
+    rescue ArgumentError
+      org_store(val, rptr)
+    end
+  end
+end
+=end

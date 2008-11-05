@@ -69,6 +69,7 @@ module SendUtil
     context
   end
 
+=begin
   def gen_get_framaddress(fstruct, b, context)
     ftype = Type.function(P_CHAR, [Type::Int32Ty])
     func = context.builder.external_function('llvm.frameaddress', ftype)
@@ -82,6 +83,7 @@ module SendUtil
     context.rc = fraw
     context
   end
+=end
 
   def gen_get_block_ptr(info, blk, b, context)
     blab = (info[1].to_s + '_blk_' + blk[1].to_s).to_sym
