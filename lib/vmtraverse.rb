@@ -144,7 +144,7 @@ class YarvTranslator<YarvVisitor
     end
     local[0][:type] = RubyType.new(P_CHAR, info[3], "Parent frame")
     local[1][:type] = RubyType.new(MACHINE_WORD, info[3], "Pointer to block")
-    local[2][:type] = RubyType.new(VALUE, info[3], "self")
+    local[2][:type] = RubyType.new(nil, info[3], "self")
 
     # Argument parametor |...| is omitted.
     an = code.header['locals'].size + 1
@@ -169,7 +169,9 @@ class YarvTranslator<YarvVisitor
         1.upto(numarg) do |n|
           argt[n - 1] = local[-n][:type]
         end
-        argt.push local[2][:type]
+        #        argt.push local[2][:type]
+        # self
+        argt.push RubyType.value
         if code.header['type'] == :block or @have_yield then
           argt.push local[0][:type]
           argt.push local[1][:type]
@@ -243,7 +245,8 @@ class YarvTranslator<YarvVisitor
     end
 
     # Self
-    argtype.push local[2][:type]
+    # argtype.push local[2][:type]
+    argtype.push RubyType.value
     
     if code.header['type'] == :block or @have_yield then
       # Block frame
@@ -394,7 +397,7 @@ class YarvTranslator<YarvVisitor
   end
   
   def visit_default(code, ins, local, ln, info)
-#    pppp ins
+    pppp "Unprocessed instruction #{ins}"
   end
 
   def visit_getlocal(code, ins, local, ln, info)
@@ -489,12 +492,15 @@ class YarvTranslator<YarvVisitor
   end
 
   def visit_putself(code, ins, local, ln, info)
-    type = RubyType.new(nil)
+    type = local[2][:type]
+    #type = RubyType.new(nil, info[3], "self")
     @expstack.push [type,
       lambda  {|b, context|
-        slf = b.load(context.local_vars[2][:area])
-        context.org = "self"
-        context.rc = type.type.from_value(slf, b, context)
+        if type.type then
+          slf = b.load(context.local_vars[2][:area])
+          context.org = "self"
+          context.rc = type.type.from_value(slf, b, context)
+        end
         context}]
   end
 
@@ -661,8 +667,10 @@ class YarvTranslator<YarvVisitor
       end
       para.push [local[2][:type], lambda {|b, context|
           context = v[1].call(b, context)
-          rc = v[0].type.to_value(context.rc, b, context)
-          context.rc = rc
+          if v[0].type then
+            rc = v[0].type.to_value(context.rc, b, context)
+            context.rc = rc
+          end
           context
         }]
       if blk[0] then
@@ -707,14 +715,15 @@ class YarvTranslator<YarvVisitor
 
     para.push [local[2][:type], lambda {|b, context|
         context = v[1].call(b, context)
-        rc = v[0].type.to_value(context.rc, b, context)
-        context.rc = rc
+        if v[0].type then
+          rc = v[0].type.to_value(context.rc, b, context)
+          context.rc = rc
+        end
         context
       }]
 
     if blk[0] then
       para.push [local[0][:type], lambda {|b, context|
-#            gen_get_framaddress(@frame_struct[code], b, context)
           fm = context.current_frame
           context.rc = b.bit_cast(fm, P_CHAR)
           context
@@ -729,7 +738,11 @@ class YarvTranslator<YarvVisitor
     @expstack.push [rett,
       lambda {|b, context|
         argtype = para.map {|ele|
-          ele[0].type.llvm
+          if ele[0].type then
+            ele[0].type.llvm
+          else
+            VALUE
+          end
         }
         ftype = Type.function(rett.type.llvm, argtype)
         func = context.builder.get_or_insert_function(mname, ftype)
@@ -773,6 +786,17 @@ class YarvTranslator<YarvVisitor
     rett = RubyType.new(nil, info[3], "Return type of yield")
     @expstack.push [rett, lambda {|b, context|
         fptr_i = b.load(context.local_vars[1][:area])
+        RubyType.resolve
+        # type error check
+        arg.map {|e|
+          if e[0].type == nil then
+            raise "Return type is ambious #{e[0].name} in #{e[0].line_no}"
+          end
+        }
+        if rett.type == nil then
+          raise "Return type is ambious #{rett.name} in #{rett.line_no}"
+        end
+
         ftype = Type.function(rett.type.llvm, 
                               arg.map {|e| e[0].type.llvm})
         fptype = Type.pointer(ftype)
@@ -1203,9 +1227,6 @@ class YarvTranslator<YarvVisitor
 
     @expstack.push [type,
       lambda {|b, context|
-#        ftype = Type.function(P_CHAR, [Type::Int32Ty])
-#        func = context.builder.external_function('llvm.frameaddress', ftype)
-#        fcp = b.call(func, slev.llvm)
         fcp = context.local_vars[0][:area]
         slev.times do
           fcp = b.load(fcp)
@@ -1237,10 +1258,7 @@ class YarvTranslator<YarvVisitor
       context = oldrescode.call(b, context)
       context = srcvalue.call(b, context)
       rval = context.rc
-      
-#      ftype = Type.function(P_CHAR, [Type::Int32Ty])
-#      func = context.builder.external_function('llvm.frameaddress', ftype)
-#      fcp = b.call(func, slev.llvm)
+
       fcp = context.local_vars[0][:area]
       (slev).times do
         fcp = b.load(fcp)
@@ -1282,7 +1300,7 @@ end
 
 def compcommon(is, bind)
   iseq = VMLib::InstSeqTree.new(nil, is)
-#  p iseq.to_a
+  p iseq.to_a
   YarvTranslator.new(iseq, bind).run
   MethodDefinition::RubyMethodStub.each do |key, m|
     name = key
