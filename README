@@ -26,15 +26,19 @@ yarv2llvm -- Yarv to LLVM Translater
    p fact(5)  # -> 120
 
 -- Limit
-  This is program is only supported Fixnum and Float.
-  You can use Array type if you are luckey.
+   yarv2llvm accepts very small subset of ruby.
+   I will grow the subset yarv2llvm accepts.
+   The subset of current version appears "test/test_compile.rb" .
 
 -- BUGS
   If you apply bad program for yarv2llvm, you must break the code from
   yarv2llvm.
-   
+
 -- Author
    Miura Hideki (miura1729)
    e-mail: m-72 at tf6.so-net.ne.jp
    blog:   http://d.hatena.ne.jp/miura1729 (in Japanese)
 
+-- License
+
+ under the Ruby's License
