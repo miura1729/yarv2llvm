@@ -152,4 +152,16 @@ EOS
 assert_equal(send_with_block(100), 4950)
 end
 #=end
+
+def test_string
+    YARV2LLVM::compile(<<-EOS
+def tstring
+  a = "Hell world"
+  a
+end
+EOS
+)
+assert_equal(tstring, "Hell world")
+end
+
 end

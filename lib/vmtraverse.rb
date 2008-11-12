@@ -517,7 +517,16 @@ class YarvTranslator<YarvVisitor
 
   # putspecialobject
   # putiseq
-  # putstring
+  def visit_putstring(code, ins, local, ln, info)
+    p1 = ins[1]
+    @expstack.push [RubyType.typeof(p1, info[3], p1), 
+      lambda {|b, context| 
+        context.rc = p1.llvm(b)
+        context.org = p1
+        context
+      }]
+  end
+
   # concatstrings
   # tostring
   # toregexp
@@ -1300,7 +1309,7 @@ end
 
 def compcommon(is, bind)
   iseq = VMLib::InstSeqTree.new(nil, is)
-  p iseq.to_a
+  # p iseq.to_a
   YarvTranslator.new(iseq, bind).run
   MethodDefinition::RubyMethodStub.each do |key, m|
     name = key

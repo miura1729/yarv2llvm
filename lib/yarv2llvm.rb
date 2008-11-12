@@ -19,6 +19,12 @@ class Float
   end
 end
 
+class String
+  def llvm(b)
+    b.create_global_string_ptr(self)
+  end
+end
+
 class Symbol
   def llvm
     immediate

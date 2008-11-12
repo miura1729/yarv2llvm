@@ -87,6 +87,10 @@ class RubyType
     RubyType.new(Type::DoubleTy, lno, name)
   end
 
+  def self.string(lno = nil, name = nil)
+    RubyType.new(P_CHAR, lno, name)
+  end
+
   def self.symbol(lno = nil, name = nil)
     RubyType.new(VALUE, lno, name)
   end
@@ -102,6 +106,9 @@ class RubyType
 
     when Float
       RubyType.float(lno, name)
+
+    when String
+      RubyType.string(lno, name)
 
     when Symbol
       RubyType.symbol(lno, name)
@@ -176,13 +183,17 @@ class PrimitiveType
       {:inspect => "P_CHAR",
 
        :to_value => lambda {|val, b, context|
-#        b.ptr_to_int(val, VALUE)
-        raise "Cant convert P_CHAR to VALUE"
+        ftype = Type.function(VALUE, [P_CHAR])
+        func = context.builder.external_function('rb_str_new_cstr', ftype)
+        b.call(func, val)
        },
 
        :from_value => lambda {|val, b, context|
-#        b.int_to_ptr(val, P_CHAR)
-        raise "Cant convert VALE to P_CHAR"
+        ftype = Type.function(P_CHAR, [P_VALUE])
+        func = context.builder.external_function('rb_string_value_ptr', ftype)
+        strp = b.alloc(VALUE, 1)
+        b.store(val, strp)
+        b.call(func, strp)
        },
       },
   }
