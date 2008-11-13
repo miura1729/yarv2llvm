@@ -41,6 +41,26 @@ EOS
    assert_equal(arr(3), 4.0)
   end
 
+  def test_array2
+    YARV2LLVM::compile(<<-EOS
+def arr2(a)
+  a[0] = 1.0
+  a
+end
+
+def arr1()
+  a = []
+  arr2(a)
+  b = "abc"
+  a[1] = 41.0
+  a[0] + a[1]
+end
+
+EOS
+)
+   assert_equal(arr1, 42.0)
+  end
+
   def test_double
     YARV2LLVM::compile(<<-EOS
 def dtest(n)

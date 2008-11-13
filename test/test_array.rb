@@ -1,19 +1,19 @@
 require 'yarv2llvm'
 
     YARV2LLVM::compile(<<-EOS
-def arr1()
-  a = []
-  a[0] = 1
-  a[1] = 2
-  a[0] + a[1]
-end
-=begin
-def arr2()
-  a = []
-  a[0] + 1.0
+def arr2(a)
+  a[0] = 1.0
   a
 end
-=end
+
+def arr1()
+  a = []
+  arr2(a)
+  b = "abc"
+  a[1] = 41.0
+  a[0] + a[1]
+end
+
 EOS
 )
 GC.start

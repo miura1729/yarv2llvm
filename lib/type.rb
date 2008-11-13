@@ -76,6 +76,7 @@ class RubyType
           ty.resolve
         end
       end
+      @same_type = []
     end
   end
 
@@ -88,7 +89,7 @@ class RubyType
   end
 
   def self.string(lno = nil, name = nil)
-    RubyType.new(P_CHAR, lno, name)
+    RubyType.new(StringType.new, lno, name)
   end
 
   def self.symbol(lno = nil, name = nil)
@@ -108,7 +109,7 @@ class RubyType
       RubyType.float(lno, name)
 
     when String
-      RubyType.string(lno, name)
+      RubyType.string(lno, obj)
 
     when Symbol
       RubyType.symbol(lno, name)
@@ -183,17 +184,11 @@ class PrimitiveType
       {:inspect => "P_CHAR",
 
        :to_value => lambda {|val, b, context|
-        ftype = Type.function(VALUE, [P_CHAR])
-        func = context.builder.external_function('rb_str_new_cstr', ftype)
-        b.call(func, val)
+        raise "Illigal convert P_CHAR to VALUE"
        },
 
        :from_value => lambda {|val, b, context|
-        ftype = Type.function(P_CHAR, [P_VALUE])
-        func = context.builder.external_function('rb_string_value_ptr', ftype)
-        strp = b.alloc(VALUE, 1)
-        b.store(val, strp)
-        b.call(func, strp)
+        raise "Illigal convert VALUE to P_CHAR"
        },
       },
   }
@@ -220,13 +215,6 @@ class PrimitiveType
 end
 
 class ComplexType
-  def to_value(val, b, context)
-    val
-  end
-
-  def from_value(val, b, context)
-    val
-  end
 end
 
 class ArrayType<ComplexType
@@ -246,8 +234,48 @@ class ArrayType<ComplexType
     end
   end
 
+  def to_value(val, b, context)
+    val
+  end
+
+  def from_value(val, b, context)
+    val
+  end
+
   def llvm
     VALUE
+  end
+end
+
+class StringType<ComplexType
+  include LLVM
+  include RubyHelpers
+
+  def initialize
+    @element_type = RubyType.new(CHAR)
+  end
+  attr :element_type
+
+  def inspect2
+    "String"
+  end
+
+  def to_value(val, b, context)
+    ftype = Type.function(VALUE, [P_CHAR])
+    func = context.builder.external_function('rb_str_new_cstr', ftype)
+    b.call(func, val)
+  end
+
+  def from_value(val, b, context)
+    ftype = Type.function(P_CHAR, [P_VALUE])
+    func = context.builder.external_function('rb_string_value_ptr', ftype)
+    strp = b.alloc(VALUE, 1)
+    b.store(val, strp)
+    b.call(func, strp)
+  end
+
+  def llvm
+    P_CHAR
   end
 end
 end

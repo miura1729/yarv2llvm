@@ -19,23 +19,37 @@ module MethodDefinition
           idx = @expstack.pop
           arr = @expstack.pop
           RubyType.resolve
-          val[0].add_same_type(arr[0].type.element_type)
-          arr[0].type.element_type.add_same_type(val[0])
+          if arr[0].type then
+            val[0].add_same_type(arr[0].type.element_type)
+            arr[0].type.element_type.add_same_type(val[0])
+          end
             
           oldrescode = @rescode
           v = nil
           @rescode = lambda {|b, context|
             context = oldrescode.call(b, context)
-            ftype = Type.function(Type::VoidTy, [VALUE, Type::Int32Ty, VALUE])
-            func = context.builder.external_function('rb_ary_store', ftype)
-            context = val[1].call(b, context)
-            v = context.rc
-            context = idx[1].call(b, context)
-            i = context.rc
-            context = arr[1].call(b, context)
-            a = context.rc
-            b.call(func, a, i, val[0].type.to_value(v, b, context))
-            context
+
+            val[0].add_same_type(arr[0].type.element_type)
+            arr[0].type.element_type.add_same_type(val[0])
+            RubyType.resolve
+
+            case arr[0].type
+            when ArrayType
+              ftype = Type.function(Type::VoidTy, 
+                                    [VALUE, Type::Int32Ty, VALUE])
+              func = context.builder.external_function('rb_ary_store', ftype)
+              context = val[1].call(b, context)
+              v = context.rc
+              context = idx[1].call(b, context)
+              i = context.rc
+              context = arr[1].call(b, context)
+              a = context.rc
+              b.call(func, a, i, val[0].type.to_value(v, b, context))
+              context
+            else
+              # Todo: []= handler of other type
+              raise "Unkonw type #{arr[0].type.inspect2}"
+            end
           }
           @expstack.push [val[0],
             lambda {|b, context|

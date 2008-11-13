@@ -1151,13 +1151,16 @@ class YarvTranslator<YarvVisitor
   def visit_opt_aref(code, ins, local, ln, info)
     idx = @expstack.pop
     arr = @expstack.pop
-    fix = RubyType.fixnum(info[3])
-    idx[0].add_same_type(fix)
-    fix.add_same_type(idx[0])
-    RubyType.resolve
-    if arr[0].type == nil then
-      arr[0].type = ArrayType.new(nil)
+    if arr[0].type.is_a?(ArrayType) then
+      fix = RubyType.fixnum(info[3])
+      idx[0].add_same_type(fix)
+      fix.add_same_type(idx[0])
+      RubyType.resolve
     end
+
+#    if arr[0].type == nil then
+#      arr[0].type = ArrayType.new(nil)
+#    end
     
     @expstack.push [arr[0].type.element_type, 
       lambda {|b, context|
