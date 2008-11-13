@@ -100,5 +100,53 @@ module SendUtil
     context.rc = b.ptr_to_int(func2, MACHINE_WORD)
     context
   end
+
+  def gen_arg_eval(expstack, ins, local, info, minfo)
+    isfunc = ((ins[4] & 8) != 0) # true: function type, false: method type
+    blk = ins[3]
+    
+    para = []
+    0.upto(ins[2] - 1) do |n|
+      v = @expstack.pop
+
+      if minfo then
+        v[0].add_same_type(minfo[:argtype][n])
+        minfo[:argtype][n].add_same_type(v[0])
+      end
+
+      para[n] = v
+    end
+    
+    v = nil
+    if !isfunc then
+      v = @expstack.pop
+    else
+      v = [local[2][:type], lambda {|b, context|
+          context.rc = b.load(context.local_vars[2][:area])
+          context}]
+    end
+    para.push [local[2][:type], lambda {|b, context|
+        context = v[1].call(b, context)
+        if v[0].type then
+          rc = v[0].type.to_value(context.rc, b, context)
+          context.rc = rc
+        end
+        context
+      }]
+    if blk[0] then
+      para.push [local[0][:type], lambda {|b, context|
+          #            gen_get_framaddress(@frame_struct[code], b, context)
+          fm = context.current_frame
+          context.rc = b.bit_cast(fm, P_CHAR)
+          context
+        }]
+      
+      para.push [local[1][:type], lambda {|b, context|
+          gen_get_block_ptr(info, blk, b, context)
+        }]
+    end
+
+    para
+  end
 end
 end

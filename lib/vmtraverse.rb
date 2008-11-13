@@ -517,6 +517,7 @@ class YarvTranslator<YarvVisitor
 
   # putspecialobject
   # putiseq
+
   def visit_putstring(code, ins, local, ln, info)
     p1 = ins[1]
     @expstack.push [RubyType.typeof(p1, info[3], p1), 
@@ -611,7 +612,6 @@ class YarvTranslator<YarvVisitor
   include SendUtil
   def visit_send(code, ins, local, ln, info)
     mname = ins[1]
-    isfunc = ((ins[4] & 8) != 0) # true: function type, false: method type
     
     if funcinfo = MethodDefinition::SystemMethod[mname] then
       funcinfo[:args].downto(1) do |n|
@@ -654,47 +654,7 @@ class YarvTranslator<YarvVisitor
 
     if minfo = MethodDefinition::RubyMethod[mname] then
       pppp "RubyMethod called #{mname.inspect}"
-      blk = ins[3]
-
-      para = []
-      0.upto(ins[2] - 1) do |n|
-        v = @expstack.pop
-
-        v[0].add_same_type(minfo[:argtype][n])
-        minfo[:argtype][n].add_same_type(v[0])
-
-        para[n] = v
-      end
-
-      v = nil
-      if !isfunc then
-        v = @expstack.pop
-      else
-        v = [local[2][:type], lambda {|b, context|
-            context.rc = b.load(context.local_vars[2][:area])
-            context}]
-      end
-      para.push [local[2][:type], lambda {|b, context|
-          context = v[1].call(b, context)
-          if v[0].type then
-            rc = v[0].type.to_value(context.rc, b, context)
-            context.rc = rc
-          end
-          context
-        }]
-      if blk[0] then
-        para.push [local[0][:type], lambda {|b, context|
-#            gen_get_framaddress(@frame_struct[code], b, context)
-            fm = context.current_frame
-            context.rc = b.bit_cast(fm, P_CHAR)
-            context
-        }]
-
-        para.push [local[1][:type], lambda {|b, context|
-            gen_get_block_ptr(info, blk, b, context)
-        }]
-      end
-
+      para = gen_arg_eval(@expstack, ins, local, info, minfo)
       @expstack.push [minfo[:rettype],
         lambda {|b, context|
           minfo = MethodDefinition::RubyMethod[mname]
@@ -706,42 +666,9 @@ class YarvTranslator<YarvVisitor
 
     # Undefined method, it may be forward call.
     pppp "RubyMethod forward called #{mname.inspect}"
-    blk = ins[3]
 
-    para = []
-    0.upto(ins[2] - 1) do |n|
-      v = @expstack.pop
-      para[n] = v
-    end
-
-    if !isfunc then
-      v = @expstack.pop
-    else
-      v = [local[2][:type], lambda {|b, context|
-            context.rc = b.load(context.local_vars[2][:area])
-            context}]
-    end
-
-    para.push [local[2][:type], lambda {|b, context|
-        context = v[1].call(b, context)
-        if v[0].type then
-          rc = v[0].type.to_value(context.rc, b, context)
-          context.rc = rc
-        end
-        context
-      }]
-
-    if blk[0] then
-      para.push [local[0][:type], lambda {|b, context|
-          fm = context.current_frame
-          context.rc = b.bit_cast(fm, P_CHAR)
-          context
-        }]
-      
-      para.push [local[1][:type], lambda {|b, context|
-            gen_get_block_ptr(info, b, context)
-        }]
-    end
+    # minfo doesn't exist yet
+    para = gen_arg_eval(@expstack, ins, local, info, nil)
 
     rett = RubyType.new(nil, info[3], "Return type of #{mname}")
     @expstack.push [rett,
@@ -759,6 +686,7 @@ class YarvTranslator<YarvVisitor
         gen_call(func, para, b, context)
 
       }]
+
     MethodDefinition::RubyMethod[mname]= {
       :defined => false,
       :argtype => para.map {|ele| ele[0]},
