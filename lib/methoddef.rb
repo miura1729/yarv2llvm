@@ -73,9 +73,25 @@ module MethodDefinition
               when Type::Int32Ty
                 context.rc = b.si_to_fp(val)
               end
-              context}]
+          context}]
+        },
       },
-    },
+
+    :p => {
+      :inline_proc =>
+        lambda {
+          pterm = @expstack.pop
+          @expstack.push [pterm[0], 
+            lambda {|b, context|
+              context = pterm[1].call(b, context)
+              pobj = context.rc
+              ftype = Type.function(Type::VoidTy, [VALUE])
+              func = @builder.external_function('rb_p', ftype)
+              b.call(func, pterm[0].type.to_value(pobj, b, context))
+              context
+            }]
+        }
+     }
   }
   
   # can be maped to C function
