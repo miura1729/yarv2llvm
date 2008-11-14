@@ -73,7 +73,7 @@ module MethodDefinition
               when Type::Int32Ty
                 context.rc = b.si_to_fp(val)
               end
-          context}]
+              context}]
         },
       },
 

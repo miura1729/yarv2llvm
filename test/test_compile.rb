@@ -184,4 +184,21 @@ EOS
 assert_equal(tstring, "Hell world")
 end
 
+def test_p_method
+    YARV2LLVM::compile(<<-EOS
+def tpmethod
+  p "Hell world"
+  p 1
+  p 1.1
+  a = []
+  a[0] = 1
+  a[1] = 10
+  a[2] = 11
+  p a
+end
+EOS
+)
+assert_equal(tpmethod, [1, 10, 11])
+end
+
 end
