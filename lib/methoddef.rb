@@ -88,8 +88,7 @@ module MethodDefinition
               ftype = Type.function(Type::VoidTy, [VALUE])
               func = @builder.external_function('rb_p', ftype)
               b.call(func, pterm[0].type.to_value(pobj, b, context))
-              context
-            }]
+              context}]
         }
      }
   }

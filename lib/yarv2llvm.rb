@@ -13,6 +13,15 @@ def pppp(n)
 #  p n
 end
 
+module YARV2LLVM
+OPTION = {
+  :disasm => false,
+  :optimize => true,
+  :dump_yarv => false,
+  :write_bc => false,
+}
+end
+
 class Float
   def llvm
     LLVM::Value.get_double_constant(self)

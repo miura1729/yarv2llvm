@@ -77,11 +77,13 @@ class YarvTranslator<YarvVisitor
   include RubyHelpers
   include LLVMUtil
 
+  @@builder = LLVMBuilder.new
   def initialize(iseq, bind)
     super(iseq)
 
     # Pack of utilty method for llvm code generation
-    @builder = LLVMBuilder.new
+    @builder = @@builder
+    @builder.init
     
     # bindig of caller of LLVM::compile function.
     @binding = bind
@@ -129,9 +131,16 @@ class YarvTranslator<YarvVisitor
     @generated_code.each do |fname, gen|
       gen.call
     end
-    @builder.optimize
-#    @builder.disassemble
-    
+
+    if OPTION[:optimize] then
+      @builder.optimize
+    end
+    if OPTION[:disasm] then
+      @builder.disassemble
+    end
+    if OPTION[:write_bc] then
+      @builder.write_bc(OPTION[:write_bc])
+    end
   end
   
   def visit_block_start(code, ins, local, ln, info)
@@ -1215,15 +1224,15 @@ class YarvTranslator<YarvVisitor
   end
 end
 
-def compile_file(fn, bind = TOPLEVEL_BINDING)
+def compile_file(fn, opt = {}, bind = TOPLEVEL_BINDING)
   is = RubyVM::InstructionSequence.compile( File.read(fn), fn, 1, 
             {  :peephole_optimization    => true,
                :inline_const_cache       => false,
                :specialized_instruction  => true,}).to_a
-  compcommon(is, bind)
+  compcommon(is, opt, bind)
 end
 
-def compile(str, bind = TOPLEVEL_BINDING)
+def compile(str, opt = {}, bind = TOPLEVEL_BINDING)
   line = 1
   file = "<llvm2ruby>"
   if /^(.+?):(\d+)(?::in `(.*)')?/ =~ caller[0] then
@@ -1235,12 +1244,17 @@ def compile(str, bind = TOPLEVEL_BINDING)
             {  :peephole_optimization    => true,
                :inline_const_cache       => false,
                :specialized_instruction  => true,}).to_a
-  compcommon(is, bind)
+  compcommon(is, opt, bind)
 end
 
-def compcommon(is, bind)
+def compcommon(is, opt, bind)
+  opt.each do |key, value|
+    OPTION[key] = value
+  end
   iseq = VMLib::InstSeqTree.new(nil, is)
-  # p iseq.to_a
+  if OPTION[:dump_yarv] then
+    p iseq.to_a
+  end
   YarvTranslator.new(iseq, bind).run
   MethodDefinition::RubyMethodStub.each do |key, m|
     name = key

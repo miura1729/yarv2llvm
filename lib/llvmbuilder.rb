@@ -15,6 +15,11 @@ class LLVMBuilder
     @func = nil
     ExecutionEngine.get(@module)
   end
+  
+  def init
+    @module = LLVM::Module.new('yarv2llvm')
+    @externed_function = {}
+  end
 
   def make_stub(name, rett, argt, orgfunc)
     pppp "Make stub #{name}"
@@ -93,8 +98,15 @@ class LLVMBuilder
   end
 
   def disassemble
-    @module.write_bitcode("yarv.bc")
     p @module
+  end
+
+  def write_bc(nfn)
+    fn = "yarv.bc"
+    if nfn.is_a?(String) then
+      fn = nfn
+    end
+    @module.write_bitcode(fn)
   end
 end
 
