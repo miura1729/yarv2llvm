@@ -106,22 +106,25 @@ module SendUtil
     blk = ins[3]
     
     para = []
-    0.upto(ins[2] - 1) do |n|
+    narg = ins[2] - 1
+    0.upto(narg) do |n|
       v = @expstack.pop
 
       if minfo then
-        v[0].add_same_type(minfo[:argtype][n])
-        minfo[:argtype][n].add_same_type(v[0])
+        v[0].add_same_type(minfo[:argtype][narg - n])
+        minfo[:argtype][narg - n].add_same_type(v[0])
       end
 
       para[n] = v
     end
-    
+    para.reverse!
+ 
     v = nil
     if !isfunc then
       v = @expstack.pop
     else
-      v = [local[2][:type], lambda {|b, context|
+      v = [local[2][:type], 
+        lambda {|b, context|
           context.rc = b.load(context.local_vars[2][:area])
           context}]
     end

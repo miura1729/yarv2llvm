@@ -265,8 +265,15 @@ class YarvTranslator<YarvVisitor
       argtype.push local[1][:type]
     end
 
-    if @expstack.last and info[1] then
-      retexp = @expstack.pop
+    if info[1] then
+      if @expstack.last then
+        retexp = @expstack.pop
+      else
+        retexp = [RubyType.value, lambda {|b, context|
+            context.rc = 4.llvm
+            context
+          }]
+      end
       rescode = @rescode
       rett2 = MethodDefinition::RubyMethod[info[1]][:rettype]
       rett2.add_same_type retexp[0]
@@ -485,7 +492,11 @@ class YarvTranslator<YarvVisitor
       }]
   end
 
-  # setconstant
+  def visit_setconstant(code, ins, local, ln, info)
+    val = @expstack.pop
+    eval("#{ins[1].to_s} = #{val[0].name}", @binding)
+  end
+
   # getglobal
   # setglobal
 
@@ -843,7 +854,7 @@ class YarvTranslator<YarvVisitor
       valexp = @expstack.pop
     end
     bval = nil
-    @is_live = false
+#    @is_live = false
     iflab = nil
     @jump_from[lab] ||= []
     @jump_from[lab].push (ln.to_s + "_1").to_sym
@@ -1095,9 +1106,11 @@ class YarvTranslator<YarvVisitor
       RubyType.resolve
     end
 
-#    if arr[0].type == nil then
-#      arr[0].type = ArrayType.new(nil)
-#    end
+    RubyType.resolve
+    # if index is integer then arr inference to Array type.
+    if arr[0].type == nil and idx[0].type.llvm == Type::Int32Ty then
+      arr[0].type = ArrayType.new(nil)
+    end
     
     @expstack.push [arr[0].type.element_type, 
       lambda {|b, context|
