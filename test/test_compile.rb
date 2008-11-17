@@ -2,6 +2,7 @@ require 'test/unit'
 require 'yarv2llvm'
 
 class CompileTests < Test::Unit::TestCase
+
   def test_fib
     YARV2LLVM::compile(<<-EOS)
 def fib(n)
@@ -188,4 +189,45 @@ EOS
    assert_equal(tpmethod, [1, 10, 11])
   end
 
+  def test_2arg_func
+    YARV2LLVM::compile(<<-EOS)
+      def div(x, y)
+        x / y
+      end
+
+      def div2(x)
+        x = x + 0
+        div(x, 10)
+      end
+EOS
+   assert_equal(div2(100), 10)
+  end
+
+# I can't pass this test yet.
+=begin
+  def test_complex_type
+    YARV2LLVM::compile(<<-EOS, {:disasm => true})
+        def t_complex(f)
+          if f == 0 then
+            t_complex_str("abc")
+            0
+          else
+            a = []
+            a[0] = 1
+            a[1] = 2
+            t_complex_arr(a)
+          end
+        end
+
+        def t_complex_str(arr)
+          arr[0]
+        end
+
+        def t_complex_arr(arr)
+          arr[0]
+        end
+EOS
+     assert_equal(t_complex(1), 1)
+   end
+=end
 end

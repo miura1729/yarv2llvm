@@ -57,9 +57,9 @@ class RubyType
       ty.resolve
     end
 
-    @@type_table.each do |ty|
-      ty.clear_same_type
-    end
+#    @@type_table.each do |ty|
+#      ty.clear_same_type
+#    end
   end
 
   def resolve
@@ -168,6 +168,19 @@ class PrimitiveType
        },
       },
 
+    Type::Int8Ty =>
+      {:inspect => "Char",
+
+       :to_value => lambda {|val, b, context|
+         x = b.shl(val, 1.llvm)
+         b.or(FIXNUM_FLAG, x)
+       },
+
+       :from_value => lambda {|val, b, context|
+         x = b.lshr(val, 1.llvm)
+       },
+      },
+
     Type::DoubleTy =>
       {:inspect => "DoubleTy",
 
@@ -232,6 +245,9 @@ class PrimitiveType
 end
 
 class ComplexType
+end
+
+class AbstructContainerType<ComplexType
   def initialize(etype)
     @element_type = RubyType.new(etype)
   end
@@ -246,7 +262,7 @@ class ComplexType
   end
 end
 
-class ArrayType<ComplexType
+class ArrayType<AbstructContainerType
   include LLVM
   include RubyHelpers
 
@@ -271,7 +287,7 @@ class ArrayType<ComplexType
   end
 end
 
-class StringType<ComplexType
+class StringType<AbstructContainerType
   include LLVM
   include RubyHelpers
 
@@ -293,7 +309,7 @@ class StringType<ComplexType
   def from_value(val, b, context)
     ftype = Type.function(P_CHAR, [P_VALUE])
     func = context.builder.external_function('rb_string_value_ptr', ftype)
-    strp = b.alloc(VALUE, 1)
+    strp = b.alloca(VALUE, 1)
     b.store(val, strp)
     b.call(func, strp)
   end

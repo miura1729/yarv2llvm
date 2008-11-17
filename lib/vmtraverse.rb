@@ -279,7 +279,7 @@ class YarvTranslator<YarvVisitor
       rett2.add_same_type retexp[0]
       retexp[0].add_same_type rett2
       RubyType.resolve
-
+      
 =begin
     # write function prototype
     if info[1] then
@@ -316,6 +316,7 @@ class YarvTranslator<YarvVisitor
           end
 
         end
+
         if retexp[0].type == nil then
           raise "Return type is ambious #{info[1]} in #{info[3]}"
         end
@@ -675,6 +676,7 @@ class YarvTranslator<YarvVisitor
     if minfo = MethodDefinition::RubyMethod[mname] then
       pppp "RubyMethod called #{mname.inspect}"
       para = gen_arg_eval(@expstack, ins, local, info, minfo)
+
       @expstack.push [minfo[:rettype],
         lambda {|b, context|
           minfo = MethodDefinition::RubyMethod[mname]
@@ -1107,9 +1109,9 @@ class YarvTranslator<YarvVisitor
     end
 
     RubyType.resolve
-    # Complex is abstrubct type of containor which have [] and []=.
+    # AbstrubctContainorType is type which have [] and []= as method.
     if arr[0].type == nil then
-      arr[0].type = ComplexType.new(nil)
+      arr[0].type = AbstructContainerType.new(nil)
     end
     
     @expstack.push [arr[0].type.element_type, 
@@ -1125,6 +1127,10 @@ class YarvTranslator<YarvVisitor
           av = b.call(func, arrp, idxp)
           context.rc = arr[0].type.element_type.type.from_value(av, b, context)
           context
+
+        elsif arr[0].type.is_a?(StringType) then
+          raise "Not impremented in #{info[3]}"
+
         else
           # Todo: Hash table?
           raise "Not impremented in #{info[3]}"
