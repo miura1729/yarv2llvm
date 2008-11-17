@@ -1107,9 +1107,9 @@ class YarvTranslator<YarvVisitor
     end
 
     RubyType.resolve
-    # if index is integer then arr inference to Array type.
-    if arr[0].type == nil and idx[0].type.llvm == Type::Int32Ty then
-      arr[0].type = ArrayType.new(nil)
+    # Complex is abstrubct type of containor which have [] and []=.
+    if arr[0].type == nil then
+      arr[0].type = ComplexType.new(nil)
     end
     
     @expstack.push [arr[0].type.element_type, 

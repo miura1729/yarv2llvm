@@ -17,6 +17,7 @@ module LLVMUtil
   end
   
   def check_same_type_2arg_gencode(b, context, p1, p2)
+    RubyType.resolve
     if p1[0].type == nil then
       if p2[0].type == nil then
         print "ambious type #{p2[1].call(b, context).org}\n"
@@ -24,8 +25,8 @@ module LLVMUtil
         p1[0].type = p2[0].type
       end
     else
-      if p2[0].type and p1[0].type != p2[0].type then
-        print "diff type #{p1[1].call(b, context).org}\n"
+      if p2[0].type and p1[0].type.llvm != p2[0].type.llvm then
+        print "diff type #{p1[1].call(b, context).org}(#{p1[0].inspect2}) and #{p2[1].call(b, context).org}(#{p2[0].inspect2}) \n"
       else
         p2[0].type = p1[0].type
       end

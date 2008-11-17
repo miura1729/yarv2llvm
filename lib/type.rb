@@ -56,6 +56,10 @@ class RubyType
     @@type_table.each do |ty|
       ty.resolve
     end
+
+    @@type_table.each do |ty|
+      ty.clear_same_type
+    end
   end
 
   def resolve
@@ -66,6 +70,20 @@ class RubyType
     if @type then
       @resolveed = true
       @same_type.each do |ty|
+        if ty.type and ty.type.is_a?(ComplexType) then
+          if ty.type.is_a?(@type.class) and ty.type.class != @type.class then
+            @type = ty.type
+            @resolveed = false
+            resolve
+            return
+          end
+
+          if @type.is_a?(ty.type.class) then
+            ty.type = @type
+            ty.resolve
+            next
+          end
+        end
         if ty.type and ty.type.llvm != @type.llvm then
           mess = "Type conflict \n"
           mess += "  #{ty.name}(#{ty.type.inspect2}) defined in #{ty.line_no} \n"
@@ -76,7 +94,6 @@ class RubyType
           ty.resolve
         end
       end
-      @same_type = []
     end
   end
 
@@ -215,16 +232,23 @@ class PrimitiveType
 end
 
 class ComplexType
+  def initialize(etype)
+    @element_type = RubyType.new(etype)
+  end
+  attr :element_type
+
+  def llvm
+    nil
+  end
+
+  def inspect2
+    "Abstruct Contanor type of #{@element_type.inspect2}"
+  end
 end
 
 class ArrayType<ComplexType
   include LLVM
   include RubyHelpers
-
-  def initialize(etype)
-    @element_type = RubyType.new(etype)
-  end
-  attr :element_type
 
   def inspect2
     if @element_type then
