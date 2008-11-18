@@ -40,8 +40,12 @@ class RubyType
   attr :name
   attr :line_no
 
-  def add_same_type(type)
-    @same_type.push type
+  def add_same_type(fty)
+    @same_type.push fty
+    # Complex type -> element type is same also.
+    if type.is_a?(ComplexType) and fty.type.is_a?(ComplexType) then
+      type.element_type.add_same_type(fty.type.element_type)
+    end
   end
   
   def clear_same_type
@@ -172,12 +176,14 @@ class PrimitiveType
       {:inspect => "Char",
 
        :to_value => lambda {|val, b, context|
-         x = b.shl(val, 1.llvm)
+         val32 = b.zext(val, Type::Int32Ty)
+         x = b.shl(val32, 1.llvm)
          b.or(FIXNUM_FLAG, x)
        },
 
        :from_value => lambda {|val, b, context|
-         x = b.lshr(val, 1.llvm)
+         val32 = b.zext(val, Type::Int32Ty)
+         x = b.lshr(val32, 1.llvm)
        },
       },
 
@@ -319,3 +325,4 @@ class StringType<AbstructContainerType
   end
 end
 end
+

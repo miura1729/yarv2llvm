@@ -1,8 +1,7 @@
 require 'test/unit'
 require 'yarv2llvm'
-
 class CompileTests < Test::Unit::TestCase
-
+#=begin
   def test_fib
     YARV2LLVM::compile(<<-EOS)
 def fib(n)
@@ -204,9 +203,18 @@ EOS
   end
 
 # I can't pass this test yet.
+#=end
 =begin
   def test_complex_type
-    YARV2LLVM::compile(<<-EOS, {:disasm => true})
+    YARV2LLVM::compile(<<-EOS, {:optimize => false})
+        def t_complex_str(arr)
+          arr[0]
+        end
+
+        def t_complex_arr(arr)
+          arr[0]
+        end
+
         def t_complex(f)
           if f == 0 then
             t_complex_str("abc")
@@ -217,14 +225,6 @@ EOS
             a[1] = 2
             t_complex_arr(a)
           end
-        end
-
-        def t_complex_str(arr)
-          arr[0]
-        end
-
-        def t_complex_arr(arr)
-          arr[0]
         end
 EOS
      assert_equal(t_complex(1), 1)

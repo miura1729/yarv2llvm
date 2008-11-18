@@ -280,20 +280,19 @@ class YarvTranslator<YarvVisitor
       retexp[0].add_same_type rett2
       RubyType.resolve
       
-=begin
-    # write function prototype
-    if info[1] then
-      print "#{info[1]} :("
-      print argtype.map {|e|
-          e.inspect2
-        }.join(', ')
-      print ") -> #{retexp[0].inspect2}\n"
-      p "foo"
-    end
-=end
       have_yield = @have_yield
 
       @generated_code[info[1]] = lambda {
+        if OPTION[:func_signature] then
+          # write function prototype
+          print "#{info[1]} :("
+          print argtype.map {|e|
+            e.inspect2
+          }.join(', ')
+          print ") -> #{retexp[0].inspect2}\n"
+          p "foo"
+        end
+
         pppp "define #{info[1]}"
         pppp @expstack
       
@@ -1129,7 +1128,7 @@ class YarvTranslator<YarvVisitor
           context
 
         elsif arr[0].type.is_a?(StringType) then
-          raise "Not impremented in #{info[3]}"
+          raise "Not impremented String::[] in #{info[3]}"
 
         else
           # Todo: Hash table?

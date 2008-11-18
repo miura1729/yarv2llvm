@@ -19,6 +19,7 @@ OPTION = {
   :optimize => true,
   :dump_yarv => false,
   :write_bc => false,
+  :func_signature => false,
 }
 end
 
