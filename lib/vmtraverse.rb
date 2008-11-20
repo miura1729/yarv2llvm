@@ -569,14 +569,37 @@ class YarvTranslator<YarvVisitor
           context.rc = rc
           pppp "newarray END"
         else
-          # TODO: eval inits and call rb_ary_new4
-          raise "Initialized array not implemented in #{info[3]}"
+          initsize = inits.size
+          initarea = b.alloca(VALUE, initsize)
+          inits.each_with_index do |e, n|
+            context = e[1].call(b, context)
+            sptr = b.gep(initarea, n.llvm)
+            rcvalue = e[0].type.to_value(context.rc, b, context)
+            b.store(rcvalue, sptr)
+          end
+
+          ftype = Type.function(VALUE, [Type::Int32Ty, P_VALUE])
+          func = context.builder.external_function('rb_ary_new4', ftype)
+          rc = b.call(func, initsize.llvm, initarea)
+          context.rc = rc
         end
         context
       }]
   end
-  
-  # duparray
+
+  def visit_duparray(code, ins, local, ln, info)
+    srcarr = ins[1]
+    srcarr.each do |e|
+      if e.is_a?(String) then
+        visit_putstring(code, [:putstring, e], local, ln, info)
+      else
+        visit_putobject(code, [:putobject, e], local, ln, info)
+      end
+    end
+
+    visit_newarray(code, [:newarray, srcarr.size], local, ln, info)
+  end
+
   # expandarray
   # concatarray
   # splatarray

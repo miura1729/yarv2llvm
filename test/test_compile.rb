@@ -1,7 +1,6 @@
 require 'test/unit'
 require 'yarv2llvm'
 class CompileTests < Test::Unit::TestCase
-#=begin
   def test_fib
     YARV2LLVM::compile(<<-EOS)
 def fib(n)
@@ -202,8 +201,30 @@ EOS
    assert_equal(div2(100), 10)
   end
 
+  def test_inited_array
+    YARV2LLVM::compile(<<-EOS)
+def tinitarray
+  a = [[1, 10, 11]]
+end
+EOS
+   assert_equal(tinitarray, [[1, 10, 11]])
+  end
+
+  def test_nested_array
+    YARV2LLVM::compile(<<-EOS)
+def tnestedarray
+  a = []
+  a[0] = []
+  a[0][0] = 1
+  a[1] = []
+  a[1][0] = 2
+  a
+end
+EOS
+   assert_equal(tnestedarray, [[1], [2]])
+  end
+
 # I can't pass this test yet.
-#=end
 =begin
   def test_complex_type
     YARV2LLVM::compile(<<-EOS, {:optimize => false})
