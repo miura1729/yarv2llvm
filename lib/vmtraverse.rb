@@ -1144,12 +1144,23 @@ class YarvTranslator<YarvVisitor
           idxp = context.rc
           context = arr[1].call(b, context)
           arrp = context.rc
-          ftype = Type.function(VALUE, [VALUE, Type::Int32Ty])
-          func = context.builder.external_function('rb_ary_entry', ftype)
-          av = b.call(func, arrp, idxp)
-          context.rc = arr[0].type.element_type.type.from_value(av, b, context)
-          context
-
+          if OPTION[:array_range_check] then
+            ftype = Type.function(VALUE, [VALUE, Type::Int32Ty])
+            func = context.builder.external_function('rb_ary_entry', ftype)
+            av = b.call(func, arrp, idxp)
+            arrelet = arr[0].type.element_type.type
+            context.rc = arrelet.from_value(av, b, context)
+            context
+          else
+            arrp = b.int_to_ptr(arrp, P_RARRAY)
+            abdyp = b.struct_gep(arrp, 3)
+            abdy = b.load(abdyp)
+            avp = b.gep(abdy, idxp)
+            av = b.load(avp)
+            arrelet = arr[0].type.element_type.type
+            context.rc = arrelet.from_value(av, b, context)
+            context
+          end
         elsif arr[0].type.is_a?(StringType) then
           raise "Not impremented String::[] in #{info[3]}"
 

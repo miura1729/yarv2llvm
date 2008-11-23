@@ -20,6 +20,8 @@ OPTION = {
   :dump_yarv => false,
   :write_bc => false,
   :func_signature => false,
+
+  :array_range_check => true,
 }
 end
 
