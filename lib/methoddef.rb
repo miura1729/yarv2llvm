@@ -23,7 +23,7 @@ module MethodDefinition
             val[0].add_same_type(arr[0].type.element_type)
             arr[0].type.element_type.add_same_type(val[0])
           end
-            
+
           oldrescode = @rescode
           v = nil
           @rescode = lambda {|b, context|
@@ -44,7 +44,9 @@ module MethodDefinition
               i = context.rc
               context = arr[1].call(b, context)
               a = context.rc
-              b.call(func, a, i, val[0].type.to_value(v, b, context))
+              vval = val[0].type.to_value(v, b, context)
+              b.call(func, a, i, vval)
+              arr[0].type.contents[i] = v
               context
             else
               # Todo: []= handler of other type

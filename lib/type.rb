@@ -24,6 +24,7 @@ class RubyType
     end
     @resolveed = false
     @same_type = []
+    @same_value = []
     @@type_table.push self
   end
 
@@ -47,9 +48,18 @@ class RubyType
       type.element_type.add_same_type(fty.type.element_type)
     end
   end
+
+  def add_same_value(fty)
+    @same_value.push fty
+    # Complex type -> element type is same also.
+    if type.is_a?(ComplexType) and fty.type.is_a?(ComplexType) then
+      type.element_type.add_same_value(fty.type.element_type)
+    end
+  end
   
-  def clear_same_type
+  def clear_same
     @same_type = []
+    @same_value = []
   end
 
   def self.resolve
@@ -62,42 +72,66 @@ class RubyType
     end
 
 #    @@type_table.each do |ty|
-#      ty.clear_same_type
+#      ty.clear_same
 #    end
   end
 
   def resolve
-    if @resolveed then
-      return
-    end
-
-    if @type then
-      @resolveed = true
-      @same_type.each do |ty|
+    rone = lambda {|dupp|
+      lambda {|ty|
         if ty.type and ty.type.is_a?(ComplexType) then
           if ty.type.is_a?(@type.class) and ty.type.class != @type.class then
-            @type = ty.type
+            if dupp then
+              @type = ty.type.dup_type
+            else
+              @type = ty.type
+            end
             @resolveed = false
             resolve
             return
           end
-
+          
           if @type.is_a?(ty.type.class) then
-            ty.type = @type
+            if ty.type != @type then
+              if dupp then
+                ty.type = @type.dup_type
+              else
+                ty.type = @type
+              end
+            end
             ty.resolve
             next
           end
         end
+        
         if ty.type and ty.type.llvm != @type.llvm then
           mess = "Type conflict \n"
           mess += "  #{ty.name}(#{ty.type.inspect2}) defined in #{ty.line_no} \n"
           mess += "  #{@name}(#{@type.inspect2}) define in #{@line_no} \n"
           raise mess
         else
-          ty.type = @type
+          if ty.type != @type then
+            if dupp then
+              ty.type = @type.dup_type
+            else
+              ty.type = @type
+            end
+          end
           ty.resolve
         end
-      end
+      }
+    }
+
+    if @resolveed then
+      return
+    end
+
+    if @type then
+      @resolveed = true
+      rone_dup = rone.call(true)
+      @same_type.each(&rone_dup)
+      rone_nodup = rone.call(false)
+      @same_value.each(&rone_nodup)
     end
   end
 
@@ -156,6 +190,10 @@ class PrimitiveType
 
   def initialize(type)
     @type = type
+  end
+
+  def dup_type
+    self.class.new(@type)
   end
 
   TYPE_HANDLER = {
@@ -251,6 +289,9 @@ class PrimitiveType
 end
 
 class ComplexType
+  def dup_type
+    self.class.new
+  end
 end
 
 class AbstructContainerType<ComplexType
@@ -258,6 +299,10 @@ class AbstructContainerType<ComplexType
     @element_type = RubyType.new(etype)
   end
   attr :element_type
+
+  def dup_type
+    self.class.new(@element_type)
+  end
 
   def llvm
     nil
@@ -271,6 +316,21 @@ end
 class ArrayType<AbstructContainerType
   include LLVM
   include RubyHelpers
+
+  def initialize(etype)
+    @element_type = RubyType.new(etype)
+    @ptr = nil
+    @contents = Hash.new
+  end
+  attr_accessor :element_type
+  attr_accessor :ptr
+  attr_accessor :contents
+
+  def dup_type
+    no = self.class.new(nil)
+    no.element_type = @element_type
+    no
+  end
 
   def inspect2
     if @element_type then

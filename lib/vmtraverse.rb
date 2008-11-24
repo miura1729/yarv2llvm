@@ -276,8 +276,8 @@ class YarvTranslator<YarvVisitor
       end
       rescode = @rescode
       rett2 = MethodDefinition::RubyMethod[info[1]][:rettype]
-      rett2.add_same_type retexp[0]
-      retexp[0].add_same_type rett2
+      rett2.add_same_value retexp[0]
+      retexp[0].add_same_value rett2
       RubyType.resolve
       
       have_yield = @have_yield
@@ -442,10 +442,10 @@ class YarvTranslator<YarvVisitor
         acode = acode.parent
         slev = slev + 1
       end
-      store_from_parent(voff, slev, src, acode, ln, info)
+      store_to_parent(voff, slev, src, acode, ln, info)
 
     else
-      store_from_local(voff, src, local, ln, info)
+      store_to_local(voff, src, local, ln, info)
     end
   end
 
@@ -469,11 +469,11 @@ class YarvTranslator<YarvVisitor
     voff = ins[1]
     src = @expstack.pop
     if slev == 0 then
-      store_from_local(voff, src, local, ln, info)
+      store_to_local(voff, src, local, ln, info)
     else
       acode = code
       slev.times { acode = acode.parent}
-      store_from_parent(voff, slev, src, acode, ln, info)
+      store_to_parent(voff, slev, src, acode, ln, info)
     end
   end
 
@@ -555,12 +555,17 @@ class YarvTranslator<YarvVisitor
   def visit_newarray(code, ins, local, ln, info)
     nele = ins[1]
     inits = []
+    etype = nil
     nele.times {|n|
       v = @expstack.pop
       inits.push v
+      if etype and etype != v[0].type.llvm then
+        raise "Element of array must be same type in yarv2llvm #{etype.inspect2} expected but #{v[0].inspect2}"
+      end
+      etype = v[0].type.llvm
     }
     inits.reverse!
-    @expstack.push [RubyType.new(ArrayType.new(nil), info[3]),
+    @expstack.push [RubyType.new(ArrayType.new(etype), info[3]),
       lambda {|b, context|
         if nele == 0 then
           ftype = Type.function(VALUE, [])
@@ -615,7 +620,7 @@ class YarvTranslator<YarvVisitor
       if exp then
         if exp[0].type == nil then
           exp[0].type = PrimitiveType.new(VALUE)
-          exp[0].clear_same_type
+          exp[0].clear_same
         end
         context.rc = exp[1].call(b, context)
       end
@@ -1135,30 +1140,44 @@ class YarvTranslator<YarvVisitor
     if arr[0].type == nil then
       arr[0].type = AbstructContainerType.new(nil)
     end
-    
+
     @expstack.push [arr[0].type.element_type, 
       lambda {|b, context|
         pppp "aref start"
         if arr[0].type.is_a?(ArrayType) then
           context = idx[1].call(b, context)
           idxp = context.rc
-          context = arr[1].call(b, context)
-          arrp = context.rc
           if OPTION[:array_range_check] then
+            context = arr[1].call(b, context)
+            arrp = context.rc
             ftype = Type.function(VALUE, [VALUE, Type::Int32Ty])
             func = context.builder.external_function('rb_ary_entry', ftype)
             av = b.call(func, arrp, idxp)
             arrelet = arr[0].type.element_type.type
             context.rc = arrelet.from_value(av, b, context)
             context
+
           else
-            arrp = b.int_to_ptr(arrp, P_RARRAY)
-            abdyp = b.struct_gep(arrp, 3)
-            abdy = b.load(abdyp)
-            avp = b.gep(abdy, idxp)
-            av = b.load(avp)
-            arrelet = arr[0].type.element_type.type
-            context.rc = arrelet.from_value(av, b, context)
+            if cont = arr[0].type.contents[idxp] then
+              # Contents of array corresponding index exists
+              context.rc = cont
+            else
+              if arr[0].type.ptr then
+                # Array body in register
+                abdy = arr[0].type.ptr
+              else
+                context = arr[1].call(b, context)
+                arrp = context.rc
+                arrp = b.int_to_ptr(arrp, P_RARRAY)
+                abdyp = b.struct_gep(arrp, 3)
+                abdy = b.load(abdyp)
+                arr[0].type.ptr = abdy
+              end
+              avp = b.gep(abdy, idxp)
+              av = b.load(avp)
+              arrelet = arr[0].type.element_type.type
+              context.rc = arrelet.from_value(av, b, context)
+            end
             context
           end
         elsif arr[0].type.is_a?(StringType) then
@@ -1199,14 +1218,17 @@ class YarvTranslator<YarvVisitor
       }]
   end
 
-  def store_from_local(voff, src, local, ln, info)
+  def store_to_local(voff, src, local, ln, info)
     voff = voff + 1
     dsttype = local[voff][:type]
     srctype = src[0]
     srcvalue = src[1]
 
-    srctype.add_same_type(dsttype)
-    dsttype.add_same_type(srctype)
+    if dsttype.type then
+      dsttype.type = dsttype.type.dup
+    end
+    srctype.add_same_value(dsttype)
+    dsttype.add_same_value(srctype)
 
     oldrescode = @rescode
     @rescode = lambda {|b, context|
@@ -1243,7 +1265,7 @@ class YarvTranslator<YarvVisitor
       }]
   end
 
-  def store_from_parent(voff, slev, src, acode, ln, info)
+  def store_to_parent(voff, slev, src, acode, ln, info)
     voff = voff + 1
     alocal = @locals[acode][voff]
     dsttype = alocal[:type]
@@ -1251,8 +1273,11 @@ class YarvTranslator<YarvVisitor
     srctype = src[0]
     srcvalue = src[1]
 
-    srctype.add_same_type(dsttype)
-    dsttype.add_same_type(srctype)
+    if dsttype.type then
+      dsttype.type = dsttype.type.dup_type
+    end
+    srctype.add_same_value(dsttype)
+    dsttype.add_same_value(srctype)
 
     oldrescode = @rescode
     @rescode = lambda {|b, context|
