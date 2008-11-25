@@ -27,6 +27,15 @@ class RubyType
     @same_value = []
     @@type_table.push self
   end
+  attr_accessor :type
+
+  def dup_type
+#    no = self.class.new(nil)
+#    add_same_type(no)
+#    no.add_same_type(no)
+#    no
+    self
+  end
 
   def inspect2
     if @type then
@@ -60,6 +69,14 @@ class RubyType
   def clear_same
     @same_type = []
     @same_value = []
+  end
+
+  def self.clear_content
+#    @@type_table.each do |ty|
+#      if ty.type then
+#        ty.type = ty.type.dup_type
+#      end
+#    end
   end
 
   def self.resolve
@@ -109,13 +126,15 @@ class RubyType
           mess += "  #{ty.name}(#{ty.type.inspect2}) defined in #{ty.line_no} \n"
           mess += "  #{@name}(#{@type.inspect2}) define in #{@line_no} \n"
           raise mess
+        elsif ty.type then
+          if dupp then
+            ty.type = @type.dup_type
+          end
         else
-          if ty.type != @type then
-            if dupp then
-              ty.type = @type.dup_type
-            else
-              ty.type = @type
-            end
+          if dupp then
+            ty.type = @type.dup_type
+          else
+            ty.type = @type
           end
           ty.resolve
         end
@@ -190,7 +209,9 @@ class PrimitiveType
 
   def initialize(type)
     @type = type
+    @content = nil
   end
+  attr_accessor :content
 
   def dup_type
     self.class.new(@type)
@@ -297,11 +318,15 @@ end
 class AbstructContainerType<ComplexType
   def initialize(etype)
     @element_type = RubyType.new(etype)
+    @content = nil
   end
-  attr :element_type
+  attr_accessor :element_type
+  attr_accessor :content
 
   def dup_type
-    self.class.new(@element_type)
+    no = self.class.new(nil)
+    no.element_type = @element_type
+    no
   end
 
   def llvm
@@ -320,11 +345,11 @@ class ArrayType<AbstructContainerType
   def initialize(etype)
     @element_type = RubyType.new(etype)
     @ptr = nil
-    @contents = Hash.new
+    @element_content = Hash.new
   end
   attr_accessor :element_type
   attr_accessor :ptr
-  attr_accessor :contents
+  attr_accessor :element_content
 
   def dup_type
     no = self.class.new(nil)
@@ -361,6 +386,11 @@ class StringType<AbstructContainerType
     @element_type = RubyType.new(CHAR)
   end
   attr :element_type
+
+  def dup_type
+    no = self.class.new
+    no
+  end
 
   def inspect2
     "String"

@@ -46,7 +46,7 @@ module MethodDefinition
               a = context.rc
               vval = val[0].type.to_value(v, b, context)
               b.call(func, a, i, vval)
-              arr[0].type.contents[i] = v
+              arr[0].type.element_content[i] = v
               context
             else
               # Todo: []= handler of other type

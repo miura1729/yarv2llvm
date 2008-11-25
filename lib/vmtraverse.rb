@@ -197,11 +197,12 @@ class YarvTranslator<YarvVisitor
         # already Call but defined(forward call)
         argt = minfo[:argtype]
         1.upto(numarg) do |n|
-          argt[n - 1].add_same_type local[-n][:type]
+          argt[n - 1].add_same_value local[-n][:type]
           local[-n][:type].add_same_type argt[n - 1]
         end
-        argt[numarg - 1].add_same_type local[-numarg][:type]
+        argt[numarg - 1].add_same_value local[-numarg][:type]
         local[-numarg][:type].add_same_type argt[numarg - 1]
+        RubyType.clear_content
         
         minfo[:defined] = true
       end
@@ -277,7 +278,8 @@ class YarvTranslator<YarvVisitor
       rescode = @rescode
       rett2 = MethodDefinition::RubyMethod[info[1]][:rettype]
       rett2.add_same_value retexp[0]
-      retexp[0].add_same_value rett2
+      retexp[0].add_same_type rett2
+      RubyType.clear_content
       RubyType.resolve
       
       have_yield = @have_yield
@@ -372,8 +374,8 @@ class YarvTranslator<YarvVisitor
       commer_label = @jump_from[ln]
       while n < commer_label.size - 1 do
         if v2 = @expstack[@expstack.size - n - 1] then
-          valexp[0].add_same_type(v2[0])
-          v2[0].add_same_type(valexp[0])
+          valexp[0].add_same_value(v2[0])
+          v2[0].add_same_value(valexp[0])
         end
         n += 1
       end
@@ -409,7 +411,9 @@ class YarvTranslator<YarvVisitor
       @is_live = true
       @prev_label = ln
     end
+
     # p @expstack.map {|n| n[1]}
+    RubyType.clear_content
   end
   
   def visit_default(code, ins, local, ln, info)
@@ -688,8 +692,9 @@ class YarvTranslator<YarvVisitor
         0.upto(ins[2] - 1) do |n|
           p[n] = @expstack.pop
           p[n][0].add_same_type argtype[n]
-          argtype[n].add_same_type p[n][0]
+          argtype[n].add_same_value p[n][0]
         end
+        RubyType.clear_content
           
         @expstack.push [rettype,
           lambda {|b, context|
@@ -925,7 +930,7 @@ class YarvTranslator<YarvVisitor
     #    p @expstack
     check_same_type_2arg_static(s1, s2)
     
-    @expstack.push [s1[0], 
+    @expstack.push [s1[0].dup_type,
       lambda {|b, context|
         s1val, s2val, context = gen_common_opt_2arg(b, context, s1, s2)
         context.rc = b.add(s1val, s2val)
@@ -939,7 +944,7 @@ class YarvTranslator<YarvVisitor
     s1 = @expstack.pop
     check_same_type_2arg_static(s1, s2)
     
-    @expstack.push [s1[0], 
+    @expstack.push [s1[0].dup_type,
       lambda {|b, context|
         s1val, s2val, context = gen_common_opt_2arg(b, context, s1, s2)
         context.rc = b.sub(s1val, s2val)
@@ -953,7 +958,7 @@ class YarvTranslator<YarvVisitor
     s1 = @expstack.pop
     check_same_type_2arg_static(s1, s2)
     
-    @expstack.push [s1[0], 
+    @expstack.push [s1[0].dup_type,
       lambda {|b, context|
         s1val, s2val, context = gen_common_opt_2arg(b, context, s1, s2)
         context.rc = b.mul(s1val, s2val)
@@ -967,7 +972,7 @@ class YarvTranslator<YarvVisitor
     s1 = @expstack.pop
     check_same_type_2arg_static(s1, s2)
     
-    @expstack.push [s1[0], 
+    @expstack.push [s1[0].dup_type,
       lambda {|b, context|
         s1val, s2val, context = gen_common_opt_2arg(b, context, s1, s2)
         case s1[0].type.llvm
@@ -986,7 +991,7 @@ class YarvTranslator<YarvVisitor
     s1 = @expstack.pop
     check_same_type_2arg_static(s1, s2)
     
-    @expstack.push [s1[0], 
+    @expstack.push [s1[0].dup_type,
       lambda {|b, context|
         s1val, s2val, context = gen_common_opt_2arg(b, context, s1, s2)
         # It is right only s1 and s2 is possitive.
@@ -1131,7 +1136,8 @@ class YarvTranslator<YarvVisitor
     if arr[0].type.is_a?(ArrayType) then
       fix = RubyType.fixnum(info[3])
       idx[0].add_same_type(fix)
-      fix.add_same_type(idx[0])
+      fix.add_same_value(idx[0])
+      RubyType.clear_content
       RubyType.resolve
     end
 
@@ -1158,8 +1164,10 @@ class YarvTranslator<YarvVisitor
             context
 
           else
-            if cont = arr[0].type.contents[idxp] then
-              # Contents of array corresponding index exists
+            p arr[0].type.element_content
+            p idxp
+            if cont = arr[0].type.element_content[idxp] then
+              # Content of array corresponding index exists
               context.rc = cont
             else
               if arr[0].type.ptr then
@@ -1177,6 +1185,7 @@ class YarvTranslator<YarvVisitor
               av = b.load(avp)
               arrelet = arr[0].type.element_type.type
               context.rc = arrelet.from_value(av, b, context)
+              arr[0].type.element_content[idxp] = av
             end
             context
           end
@@ -1212,7 +1221,9 @@ class YarvTranslator<YarvVisitor
     type = local[voff][:type]
     @expstack.push [type,
       lambda {|b, context|
-        context.rc = b.load(context.local_vars[voff][:area])
+        unless context.rc = type.type.content
+          context.rc = b.load(context.local_vars[voff][:area])
+        end
         context.org = local[voff][:name]
         context
       }]
@@ -1224,9 +1235,6 @@ class YarvTranslator<YarvVisitor
     srctype = src[0]
     srcvalue = src[1]
 
-    if dsttype.type then
-      dsttype.type = dsttype.type.dup
-    end
     srctype.add_same_value(dsttype)
     dsttype.add_same_value(srctype)
 
@@ -1235,8 +1243,13 @@ class YarvTranslator<YarvVisitor
       pppp "Setlocal start"
       context = oldrescode.call(b, context)
       context = srcvalue.call(b, context)
+      srcval = context.rc
       lvar = context.local_vars[voff]
-      context.rc = b.store(context.rc, lvar[:area])
+
+      dsttype.type = dsttype.type.dup_type
+      dsttype.type.content = srcval
+
+      context.rc = b.store(srcval, lvar[:area])
       context.org = lvar[:name]
       pppp "Setlocal end"
       context
@@ -1250,16 +1263,18 @@ class YarvTranslator<YarvVisitor
 
     @expstack.push [type,
       lambda {|b, context|
-        fcp = context.local_vars[0][:area]
-        slev.times do
-          fcp = b.load(fcp)
-        end
-        frstruct = @frame_struct[acode]
-        fi = b.ptr_to_int(fcp, MACHINE_WORD)
-        frame = b.int_to_ptr(fi, frstruct)
+        unless context.rc = type.type.content
+          fcp = context.local_vars[0][:area]
+          slev.times do
+            fcp = b.load(fcp)
+          end
+          frstruct = @frame_struct[acode]
+          fi = b.ptr_to_int(fcp, MACHINE_WORD)
+          frame = b.int_to_ptr(fi, frstruct)
 
-        varp = b.struct_gep(frame, voff)
-        context.rc = b.load(varp)
+          varp = b.struct_gep(frame, voff)
+          context.rc = b.load(varp)
+        end
         context.org = alocal[:name]
         context
       }]
@@ -1273,9 +1288,6 @@ class YarvTranslator<YarvVisitor
     srctype = src[0]
     srcvalue = src[1]
 
-    if dsttype.type then
-      dsttype.type = dsttype.type.dup_type
-    end
     srctype.add_same_value(dsttype)
     dsttype.add_same_value(srctype)
 
@@ -1284,6 +1296,9 @@ class YarvTranslator<YarvVisitor
       context = oldrescode.call(b, context)
       context = srcvalue.call(b, context)
       rval = context.rc
+
+      dsttype.type = dsttype.type.dup_type
+      dsttype.type.content = rval
 
       fcp = context.local_vars[0][:area]
       (slev).times do
