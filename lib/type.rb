@@ -72,11 +72,11 @@ class RubyType
   end
 
   def self.clear_content
-#    @@type_table.each do |ty|
-#      if ty.type then
-#        ty.type = ty.type.dup_type
-#      end
-#    end
+    @@type_table.each do |ty|
+      if ty.type then
+        ty.type.content = nil
+      end
+    end
   end
 
   def self.resolve
@@ -127,9 +127,9 @@ class RubyType
           mess += "  #{@name}(#{@type.inspect2}) define in #{@line_no} \n"
           raise mess
         elsif ty.type then
-          if dupp then
-            ty.type = @type.dup_type
-          end
+#          if dupp then
+#            ty.type = @type.dup_type
+#          end
         else
           if dupp then
             ty.type = @type.dup_type

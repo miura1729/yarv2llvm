@@ -202,7 +202,6 @@ class YarvTranslator<YarvVisitor
         end
         argt[numarg - 1].add_same_value local[-numarg][:type]
         local[-numarg][:type].add_same_type argt[numarg - 1]
-        RubyType.clear_content
         
         minfo[:defined] = true
       end
@@ -279,7 +278,6 @@ class YarvTranslator<YarvVisitor
       rett2 = MethodDefinition::RubyMethod[info[1]][:rettype]
       rett2.add_same_value retexp[0]
       retexp[0].add_same_type rett2
-      RubyType.clear_content
       RubyType.resolve
       
       have_yield = @have_yield
@@ -364,6 +362,7 @@ class YarvTranslator<YarvVisitor
         b.br(blk)
       end
       context.curln = ln
+      RubyType.clear_content
       b.set_insert_point(blk)
       context
     }
@@ -413,7 +412,6 @@ class YarvTranslator<YarvVisitor
     end
 
     # p @expstack.map {|n| n[1]}
-    RubyType.clear_content
   end
   
   def visit_default(code, ins, local, ln, info)
@@ -694,7 +692,6 @@ class YarvTranslator<YarvVisitor
           p[n][0].add_same_type argtype[n]
           argtype[n].add_same_value p[n][0]
         end
-        RubyType.clear_content
           
         @expstack.push [rettype,
           lambda {|b, context|
@@ -866,6 +863,7 @@ class YarvTranslator<YarvVisitor
         context.block_value[iflab] = bval
       end
       b.cond_br(s1[1].call(b, context).rc, tblock, eblock)
+      RubyType.clear_content
       b.set_insert_point(eblock)
 
       context
@@ -905,6 +903,7 @@ class YarvTranslator<YarvVisitor
         context.block_value[iflab] = bval
       end
       b.cond_br(s1[1].call(b, context).rc, eblock, tblock)
+      RubyType.clear_content
       b.set_insert_point(eblock)
 
       context
@@ -1137,8 +1136,6 @@ class YarvTranslator<YarvVisitor
       fix = RubyType.fixnum(info[3])
       idx[0].add_same_type(fix)
       fix.add_same_value(idx[0])
-      RubyType.clear_content
-      RubyType.resolve
     end
 
     RubyType.resolve
@@ -1164,8 +1161,8 @@ class YarvTranslator<YarvVisitor
             context
 
           else
-            p arr[0].type.element_content
-            p idxp
+#            p arr[0].type.element_content
+#            p idxp
             if cont = arr[0].type.element_content[idxp] then
               # Content of array corresponding index exists
               context.rc = cont

@@ -57,7 +57,7 @@ EOS
   end
 #=end
   def test_array3
-    YARV2LLVM::compile(<<-EOS, {:disasm => true, :dump_yarv => false, :optimize=> false})
+    YARV2LLVM::compile(<<-EOS, {:disasm => true, :dump_yarv => false, :optimize=> false, :array_range_check => false})
 def array3
   a = [1, 2, 3, 4, 5]
   i = 0

@@ -20,8 +20,8 @@ module MethodDefinition
           arr = @expstack.pop
           RubyType.resolve
           if arr[0].type then
-            val[0].add_same_type(arr[0].type.element_type)
-            arr[0].type.element_type.add_same_type(val[0])
+            val[0].add_same_value(arr[0].type.element_type)
+            arr[0].type.element_type.add_same_value(val[0])
           end
 
           oldrescode = @rescode
@@ -30,7 +30,7 @@ module MethodDefinition
             context = oldrescode.call(b, context)
 
             val[0].add_same_type(arr[0].type.element_type)
-            arr[0].type.element_type.add_same_type(val[0])
+            arr[0].type.element_type.add_same_value(val[0])
             RubyType.resolve
 
             case arr[0].type

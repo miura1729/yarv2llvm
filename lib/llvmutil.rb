@@ -22,13 +22,13 @@ module LLVMUtil
       if p2[0].type == nil then
         print "ambious type #{p2[1].call(b, context).org}\n"
       else
-        p1[0].type = p2[0].type
+        p1[0].type = p2[0].type.dup_type
       end
     else
       if p2[0].type and p1[0].type.llvm != p2[0].type.llvm then
         print "diff type #{p1[1].call(b, context).org}(#{p1[0].inspect2}) and #{p2[1].call(b, context).org}(#{p2[0].inspect2}) \n"
       else
-        p2[0].type = p1[0].type
+        p2[0].type = p1[0].type.dup_type
       end
     end
   end
@@ -113,7 +113,7 @@ module SendUtil
 
       if minfo then
         v[0].add_same_type(minfo[:argtype][narg - n])
-        minfo[:argtype][narg - n].add_same_type(v[0])
+        minfo[:argtype][narg - n].add_same_value(v[0])
       end
 
       para[n] = v
@@ -146,6 +146,13 @@ module SendUtil
         }]
       
       para.push [local[1][:type], lambda {|b, context|
+          # Send with block may break local frame, so must clear local 
+          # value cache
+          local.each do |le|
+            if le[:type].type then
+              le[:type].type.content = nil
+            end
+          end
           gen_get_block_ptr(info, blk, b, context)
         }]
     end
