@@ -14,6 +14,8 @@ class Context
     @curln = nil
     @builder = builder
     @current_frame = nil
+    @array_alloca_area = nil
+    @array_alloca_size = nil
   end
 
   attr_accessor :local_vars
@@ -23,6 +25,8 @@ class Context
   attr_accessor :curln
   attr_accessor :block_value
   attr_accessor :current_frame
+  attr_accessor :array_alloca_area
+  attr_accessor :array_alloca_size
   attr :builder
   attr :frame_struct
 end
@@ -123,7 +127,10 @@ class YarvTranslator<YarvVisitor
     # Trie means current method include 
     # invokeblock instruction (yield statement)
     @have_yield = false
-    
+
+    # Size of alloca area for call rb_ary_new4
+    #  nil is not allocate
+    @array_alloca_size = nil
   end
 
   def run
@@ -216,6 +223,9 @@ class YarvTranslator<YarvVisitor
       frstp = Type.pointer(frst)
       @frame_struct[code] = frstp
       curframe = b.alloca(frst, 1)
+      if context.array_alloca_size then
+        context.array_alloca_area = b.alloca(VALUE, context.array_alloca_size)
+      end
       context.current_frame = curframe
       # Generate pointer to variable access
       context.local_vars.each_with_index {|vars, n|
@@ -328,6 +338,7 @@ class YarvTranslator<YarvVisitor
         b = @builder.define_function(info[1].to_s, 
                                    retexp[0], argtype, is_mkstub)
         context = Context.new(local, @builder)
+        context.array_alloca_size = @array_alloca_size
         context = rescode.call(b, context)
         b.return(retexp[1].call(b, context).rc)
 
@@ -566,6 +577,12 @@ class YarvTranslator<YarvVisitor
       end
       etype = v[0].type.llvm
     }
+    if nele != 0 then
+      if @array_alloca_size == nil or @array_alloca_size < nele then
+        @array_alloca_size = nele
+      end
+    end
+        
     inits.reverse!
     @expstack.push [RubyType.new(ArrayType.new(etype), info[3]),
       lambda {|b, context|
@@ -577,7 +594,7 @@ class YarvTranslator<YarvVisitor
           pppp "newarray END"
         else
           initsize = inits.size
-          initarea = b.alloca(VALUE, initsize)
+          initarea = context.array_alloca_area
           inits.each_with_index do |e, n|
             context = e[1].call(b, context)
             sptr = b.gep(initarea, n.llvm)

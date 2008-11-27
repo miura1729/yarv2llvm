@@ -224,6 +224,24 @@ EOS
    assert_equal(tnestedarray, [[1], [2]])
   end
 
+  def test_gc_test
+    YARV2LLVM::compile(<<-EOS)
+def tgc
+  i = 140000
+  b = [1]
+  while i > 0
+    a = [1, 2, 3, 4, 5, 7, 8]
+    c = [1, 2, 3, 4]
+    i = i - 1
+  end
+  b
+end
+EOS
+   GC::Profiler.enable
+   assert_equal(tgc, [1])
+   GC::Profiler.report
+  end
+
 # I can't pass this test yet.
 =begin
   def test_complex_type
