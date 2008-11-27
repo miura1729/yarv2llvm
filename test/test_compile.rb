@@ -139,13 +139,15 @@ EOS
 
  def test_send_with_block
    YARV2LLVM::compile(<<-EOS)
-def times
-  j = 0
-  while j < self
-    yield j
-    j = j + 1
+class Fixnum
+  def times
+    j = 0
+    while j < self
+      yield j
+      j = j + 1
+    end
+    0
   end
-  0
 end
 
 def send_with_block(n)
@@ -227,7 +229,7 @@ EOS
   def test_gc_test
     YARV2LLVM::compile(<<-EOS)
 def tgc
-  i = 140000
+  i = 320000
   b = [1]
   while i > 0
     a = [1, 2, 3, 4, 5, 7, 8]

@@ -15,9 +15,9 @@ module MethodDefinition
     :[]= => {
       :inline_proc => 
         lambda {
-          val = @expstack.pop
-          idx = @expstack.pop
-          arr = @expstack.pop
+          val = @para[:args][0]
+          idx = @para[:args][1]
+          arr = @para[:receiver]
           RubyType.resolve
           if arr[0].type then
             val[0].add_same_value(arr[0].type.element_type)
@@ -63,9 +63,9 @@ module MethodDefinition
     :to_f => {
       :inline_proc => 
         lambda {
-          recv = @expstack.pop
+          recv = @para[:args][:receiver]
 
-          @expstack.push [RubyType.float(@info[3], 'Return type of to_f'),
+          @expstack.push [RubyType.float(@para[:info][3], 'Return type of to_f'),
             lambda {|b, context|
               context = recv.call(b, context)
               val = context.rc
@@ -82,7 +82,7 @@ module MethodDefinition
     :p => {
       :inline_proc =>
         lambda {
-          pterm = @expstack.pop
+          pterm = @para[:args][0]
           @expstack.push [pterm[0], 
             lambda {|b, context|
               context = pterm[1].call(b, context)
@@ -97,14 +97,24 @@ module MethodDefinition
   
   # can be maped to C function
   CMethod = {
-    :sqrt => 
-      {:rettype => Type::DoubleTy,
-      :argtype => [Type::DoubleTy],
-      :cname => "sqrt"}
+    :Math => {
+      :sqrt => 
+        {:rettype => Type::DoubleTy,
+        :argtype => [Type::DoubleTy],
+        :cname => "llvm.sqrt.f64"},
+      :sin => 
+        {:rettype => Type::DoubleTy,
+        :argtype => [Type::DoubleTy],
+        :cname => "llvm.sin.f64"},
+      :cos => 
+        {:rettype => Type::DoubleTy,
+        :argtype => [Type::DoubleTy],
+        :cname => "llvm.cos.f64"},
+    },
   }
 
   # definition by yarv2llvm and arg/return type is C type (int, float, ...)
-  RubyMethod = {}
+RubyMethod =Hash.new {|hash, key| hash[key] = {}}
 
   # stub for RubyCMethod. arg/return type is always VALUE
   RubyMethodStub = {}

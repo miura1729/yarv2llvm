@@ -177,9 +177,9 @@ class YarvTranslator<YarvVisitor
     @locals[code] = local
     numarg = code.header['misc'][:arg_size]
 
-    # regist function to RubyCMthhod for recursive call
+    # regist function to RubyMthhod for recursive call
     if info[1] then
-      minfo = MethodDefinition::RubyMethod[info[1]]
+      minfo = MethodDefinition::RubyMethod[info[0]][info[1]]
       if minfo == nil then
         argt = []
         1.upto(numarg) do |n|
@@ -192,7 +192,7 @@ class YarvTranslator<YarvVisitor
           argt.push local[0][:type]
           argt.push local[1][:type]
         end
-        MethodDefinition::RubyMethod[info[1]]= {
+        MethodDefinition::RubyMethod[info[0]][info[1]]= {
           :defined => true,
           :argtype => argt,
           :rettype => RubyType.new(nil, info[3], "return type of #{info[1]}")
@@ -285,7 +285,7 @@ class YarvTranslator<YarvVisitor
           }]
       end
       rescode = @rescode
-      rett2 = MethodDefinition::RubyMethod[info[1]][:rettype]
+      rett2 = MethodDefinition::RubyMethod[info[0]][info[1]][:rettype]
       rett2.add_same_value retexp[0]
       retexp[0].add_same_type rett2
       RubyType.resolve
@@ -335,7 +335,7 @@ class YarvTranslator<YarvVisitor
           is_mkstub = false
         end
 
-        b = @builder.define_function(info[1].to_s, 
+        b = @builder.define_function(info[0], info[1].to_s, 
                                    retexp[0], argtype, is_mkstub)
         context = Context.new(local, @builder)
         context.array_alloca_size = @array_alloca_size
@@ -679,21 +679,47 @@ class YarvTranslator<YarvVisitor
   include SendUtil
   def visit_send(code, ins, local, ln, info)
     mname = ins[1]
+    nargs = ins[2]
+    isfunc = ((ins[4] & 8) != 0) # true: function type, false: method type
+    args = []
+    0.upto(nargs - 1) do |n|
+      args[n] = @expstack.pop
+    end
     
+    receiver = nil
+    if !isfunc then
+      receiver = @expstack.pop
+    end
+    RubyType.resolve
+    recklass = receiver ? receiver[0].klass : nil
+   
+    if minfo = MethodDefinition::RubyMethod[recklass][mname] then
+      pppp "RubyMethod called #{mname.inspect}"
+      para = gen_arg_eval(args, receiver, ins, local, info, minfo)
+
+      @expstack.push [minfo[:rettype],
+        lambda {|b, context|
+          func = minfo[:func]
+          gen_call(func, para ,b, context)
+        }]
+      return
+    end
+
     if funcinfo = MethodDefinition::SystemMethod[mname] then
-      funcinfo[:args].downto(1) do |n|
-        @expstack.pop
-      end
       return
     end
 
     if funcinfo = MethodDefinition::InlineMethod[mname] then
-      @info = info
+      @para = {:info => info, :args => args, :receiver => receiver}
       instance_eval &funcinfo[:inline_proc]
       return
     end
 
-    if funcinfo = MethodDefinition::CMethod[mname] then
+    funcinfo = nil
+    if MethodDefinition::CMethod[recklass] then
+      funcinfo = MethodDefinition::CMethod[recklass][mname]
+    end
+    if funcinfo then
       rettype = RubyType.new(funcinfo[:rettype], info[3], "return type of #{mname}")
       argtype = funcinfo[:argtype].map {|ts| RubyType.new(ts, info[3])}
       cname = funcinfo[:cname]
@@ -703,40 +729,25 @@ class YarvTranslator<YarvVisitor
         ftype = Type.function(rettype.type.llvm, argtype2)
         func = @builder.external_function(cname, ftype)
 
-        p = []
-        0.upto(ins[2] - 1) do |n|
-          p[n] = @expstack.pop
-          p[n][0].add_same_type argtype[n]
-          argtype[n].add_same_value p[n][0]
+        args.each_with_index do |pe, n|
+          pe[0].add_same_type argtype[n]
+          argtype[n].add_same_value pe[0]
         end
           
         @expstack.push [rettype,
           lambda {|b, context|
-            gen_call(func, p, b, context)
+            gen_call(func, args, b, context)
           }
         ]
         return
       end
     end
 
-    if minfo = MethodDefinition::RubyMethod[mname] then
-      pppp "RubyMethod called #{mname.inspect}"
-      para = gen_arg_eval(@expstack, ins, local, info, minfo)
-
-      @expstack.push [minfo[:rettype],
-        lambda {|b, context|
-          minfo = MethodDefinition::RubyMethod[mname]
-          func = minfo[:func]
-          gen_call(func, para ,b, context)
-        }]
-      return
-    end
-
     # Undefined method, it may be forward call.
     pppp "RubyMethod forward called #{mname.inspect}"
 
     # minfo doesn't exist yet
-    para = gen_arg_eval(@expstack, ins, local, info, nil)
+    para = gen_arg_eval(args, receiver, ins, local, info, nil)
 
     rett = RubyType.new(nil, info[3], "Return type of #{mname}")
     @expstack.push [rett,
@@ -755,7 +766,7 @@ class YarvTranslator<YarvVisitor
 
       }]
 
-    MethodDefinition::RubyMethod[mname]= {
+    MethodDefinition::RubyMethod[recklass][mname]= {
       :defined => false,
       :argtype => para.map {|ele| ele[0]},
       :rettype => rett
@@ -1178,8 +1189,6 @@ class YarvTranslator<YarvVisitor
             context
 
           else
-#            p arr[0].type.element_content
-#            p idxp
             if cont = arr[0].type.element_content[idxp] then
               # Content of array corresponding index exists
               context.rc = cont
@@ -1354,6 +1363,9 @@ def compile(str, opt = {}, bind = TOPLEVEL_BINDING)
 end
 
 def compcommon(is, opt, bind)
+  DEF_OPTION.each do |key, value|
+    OPTION[key] = value
+  end
   opt.each do |key, value|
     OPTION[key] = value
   end

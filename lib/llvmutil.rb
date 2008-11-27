@@ -86,10 +86,12 @@ module SendUtil
   end
 =end
 
-  def gen_get_block_ptr(info, blk, b, context)
+  def gen_get_block_ptr(receiver, info, blk, b, context)
+    recklass = receiver ? receiver[0].klass : nil
     blab = (info[1].to_s + '_blk_' + blk[1].to_s).to_sym
-    minfo = MethodDefinition::RubyMethod[blab]
+    minfo = MethodDefinition::RubyMethod[recklass][blab]
     func2 = minfo[:func]
+
     if func2 == nil then
       argtype = minfo[:argtype].map {|ele|
         ele.type.llvm
@@ -102,27 +104,23 @@ module SendUtil
     context
   end
 
-  def gen_arg_eval(expstack, ins, local, info, minfo)
-    isfunc = ((ins[4] & 8) != 0) # true: function type, false: method type
+  def gen_arg_eval(args, receiver, ins, local, info, minfo)
     blk = ins[3]
     
     para = []
-    narg = ins[2] - 1
-    0.upto(narg) do |n|
-      v = @expstack.pop
-
+    nargs = ins[2]
+    args.each_with_index do |pe, n|
       if minfo then
-        v[0].add_same_type(minfo[:argtype][narg - n])
-        minfo[:argtype][narg - n].add_same_value(v[0])
+        pe[0].add_same_type(minfo[:argtype][nargs - n - 1])
+        minfo[:argtype][nargs - n - 1].add_same_value(pe[0])
       end
-
-      para[n] = v
+      para[n] = pe
     end
     para.reverse!
  
     v = nil
-    if !isfunc then
-      v = @expstack.pop
+    if receiver then
+      v = receiver
     else
       v = [local[2][:type], 
         lambda {|b, context|
@@ -153,7 +151,8 @@ module SendUtil
               le[:type].type.content = nil
             end
           end
-          gen_get_block_ptr(info, blk, b, context)
+          # receiver of block always nil
+          gen_get_block_ptr(nil, info, blk, b, context)
         }]
     end
 

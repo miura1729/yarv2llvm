@@ -49,7 +49,7 @@ class LLVMBuilder
     pppp "Make stub #{name} end"
   end
 
-  def define_function(name, rett, argt, is_mkstub)
+  def define_function(klass, name, rett, argt, is_mkstub)
     argtl = argt.map {|a| a.type.llvm}
     rettl = rett.type.llvm
     type = Type.function(rettl, argtl)
@@ -59,7 +59,7 @@ class LLVMBuilder
       @stub = make_stub(name, rett, argt, @func)
     end
 
-    MethodDefinition::RubyMethod[name.to_sym][:func] = @func
+    MethodDefinition::RubyMethod[klass][name.to_sym][:func] = @func
 
     eb = @func.create_block
     eb.builder

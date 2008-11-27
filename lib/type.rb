@@ -12,7 +12,7 @@ class RubyType
 
   @@type_table = []
 
-  def initialize(type, lno = nil, name = nil)
+  def initialize(type, lno = nil, name = nil, klass = nil)
     @name = name
     @line_no = lno
     if type == nil 
@@ -22,12 +22,18 @@ class RubyType
     else
       @type = PrimitiveType.new(type)
     end
+    if klass then
+      @klass = klass.name.to_sym
+    else
+      @klass = nil
+    end
     @resolveed = false
     @same_type = []
     @same_value = []
     @@type_table.push self
   end
   attr_accessor :type
+  attr_accessor :klass
 
   def dup_type
 #    no = self.class.new(nil)
@@ -75,6 +81,10 @@ class RubyType
     @@type_table.each do |ty|
       if ty.type then
         ty.type.content = nil
+        if ty.type.is_a?(ArrayType) then
+          ty.type.ptr = nil
+          ty.type.element_content = {}
+        end
       end
     end
   end
@@ -100,8 +110,10 @@ class RubyType
           if ty.type.is_a?(@type.class) and ty.type.class != @type.class then
             if dupp then
               @type = ty.type.dup_type
+              @klass = ty.klass
             else
               @type = ty.type
+              @klass = ty.klass
             end
             @resolveed = false
             resolve
@@ -112,8 +124,10 @@ class RubyType
             if ty.type != @type then
               if dupp then
                 ty.type = @type.dup_type
+                ty.klass = klass
               else
                 ty.type = @type
+                ty.klass = klass
               end
             end
             ty.resolve
@@ -133,8 +147,10 @@ class RubyType
         else
           if dupp then
             ty.type = @type.dup_type
+            ty.klass = klass
           else
             ty.type = @type
+            ty.klass = klass
           end
           ty.resolve
         end
@@ -154,48 +170,48 @@ class RubyType
     end
   end
 
-  def self.fixnum(lno = nil, name = nil)
-    RubyType.new(Type::Int32Ty, lno, name)
+  def self.fixnum(lno = nil, name = nil, klass = nil)
+    RubyType.new(Type::Int32Ty, lno, name, klass)
   end
 
-  def self.float(lno = nil, name = nil)
-    RubyType.new(Type::DoubleTy, lno, name)
+  def self.float(lno = nil, name = nil, klass = nil)
+    RubyType.new(Type::DoubleTy, lno, name, klass)
   end
 
-  def self.string(lno = nil, name = nil)
-    RubyType.new(StringType.new, lno, name)
+  def self.string(lno = nil, name = nil, klass = nil)
+    RubyType.new(StringType.new, lno, name, klass)
   end
 
-  def self.symbol(lno = nil, name = nil)
-    RubyType.new(VALUE, lno, name)
+  def self.symbol(lno = nil, name = nil, klass = nil)
+    RubyType.new(VALUE, lno, name, klass)
   end
 
-  def self.value(lno = nil, name = nil)
-    RubyType.new(VALUE, lno, name)
+  def self.value(lno = nil, name = nil, klass = nil)
+    RubyType.new(VALUE, lno, name, klass)
   end
 
   def self.typeof(obj, lno = nil, name = nil)
     case obj
     when Fixnum
-      RubyType.fixnum(lno, name)
+      RubyType.fixnum(lno, name, Fixnum)
 
     when Float
-      RubyType.float(lno, name)
+      RubyType.float(lno, name, Float)
 
     when String
-      RubyType.string(lno, obj)
+      RubyType.string(lno, obj, String)
 
     when Symbol
-      RubyType.symbol(lno, name)
+      RubyType.symbol(lno, obj, Symbol)
 
     when Class
-      RubyType.value(lno, name)
+      RubyType.value(lno, obj, obj)
 
     when Module
-      RubyType.value(lno, name)
+      RubyType.value(lno, obj, obj)
 
     when Object
-      RubyType.value(lno, name)
+      RubyType.value(lno, obj, obj)
 
     else
       raise "Unsupported type #{obj} in #{lno} (#{name})"
@@ -343,7 +359,7 @@ class ArrayType<AbstructContainerType
   include RubyHelpers
 
   def initialize(etype)
-    @element_type = RubyType.new(etype)
+    @element_type = RubyType.new(etype, nil, nil, Array)
     @ptr = nil
     @element_content = Hash.new
   end
@@ -383,7 +399,7 @@ class StringType<AbstructContainerType
   include RubyHelpers
 
   def initialize
-    @element_type = RubyType.new(CHAR)
+    @element_type = RubyType.new(CHAR, nil, nil, Fixnum)
   end
   attr :element_type
 

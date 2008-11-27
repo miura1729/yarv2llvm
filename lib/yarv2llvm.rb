@@ -14,7 +14,7 @@ def pppp(n)
 end
 
 module YARV2LLVM
-OPTION = {
+DEF_OPTION = {
   :disasm => false,
   :optimize => true,
   :dump_yarv => false,
@@ -23,6 +23,7 @@ OPTION = {
 
   :array_range_check => true,
 }
+OPTION = {}
 end
 
 class Float
