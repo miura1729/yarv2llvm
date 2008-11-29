@@ -160,7 +160,7 @@ class YarvTranslator<YarvVisitor
     end
     local[0][:type] = RubyType.new(P_CHAR, info[3], "Parent frame")
     local[1][:type] = RubyType.new(MACHINE_WORD, info[3], "Pointer to block")
-    local[2][:type] = RubyType.new(nil, info[3], "self")
+    local[2][:type] = RubyType.from_sym(info[0], info[3], "self")
 
     # Argument parametor |...| is omitted.
     an = code.header['locals'].size + 1
@@ -187,7 +187,9 @@ class YarvTranslator<YarvVisitor
         end
         #        argt.push local[2][:type]
         # self
-        argt.push RubyType.value
+        if info[0] or code.header['type'] != :method then
+          argt.push RubyType.value
+        end
         if code.header['type'] == :block or @have_yield then
           argt.push local[0][:type]
           argt.push local[1][:type]
@@ -240,13 +242,17 @@ class YarvTranslator<YarvVisitor
         b.store(arg[n - 1], lvars[-n][:area])
       end
 
+      blkpoff = numarg
       # Store self
-      b.store(arg[numarg], lvars[2][:area])
+      if info[0] or code.header['type'] != :method then
+        b.store(arg[numarg], lvars[2][:area])
+        blkpoff = blkpoff + 1
+      end
 
       # Store parent frame as argument
-      if arg[numarg + 1] then
-        b.store(arg[numarg + 1], lvars[0][:area])
-        b.store(arg[numarg + 2], lvars[1][:area])
+      if arg[blkpoff] then
+        b.store(arg[blkpoff], lvars[0][:area])
+        b.store(arg[blkpoff + 1], lvars[1][:area])
       end
 
       context
@@ -265,7 +271,9 @@ class YarvTranslator<YarvVisitor
 
     # Self
     # argtype.push local[2][:type]
-    argtype.push RubyType.value
+    if info[0] or code.header['type'] != :method then
+      argtype.push RubyType.value
+    end
     
     if code.header['type'] == :block or @have_yield then
       # Block frame
@@ -312,15 +320,19 @@ class YarvTranslator<YarvVisitor
           end
         end
 
-        if argtype[numarg].type == nil then
-          raise "Argument type is ambious self #{info[1]} in #{info[3]}"
+        blkpoff = numarg
+        if info[0] or code.header['type'] != :method then
+          if argtype[numarg].type == nil then
+            raise "Argument type is ambious self #{info[1]} in #{info[3]}"
+          end
+          blkpoff = blkpoff + 1
         end
 
         if code.header['type'] == :block or have_yield then
-          if argtype[numarg + 1].type == nil then
+          if argtype[blkpoff].type == nil then
             raise "Argument type is ambious parsnt frame #{info[1]} in #{info[3]}"
           end
-          if argtype[numarg + 2].type == nil then
+          if argtype[blkpoff + 1].type == nil then
             raise "Block function pointer is ambious parsnt frame #{info[1]} in #{info[3]}"
           end
 
@@ -759,6 +771,9 @@ class YarvTranslator<YarvVisitor
             VALUE
           end
         }
+        if rett.type == nil then
+          raise "Return type is ambious: #{recklass}##{mname}"
+        end
         ftype = Type.function(rett.type.llvm, argtype)
         func = context.builder.get_or_insert_function(mname, ftype)
         args = []
@@ -1377,14 +1392,22 @@ def compcommon(is, opt, bind)
   MethodDefinition::RubyMethodStub.each do |key, m|
     name = key
     n = 0
-    m[:argt].pop
-    if m[:argt] == [] then
-      args = ""
-      args2 = ", self"
+    args = ""
+    args2 = ""
+    if m[:receiver] then
+      m[:argt].pop
+      if m[:argt] != [] then
+        args = m[:argt].map {|x|  n += 1; "p" + n.to_s}.join(',')
+        args2 = ', ' + args
+      end
+      args2 = args2 + ", self"
     else
-      args = m[:argt].map {|x|  n += 1; "p" + n.to_s}.join(',')
-      args2 = ', ' + args + ", self"
+      if m[:argt] != [] then
+        args = m[:argt].map {|x|  n += 1; "p" + n.to_s}.join(',')
+        args2 = ', ' + args
+      end
     end
+
 #    df = "def #{key}(#{args});LLVM::ExecutionEngine.run_function(YARV2LLVM::MethodDefinition::RubyMethodStub['#{key}'][:stub]#{args2});end" 
     df = "def #{key}(#{args});LLVM::ExecutionEngine.run_function(YARV2LLVM::MethodDefinition::RubyMethodStub['#{key}'][:stub]#{args2});end" 
     eval df, bind

@@ -21,7 +21,7 @@ class LLVMBuilder
     @externed_function = {}
   end
 
-  def make_stub(name, rett, argt, orgfunc)
+  def make_stub(receiver, name, rett, argt, orgfunc)
     pppp "Make stub #{name}"
     sname = "__stub_" + name
     stype = Type.function(VALUE, [VALUE] * argt.size)
@@ -45,21 +45,22 @@ class LLVMBuilder
       :sname => sname,
       :stub => @stubfunc,
       :argt => argt,
-      :type => stype}
+      :type => stype,
+      :receiver => receiver}
     pppp "Make stub #{name} end"
   end
 
-  def define_function(klass, name, rett, argt, is_mkstub)
+  def define_function(receiver, name, rett, argt, is_mkstub)
     argtl = argt.map {|a| a.type.llvm}
     rettl = rett.type.llvm
     type = Type.function(rettl, argtl)
     @func = @module.get_or_insert_function(name, type)
     
     if is_mkstub then
-      @stub = make_stub(name, rett, argt, @func)
+      @stub = make_stub(receiver, name, rett, argt, @func)
     end
 
-    MethodDefinition::RubyMethod[klass][name.to_sym][:func] = @func
+    MethodDefinition::RubyMethod[receiver][name.to_sym][:func] = @func
 
     eb = @func.create_block
     eb.builder

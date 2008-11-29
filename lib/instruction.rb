@@ -73,8 +73,9 @@ module VMLib
           when :defineclass
             if inst[2] then
               obj = InstSeqTree.new(self, nil, [inst[1], nil, nil])
+              @klasses[inst[1]] ||= []
               obj.init_from_ary(inst[2])
-              @klasses[inst[1]] = obj
+              @klasses[inst[1]].push obj
             end
 
           when :definemethod
@@ -129,7 +130,7 @@ module VMLib
 #          @lblock[curlblock].push inst
             
         else
-          raise inst
+          raise RuntimeError, inst
         end
       end
     end
@@ -142,6 +143,7 @@ module VMLib
       
       stacktop = nil
       body = []
+      clno = Hash.new(0)
       @lblock_list.each do |ln|
         body.push ln
         @lblock[ln].each do |inst|
@@ -153,7 +155,8 @@ module VMLib
 
             when :defineclass
               if inst[2] then
-                cinst[2] = @klasses[inst[1]].to_a
+                cinst[2] = @klasses[inst[1]][clno[inst[1]]].to_a
+                clno[inst[1]] += 1
               end
               
             when :definemethod
@@ -194,8 +197,10 @@ module VMLib
     def traverse_code(info, &action)
       action.call(self, info)
 
-      @klasses.each do |name, cont|
-        cont.traverse_code([name, nil, nil, nil], &action)
+      @klasses.each do |name, carray|
+        carray.each do |cont|
+          cont.traverse_code([name, nil, nil, nil], &action)
+        end
       end
 
       @methodes.each do |name, cont|

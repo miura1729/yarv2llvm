@@ -182,12 +182,38 @@ class RubyType
     RubyType.new(StringType.new, lno, name, klass)
   end
 
+  def self.array(lno = nil, name = nil, klass = nil)
+    RubyType.new(ArrayType.new, lno, name, klass)
+  end
+
   def self.symbol(lno = nil, name = nil, klass = nil)
     RubyType.new(VALUE, lno, name, klass)
   end
 
   def self.value(lno = nil, name = nil, klass = nil)
     RubyType.new(VALUE, lno, name, klass)
+  end
+
+  def self.from_sym(sym, lno, name)
+    case sym
+    when :Fixnum
+      RubyType.fixnum(lno, name, Fixnum)
+
+    when :Float
+      RubyType.float(lno, name, Float)
+
+    when :String
+      RubyType.string(lno, name, String)
+
+    when :Symbol
+      RubyType.symbol(lno, name, Symbol)
+
+    when :Array
+      RubyType.array(lno, name, Array)
+
+    else
+      RubyType.value(lno, name, Object)
+    end
   end
 
   def self.typeof(obj, lno = nil, name = nil)

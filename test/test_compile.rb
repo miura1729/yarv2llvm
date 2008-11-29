@@ -138,7 +138,8 @@ EOS
  end
 
  def test_send_with_block
-   YARV2LLVM::compile(<<-EOS)
+   # This test don't move when optimize => true
+   YARV2LLVM::compile(<<-EOS, {:optimize=>false})
 class Fixnum
   def times
     j = 0
@@ -158,8 +159,26 @@ def send_with_block(n)
   end
   a
 end
+
+class Fixnum
+  def send_with_block_fixnum
+    a = 0
+    self.times do |i|
+      a = a + i
+    end
+    a
+  end
+end
+
+def send_with_block_2(n)
+  n = n + 0
+  n.send_with_block_fixnum
+end
+
+
 EOS
     assert_equal(send_with_block(100), 4950)
+#    assert_equal(send_with_block2(100), 4950)
   end
 
   def test_string

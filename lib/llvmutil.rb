@@ -86,8 +86,7 @@ module SendUtil
   end
 =end
 
-  def gen_get_block_ptr(receiver, info, blk, b, context)
-    recklass = receiver ? receiver[0].klass : nil
+  def gen_get_block_ptr(recklass, info, blk, b, context)
     blab = (info[1].to_s + '_blk_' + blk[1].to_s).to_sym
     minfo = MethodDefinition::RubyMethod[recklass][blab]
     func2 = minfo[:func]
@@ -127,14 +126,16 @@ module SendUtil
           context.rc = b.load(context.local_vars[2][:area])
           context}]
     end
-    para.push [local[2][:type], lambda {|b, context|
-        context = v[1].call(b, context)
-        if v[0].type then
-          rc = v[0].type.to_value(context.rc, b, context)
-          context.rc = rc
-        end
-        context
-      }]
+    if receiver then
+      para.push [local[2][:type], lambda {|b, context|
+          context = v[1].call(b, context)
+          if v[0].type then
+            rc = v[0].type.to_value(context.rc, b, context)
+            context.rc = rc
+          end
+          context
+        }]
+    end
     if blk[0] then
       para.push [local[0][:type], lambda {|b, context|
           #            gen_get_framaddress(@frame_struct[code], b, context)
@@ -151,8 +152,8 @@ module SendUtil
               le[:type].type.content = nil
             end
           end
-          # receiver of block always nil
-          gen_get_block_ptr(nil, info, blk, b, context)
+          # receiver of block is parent class
+          gen_get_block_ptr(info[0], info, blk, b, context)
         }]
     end
 
