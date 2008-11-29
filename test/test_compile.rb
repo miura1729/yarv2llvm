@@ -139,7 +139,10 @@ EOS
 
  def test_send_with_block
    # This test don't move when optimize => true
-   YARV2LLVM::compile(<<-EOS, {:optimize=>false})
+   # This resason is optimizer tries to ilining calling function pointer
+   # as argument. When pass two different function pointer as argument ,
+   # optimizer crashed.
+   YARV2LLVM::compile(<<-EOS, {:optimize => false})
 class Fixnum
   def times
     j = 0

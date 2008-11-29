@@ -352,7 +352,12 @@ class YarvTranslator<YarvVisitor
         context = Context.new(local, @builder)
         context.array_alloca_size = @array_alloca_size
         context = rescode.call(b, context)
-        b.return(retexp[1].call(b, context).rc)
+        rc = retexp[1].call(b, context).rc
+        if rc then
+          b.return(rc)
+        else
+          b.return(4.llvm)  # nil
+        end
 
         pppp "ret type #{retexp[0].type}"
         pppp "end"
@@ -409,11 +414,13 @@ class YarvTranslator<YarvVisitor
             if commer_label[0] == nil then
               commer_label.shift
             end
-            rc = b.phi(context.block_value[commer_label[0]][0].type.llvm)
+            if context.block_value[commer_label[0]] then
+              rc = b.phi(context.block_value[commer_label[0]][0].type.llvm)
             
-            commer_label.reverse.each do |lab|
-              rc.add_incoming(context.block_value[lab][1], 
-                              context.blocks[lab])
+              commer_label.reverse.each do |lab|
+                rc.add_incoming(context.block_value[lab][1], 
+                                context.blocks[lab])
+              end
             end
 
             context.rc = rc
@@ -508,7 +515,11 @@ class YarvTranslator<YarvVisitor
   # setclassvariable
 
   def visit_getconstant(code, ins, local, ln, info)
-    val = eval(ins[1].to_s, @binding)
+    klass = @expstack.pop
+    val = nil
+    if klass[0].name == "nil" then
+      val = eval(ins[1].to_s, @binding)
+    end
     @expstack.push [RubyType.typeof(val, info[3], ins[1]),
       lambda {|b, context|
         context.rc = val.llvm
@@ -527,13 +538,13 @@ class YarvTranslator<YarvVisitor
 
   def visit_putnil(code, ins, local, ln, info)
     # Nil is not support yet.
-=begin
+#=begin
     @expstack.push [RubyType.value(info[3], "nil"), 
       lambda {|b, context| 
         context.rc = 4.llvm   # 4 means nil
         context
       }]
-=end
+#=end
   end
 
   def visit_putself(code, ins, local, ln, info)
@@ -701,6 +712,8 @@ class YarvTranslator<YarvVisitor
     receiver = nil
     if !isfunc then
       receiver = @expstack.pop
+    else
+      @expstack.pop
     end
     RubyType.resolve
     recklass = receiver ? receiver[0].klass : nil
