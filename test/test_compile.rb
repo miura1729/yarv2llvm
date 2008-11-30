@@ -137,6 +137,13 @@ EOS
    assert_equal(f1(1.0), 1.5)
  end
 
+ def test_require
+   YARV2LLVM::compile(<<-EOS)
+require 'sample/e-aux'
+EOS
+   assert(compute_e[0], 2)
+ end
+
  def test_send_with_block
    # This test don't move when optimize => true
    # This resason is optimizer tries to ilining calling function pointer
@@ -213,13 +220,13 @@ EOS
 
   def test_2arg_func
     YARV2LLVM::compile(<<-EOS)
-      def div(x, y)
+      def div1(x, y)
         x / y
       end
 
       def div2(x)
         x = x + 0
-        div(x, 10)
+        div1(x, 10)
       end
 EOS
    assert_equal(div2(100), 10)

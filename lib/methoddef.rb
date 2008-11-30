@@ -12,6 +12,24 @@ module MethodDefinition
   
   # method inline or need special process
   InlineMethod =  {
+    :require => {
+      :inline_proc =>
+        lambda {
+          fn = @para[:args][0][0].name
+          unless File.exist?(fn) then
+            if File.exist?(nfn = fn + ".rb") then
+              fn = nfn
+            end
+          end
+          is = RubyVM::InstructionSequence.compile( File.read(fn), fn, 1, 
+                    {  :peephole_optimization    => true,
+                       :inline_const_cache       => false,
+                       :specialized_instruction  => true,}).to_a
+          iseq = VMLib::InstSeqTree.new(nil, is)
+          @iseqs.push iseq
+        }
+    },
+          
     :[]= => {
       :inline_proc => 
         lambda {

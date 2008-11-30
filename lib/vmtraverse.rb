@@ -33,41 +33,43 @@ end
 
 class YarvVisitor
   def initialize(iseq)
-    @iseq = iseq
+    @iseqs = [iseq]
   end
 
   def run
-    @iseq.traverse_code([nil, nil, nil, nil]) do |code, info|
-      ccde = code
-      while ccde.header['type'] == :block
-        info[1] = (info[1].to_s + '_blk_' + ccde.info[2].to_s).to_sym
-        ccde = ccde.parent
-      end
-
-      local = []
-      visit_block_start(code, nil, local, nil, info)
-      curln = nil
-      code.lblock_list.each do |ln|
-        visit_local_block_start(code, ln, local, ln, info)
-
-        curln = ln
-        code.lblock[ln].each do |ins|
-          if ins.is_a?(Fixnum) then
-            info[3] = ins
-          else
-            opname = ins[0].to_s
-            send(("visit_" + opname).to_sym, code, ins, local, curln, info)
-          end
-
-          case ins[0]
-          when :branchif, :branchunless, :jump
-            curln = (curln.to_s + "_1").to_sym
-          end
+    @iseqs.each do |iseq|
+      iseq.traverse_code([nil, nil, nil, nil]) do |code, info|
+        ccde = code
+        while ccde.header['type'] == :block
+          info[1] = (info[1].to_s + '_blk_' + ccde.info[2].to_s).to_sym
+          ccde = ccde.parent
         end
-        visit_local_block_end(code, ln, local, ln, info)
+        
+        local = []
+        visit_block_start(code, nil, local, nil, info)
+        curln = nil
+        code.lblock_list.each do |ln|
+          visit_local_block_start(code, ln, local, ln, info)
+          
+          curln = ln
+          code.lblock[ln].each do |ins|
+            if ins.is_a?(Fixnum) then
+              info[3] = ins
+            else
+              opname = ins[0].to_s
+              send(("visit_" + opname).to_sym, code, ins, local, curln, info)
+            end
+            
+            case ins[0]
+            when :branchif, :branchunless, :jump
+              curln = (curln.to_s + "_1").to_sym
+            end
+          end
+          visit_local_block_end(code, ln, local, ln, info)
+        end
+        
+        visit_block_end(code, nil, local, nil, info)
       end
-
-      visit_block_end(code, nil, local, nil, info)
     end
   end
 

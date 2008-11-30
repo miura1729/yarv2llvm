@@ -41,6 +41,7 @@ end
 
 
 if __FILE__ == $0 then
+class Fixnum
   def fact(x)
     if x == 1 then
       1
@@ -48,7 +49,8 @@ if __FILE__ == $0 then
       fact(x - 1) * x
     end
   end
-  
+end
+
   a = VMLib::DynamicInstSeq.new
-  p a.iseq_of(method(:fact)).to_a
+  p a.iseq_of(1.method(:fact)).to_a
 end
