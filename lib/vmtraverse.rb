@@ -548,7 +548,7 @@ class YarvTranslator<YarvVisitor
     ivname = ins[1]
     dsttype = @instance_var_tab[info[0]][ivname][:type]
     unless dsttype
-      dsttype = RubyType.new(nil, info[3], "#{INFO[0]}##{ivname}")
+      dsttype = RubyType.new(nil, info[3], "#{info[0]}##{ivname}")
       @instance_var_tab[info[0]][ivname][:type] = dsttype
     end
     src = @expstack.pop

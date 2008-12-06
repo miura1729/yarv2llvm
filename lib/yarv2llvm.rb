@@ -34,6 +34,12 @@ RVALUE_SIZE = 20
 RUBY_SYMBOL_FLAG = 0xe
 end
 
+class Object
+  def llvm
+    immediate
+  end
+end
+
 class Float
   def llvm
     LLVM::Value.get_double_constant(self)

@@ -16,8 +16,9 @@ module MethodDefinition
       :inline_proc =>
         lambda {
           fn = @para[:args][0][0].name
-          unless File.exist?(fn) then
-            if File.exist?(nfn = fn + ".rb") then
+          unless File.exist?(fn)
+            nfn = fn + ".rb"
+            if File.exist?(nfn) then
               fn = nfn
             end
           end
@@ -75,7 +76,7 @@ module MethodDefinition
             lambda {|b, context|
               context.rc = v
               context}]
-      },
+        },
     },
 
     :to_f => {
@@ -110,6 +111,45 @@ module MethodDefinition
               b.call(func, pterm[0].type.to_value(pobj, b, context))
               context}]
         }
+     },
+
+     :new => {
+       :inline_proc =>
+         lambda {
+           rec = @para[:receiver]
+           args = @para[:args]
+           nargs = args.size
+           if nargs != 0 then
+             if @array_alloca_size == nil or @array_alloca_size < nargs then
+                @array_alloca_size = nargs
+             end
+           end
+
+           # This rb_class_new_instance needs stack area as arguments
+           # in spite of with no arguments.
+           if @array_alloca_size == nil then
+             @array_alloca_size = 1
+           end
+           @expstack.push [RubyType.value(@para[:info][3]), 
+             lambda {|b, context|
+               cargs = []
+               context = rec[1].call(b, context)
+               recv = context.rc
+
+               initarea = context.array_alloca_area
+               args.each_with_index do |ele, n|
+                 context = args[1].call(b, context)
+                 rcvalue = ele[0].type.to_value(context.rc, b, context)
+                 sptr = b.gep(initarea, n.llvm)
+                 b.store(rcvalue, sptr)
+               end
+               ftype = Type.function(VALUE, [Type::Int32Ty, P_VALUE, VALUE])
+               fname = 'rb_class_new_instance'
+               builder = context.builder
+               func = builder.external_function(fname, ftype)
+               context.rc = b.call(func, nargs.llvm, initarea, recv)
+               context}]
+         }
      }
   }
   
@@ -132,7 +172,7 @@ module MethodDefinition
   }
 
   # definition by yarv2llvm and arg/return type is C type (int, float, ...)
-RubyMethod =Hash.new {|hash, key| hash[key] = {}}
+  RubyMethod =Hash.new {|hash, key| hash[key] = {}}
 
   # stub for RubyCMethod. arg/return type is always VALUE
   RubyMethodStub = {}

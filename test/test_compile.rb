@@ -297,6 +297,23 @@ EOS
    assert_equal(ivtest1(Foo.new), 33)
   end
 
+  def test_newtest
+    YARV2LLVM::compile(<<-EOS)
+class Foo
+  def test2
+    @bar = 10
+    @bar
+  end
+end
+
+def newtest
+  a = Foo.new
+  a.test2 + 3
+end
+EOS
+   assert_equal(newtest, 13)
+  end
+
 # I can't pass this test yet.
 =begin
   def test_complex_type
