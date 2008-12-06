@@ -22,7 +22,7 @@ def fib_opt2(n)
   if n < 2 then
     1
   else
-    fib_opt(n - 1) + fib_opt(n - 2)
+    fib_opt2(n - 1) + fib_opt2(n - 2)
   end
 end
 EOS

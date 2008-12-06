@@ -1,5 +1,12 @@
 require 'test/unit'
 require 'yarv2llvm'
+
+class Foo
+  def initialize
+    @bar = 10
+  end
+end
+
 class CompileTests < Test::Unit::TestCase
   def test_fib
     YARV2LLVM::compile(<<-EOS)
@@ -271,6 +278,23 @@ EOS
    GC::Profiler.enable
    assert_equal(tgc, [1])
    GC::Profiler.report
+  end
+
+  def test_iv1
+    YARV2LLVM::compile(<<-EOS)
+class Foo
+  def test
+    a = @bar
+    @bar = 20
+    @bar + a
+  end
+end
+
+def ivtest1(obj)
+  obj.test + 3
+end
+EOS
+   assert_equal(ivtest1(Foo.new), 33)
   end
 
 # I can't pass this test yet.

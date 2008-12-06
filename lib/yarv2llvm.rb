@@ -24,6 +24,14 @@ DEF_OPTION = {
   :array_range_check => true,
 }
 OPTION = {}
+
+# From gc.c in ruby1.9
+#     *  sizeof(RVALUE) is
+#     *  20 if 32-bit, double is 4-byte aligned
+#     *  24 if 32-bit, double is 8-byte aligned
+#     *  40 if 64-bit
+RVALUE_SIZE = 20
+RUBY_SYMBOL_FLAG = 0xe
 end
 
 class Float

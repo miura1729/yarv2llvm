@@ -16,6 +16,7 @@ class Context
     @current_frame = nil
     @array_alloca_area = nil
     @array_alloca_size = nil
+    @instance_var_tab = nil
   end
 
   attr_accessor :local_vars
@@ -27,6 +28,7 @@ class Context
   attr_accessor :current_frame
   attr_accessor :array_alloca_area
   attr_accessor :array_alloca_size
+  attr_accessor :instance_var_tab
   attr :builder
   attr :frame_struct
 end
@@ -133,6 +135,13 @@ class YarvTranslator<YarvVisitor
     # Size of alloca area for call rb_ary_new4
     #  nil is not allocate
     @array_alloca_size = nil
+
+    # Table of instance variable. The table contains type information.
+    @instance_var_tab = Hash.new {|hash, klass|
+      hash[klass] = Hash.new {|ivtab, ivname|
+        ivtab[ivname] = {}
+      }
+    }
   end
 
   def run
@@ -310,7 +319,7 @@ class YarvTranslator<YarvVisitor
             e.inspect2
           }.join(', ')
           print ") -> #{retexp[0].inspect2}\n"
-          p "foo"
+          p "---"
         end
 
         pppp "define #{info[1]}"
@@ -318,30 +327,35 @@ class YarvTranslator<YarvVisitor
       
         1.upto(numarg) do |n|
           if argtype[n - 1].type == nil then
-            raise "Argument type is ambious #{local[-n][:name]} of #{info[1]} in #{info[3]}"
+#            raise "Argument type is ambious #{local[-n][:name]} of #{info[1]} in #{info[3]}"
+            argtype[n - 1].type = PrimitiveType.new(VALUE)
           end
         end
 
         blkpoff = numarg
         if info[0] or code.header['type'] != :method then
           if argtype[numarg].type == nil then
-            raise "Argument type is ambious self #{info[1]} in #{info[3]}"
+#            raise "Argument type is ambious self #{info[1]} in #{info[3]}"
+            argtype[numarg].type = PrimitiveType.new(VALUE)
           end
           blkpoff = blkpoff + 1
         end
 
         if code.header['type'] == :block or have_yield then
           if argtype[blkpoff].type == nil then
-            raise "Argument type is ambious parsnt frame #{info[1]} in #{info[3]}"
+#            raise "Argument type is ambious parsnt frame #{info[1]} in #{info[3]}"
+            argtype[blkpoff].type = PrimitiveType.new(VALUE)
           end
           if argtype[blkpoff + 1].type == nil then
-            raise "Block function pointer is ambious parsnt frame #{info[1]} in #{info[3]}"
+#            raise "Block function pointer is ambious parsnt frame #{info[1]} in #{info[3]}"
+            argtype[blkpoff + 1].type = PrimitiveType.new(VALUE)
           end
 
         end
 
         if retexp[0].type == nil then
-          raise "Return type is ambious #{info[1]} in #{info[3]}"
+#          raise "Return type is ambious #{info[1]} in #{info[3]}"
+          retexp[0].type = PrimitiveType.new(VALUE)
         end
 
         is_mkstub = true
@@ -511,8 +525,61 @@ class YarvTranslator<YarvVisitor
     end
   end
 
-  # getinstancevariable
-  # setinstancevariable
+  def visit_getinstancevariable(code, ins, local, ln, info)
+    ivname = ins[1]
+    type = @instance_var_tab[info[0]][ivname][:type]
+    unless type
+      type = RubyType.new(nil, info[3], "#{info[0]}##{ivname}")
+      @instance_var_tab[info[0]][ivname][:type] = type
+    end
+    @expstack.push [type,
+      lambda {|b, context|
+        ftype = Type.function(VALUE, [VALUE, VALUE])
+        func = context.builder.external_function('rb_ivar_get', ftype)
+        ivid = ((ivname.object_id << 1) / RVALUE_SIZE)
+        slf = b.load(context.local_vars[2][:area])
+        val = b.call(func, slf, ivid.llvm)
+        context.rc = type.type.from_value(val, b, context)
+        context
+      }]
+  end
+
+  def visit_setinstancevariable(code, ins, local, ln, info)
+    ivname = ins[1]
+    dsttype = @instance_var_tab[info[0]][ivname][:type]
+    unless dsttype
+      dsttype = RubyType.new(nil, info[3], "#{INFO[0]}##{ivname}")
+      @instance_var_tab[info[0]][ivname][:type] = dsttype
+    end
+    src = @expstack.pop
+    srctype = src[0]
+    srcvalue = src[1]
+    
+    srctype.add_same_value(dsttype)
+    dsttype.add_same_value(srctype)
+
+    oldrescode = @rescode
+    @rescode = lambda {|b, context|
+      pppp "Setinstancevariable start"
+      context = oldrescode.call(b, context)
+      context = srcvalue.call(b, context)
+      srcval = context.rc
+      srcval2 = srctype.type.to_value(srcval, b, context)
+
+      dsttype.type = dsttype.type.dup_type
+      dsttype.type.content = srcval
+      ftype = Type.function(VALUE, [VALUE, VALUE, VALUE])
+      func = context.builder.external_function('rb_ivar_set', ftype)
+      ivid = ((ivname.object_id << 1) / RVALUE_SIZE)
+      slf = b.load(context.local_vars[2][:area])
+      
+      context.rc = b.call(func, slf, ivid.llvm, srcval2)
+      context.org = dsttype.name
+      pppp "Setinstancevariable end"
+      context
+    }
+  end
+
   # getclassvariable
   # setclassvariable
 
@@ -787,7 +854,8 @@ class YarvTranslator<YarvVisitor
           end
         }
         if rett.type == nil then
-          raise "Return type is ambious: #{recklass}##{mname}"
+#          raise "Return type is ambious: #{recklass}##{mname}"
+          rett.type = PrimitiveType.new(VALUE)
         end
         ftype = Type.function(rett.type.llvm, argtype)
         func = context.builder.get_or_insert_function(mname, ftype)
@@ -836,11 +904,13 @@ class YarvTranslator<YarvVisitor
         # type error check
         arg.map {|e|
           if e[0].type == nil then
-            raise "Return type is ambious #{e[0].name} in #{e[0].line_no}"
+            # raise "Return type is ambious #{e[0].name} in #{e[0].line_no}"
+            e[0].type = PrimitiveType.new(VALUE)
           end
         }
         if rett.type == nil then
-          raise "Return type is ambious #{rett.name} in #{rett.line_no}"
+          # raise "Return type is ambious #{rett.name} in #{rett.line_no}"
+          rett.type = PrimitiveType.new(VALUE)
         end
 
         ftype = Type.function(rett.type.llvm, 
