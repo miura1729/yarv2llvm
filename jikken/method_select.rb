@@ -26,10 +26,12 @@ def make_method_call(recvs)
     end
     n = n >> 1
     i = i - 1
-    if n > ele[0] then
-      expterms.push "(((add >> #{i}) - 1) >> 32) + 1"
+    if n > ele[0] and false then
+#      expterms.push "(((add >> #{i}) - 1) >> 32) + 1"
+      expterms.push "((add - #{i}) >> 32) + 1"
     else
-      expterms.push "((add / #{ele[1]} - 1) >> 32) + 1"
+#      expterms.push "((add / #{ele[1]} - 1) >> 32) + 1"
+      expterms.push "((add - #{ele[1]}) >> 32) + 1"
     end
   end
   <<"EOS"
