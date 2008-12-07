@@ -88,15 +88,21 @@ module SendUtil
 
   def gen_get_block_ptr(recklass, info, blk, b, context)
     blab = (info[1].to_s + '_blk_' + blk[1].to_s).to_sym
-    minfo = MethodDefinition::RubyMethod[recklass][blab]
-    func2 = minfo[:func]
+    minfo = MethodDefinition::RubyMethod[blab][recklass]
 
+    func2 = minfo[:func]
     if func2 == nil then
       argtype = minfo[:argtype].map {|ele|
         ele.type.llvm
       }
       rett = minfo[:rettype]
-      ftype = Type.function(rett.type.llvm, argtype)
+      rettllvm = rett.type
+      if rettllvm == nil then
+        rettllvm = VALUE
+      else
+        rettllvm = rettllvm.llvm
+      end
+      ftype = Type.function(rettllvm, argtype)
       func2 = context.builder.get_or_insert_function(blab.to_s, ftype)
     end
     context.rc = b.ptr_to_int(func2, MACHINE_WORD)

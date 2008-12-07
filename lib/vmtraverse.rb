@@ -142,6 +142,11 @@ class YarvTranslator<YarvVisitor
         ivtab[ivname] = {}
       }
     }
+
+    # Table of type of constant.
+    @constant_type_tab = Hash.new {|hash, klass|
+      hash[klass] = {}
+    }
   end
 
   def run
@@ -190,7 +195,13 @@ class YarvTranslator<YarvVisitor
 
     # regist function to RubyMthhod for recursive call
     if info[1] then
-      minfo = MethodDefinition::RubyMethod[info[0]][info[1]]
+      minfo = MethodDefinition::RubyMethod[info[1]][info[0]]
+      if minfo == nil then
+        minfo = MethodDefinition::RubyMethod[info[1]][nil]
+        if minfo then
+          MethodDefinition::RubyMethod[info[1]][info[0]] = minfo
+        end
+      end
       if minfo == nil then
         argt = []
         1.upto(numarg) do |n|
@@ -205,10 +216,10 @@ class YarvTranslator<YarvVisitor
           argt.push local[0][:type]
           argt.push local[1][:type]
         end
-        MethodDefinition::RubyMethod[info[0]][info[1]]= {
+        MethodDefinition::RubyMethod[info[1]][info[0]]= {
           :defined => true,
           :argtype => argt,
-          :rettype => RubyType.new(nil, info[3], "return type of #{info[1]}")
+          :rettype => RubyType.new(nil, info[3], "Return type of #{info[1]}")
         }
       elsif minfo[:defined] then
         raise "#{info[1]} is already defined in #{info[3]}"
@@ -304,7 +315,7 @@ class YarvTranslator<YarvVisitor
           }]
       end
       rescode = @rescode
-      rett2 = MethodDefinition::RubyMethod[info[0]][info[1]][:rettype]
+      rett2 = MethodDefinition::RubyMethod[info[1]][info[0]][:rettype]
       rett2.add_same_value retexp[0]
       retexp[0].add_same_type rett2
       RubyType.resolve
@@ -589,7 +600,12 @@ class YarvTranslator<YarvVisitor
     if klass[0].name == "nil" then
       val = eval(ins[1].to_s, @binding)
     end
-    @expstack.push [RubyType.typeof(val, info[3], ins[1]),
+    type = @constant_type_tab[@binding][ins[1]]
+    if type == nil then
+      type = RubyType.typeof(val, info[3], ins[1])
+      @constant_type_tab[@binding][ins[1]] = type
+    end
+    @expstack.push [type,
       lambda {|b, context|
         context.rc = val.llvm
         context.org = ins[1]
@@ -784,10 +800,16 @@ class YarvTranslator<YarvVisitor
     else
       @expstack.pop
     end
+
     RubyType.resolve
     recklass = receiver ? receiver[0].klass : nil
-   
-    if minfo = MethodDefinition::RubyMethod[recklass][mname] then
+
+    minfo = MethodDefinition::RubyMethod[mname][recklass]
+    if minfo == nil and MethodDefinition::RubyMethod[mname].size == 1 then
+      minfo = MethodDefinition::RubyMethod[mname].values[0]
+    end
+
+    if minfo then
       pppp "RubyMethod called #{mname.inspect}"
       para = gen_arg_eval(args, receiver, ins, local, info, minfo)
 
@@ -813,8 +835,9 @@ class YarvTranslator<YarvVisitor
     if MethodDefinition::CMethod[recklass] then
       funcinfo = MethodDefinition::CMethod[recklass][mname]
     end
+
     if funcinfo then
-      rettype = RubyType.new(funcinfo[:rettype], info[3], "return type of #{mname}")
+      rettype = RubyType.new(funcinfo[:rettype], info[3], "return type of #{mname} in forward call")
       argtype = funcinfo[:argtype].map {|ts| RubyType.new(ts, info[3])}
       cname = funcinfo[:cname]
       
@@ -854,7 +877,7 @@ class YarvTranslator<YarvVisitor
           end
         }
         if rett.type == nil then
-#          raise "Return type is ambious: #{recklass}##{mname}"
+#          raise "Return type is ambious: #{receiver ? receiver[0].klass : nil}##{mname}"
           rett.type = PrimitiveType.new(VALUE)
         end
         ftype = Type.function(rett.type.llvm, argtype)
@@ -864,7 +887,7 @@ class YarvTranslator<YarvVisitor
 
       }]
 
-    MethodDefinition::RubyMethod[recklass][mname]= {
+    MethodDefinition::RubyMethod[mname][recklass]= {
       :defined => false,
       :argtype => para.map {|ele| ele[0]},
       :rettype => rett

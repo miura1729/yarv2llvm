@@ -21,11 +21,20 @@ class LLVMBuilder
     @externed_function = {}
   end
 
+  def to_label(s)
+    ns = s.gsub(/_/, "__")
+    ns.gsub!(/=/, "e_e")
+    ns.gsub!(/!/, "b_b")
+    ns.gsub!(/@/, "a_a")
+    ns.gsub!(/\+/, "p_p")
+    ns
+  end
+
   def make_stub(receiver, name, rett, argt, orgfunc)
     pppp "Make stub #{name}"
     sname = "__stub_" + name
     stype = Type.function(VALUE, [VALUE] * argt.size)
-    @stubfunc = @module.get_or_insert_function(sname, stype)
+    @stubfunc = @module.get_or_insert_function(to_label(sname), stype)
     eb = @stubfunc.create_block
     b = eb.builder
     argv = []
@@ -54,20 +63,20 @@ class LLVMBuilder
     argtl = argt.map {|a| a.type.llvm}
     rettl = rett.type.llvm
     type = Type.function(rettl, argtl)
-    @func = @module.get_or_insert_function(name, type)
+    @func = @module.get_or_insert_function(to_label(name), type)
     
     if is_mkstub and receiver == nil then
       @stub = make_stub(receiver, name, rett, argt, @func)
     end
 
-    MethodDefinition::RubyMethod[receiver][name.to_sym][:func] = @func
+    MethodDefinition::RubyMethod[name.to_sym][receiver][:func] = @func
 
     eb = @func.create_block
     eb.builder
   end
 
   def get_or_insert_function(name, type)
-    ns = name.to_s
+    ns = to_label(name.to_s)
     @module.get_or_insert_function(ns, type)
   end
 
@@ -94,7 +103,8 @@ class LLVMBuilder
       @module = LLVM::Module.read_bitcode(fp.read)
     }
     MethodDefinition::RubyMethodStub.each do |nm, val|
-      val[:stub] = @module.get_or_insert_function(val[:sname], val[:type])
+      nn = to_label(val[:sname])
+      val[:stub] = @module.get_or_insert_function(nn, val[:type])
     end
   end
 

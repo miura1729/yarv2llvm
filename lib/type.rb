@@ -170,46 +170,54 @@ class RubyType
     end
   end
 
-  def self.fixnum(lno = nil, name = nil, klass = nil)
+  def self.fixnum(lno = nil, name = nil, klass = Fixnum)
     RubyType.new(Type::Int32Ty, lno, name, klass)
   end
 
-  def self.float(lno = nil, name = nil, klass = nil)
+  def self.float(lno = nil, name = nil, klass = Float)
     RubyType.new(Type::DoubleTy, lno, name, klass)
   end
 
-  def self.string(lno = nil, name = nil, klass = nil)
+  def self.string(lno = nil, name = nil, klass = String)
     RubyType.new(StringType.new, lno, name, klass)
   end
 
-  def self.array(lno = nil, name = nil, klass = nil)
-    RubyType.new(ArrayType.new, lno, name, klass)
+  def self.array(lno = nil, name = nil)
+    etype = nil
+    if name then
+      etype = RubyType.typeof(name[0], lno, name[0])
+    else
+      etype = RubyType.new(nil)
+    end
+    na = ArrayType.new(nil)
+    na.element_type = etype
+    RubyType.new(na, lno, name, Array)
   end
 
-  def self.symbol(lno = nil, name = nil, klass = nil)
+  def self.symbol(lno = nil, name = nil, klass = Symbol)
     RubyType.new(VALUE, lno, name, klass)
   end
 
-  def self.value(lno = nil, name = nil, klass = nil)
+  def self.value(lno = nil, name = nil, klass = Object)
     RubyType.new(VALUE, lno, name, klass)
   end
 
   def self.from_sym(sym, lno, name)
     case sym
     when :Fixnum
-      RubyType.fixnum(lno, name, Fixnum)
+      RubyType.fixnum(lno, name)
 
     when :Float
-      RubyType.float(lno, name, Float)
+      RubyType.float(lno, name)
 
     when :String
-      RubyType.string(lno, name, String)
+      RubyType.string(lno, name)
 
     when :Symbol
-      RubyType.symbol(lno, name, Symbol)
+      RubyType.symbol(lno, name)
 
     when :Array
-      RubyType.array(lno, name, Array)
+      RubyType.array(lno, name)
 
     else
       RubyType.value(lno, name, Object)
@@ -218,29 +226,29 @@ class RubyType
 
   def self.typeof(obj, lno = nil, name = nil)
     case obj
-    when Fixnum
-      RubyType.fixnum(lno, name, Fixnum)
+    when ::Fixnum
+      RubyType.fixnum(lno, name)
 
-    when Float
-      RubyType.float(lno, name, Float)
+    when ::Float
+      RubyType.float(lno, name)
 
-    when String
-      RubyType.string(lno, obj, String)
+    when ::String
+      RubyType.string(lno, obj)
 
-    when Symbol
-      RubyType.symbol(lno, obj, Symbol)
+    when ::Symbol
+      RubyType.symbol(lno, obj)
 
-    when Class
+    when ::Array
+      RubyType.array(lno, obj)
+
+    when ::Class
       RubyType.value(lno, obj, obj)
 
-    when Module
-      RubyType.value(lno, obj, obj)
-
-    when Object
+    when ::Module
       RubyType.value(lno, obj, obj)
 
     else
-      raise "Unsupported type #{obj} in #{lno} (#{name})"
+      RubyType.value(lno, obj, obj.class)
     end
   end
 end
@@ -358,6 +366,9 @@ class ComplexType
 end
 
 class AbstructContainerType<ComplexType
+  include LLVM
+  include RubyHelpers
+
   def initialize(etype)
     @element_type = RubyType.new(etype)
     @content = nil
@@ -372,7 +383,7 @@ class AbstructContainerType<ComplexType
   end
 
   def llvm
-    nil
+    VALUE
   end
 
   def inspect2
@@ -385,7 +396,7 @@ class ArrayType<AbstructContainerType
   include RubyHelpers
 
   def initialize(etype)
-    @element_type = RubyType.new(etype, nil, nil, Array)
+    @element_type = RubyType.new(etype, nil, nil)
     @ptr = nil
     @element_content = Hash.new
   end
