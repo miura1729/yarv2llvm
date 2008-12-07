@@ -130,7 +130,7 @@ module MethodDefinition
            if @array_alloca_size == nil then
              @array_alloca_size = 1
            end
-           @expstack.push [RubyType.value(@para[:info][3]), 
+           @expstack.push [RubyType.from_sym(rec[0].klass, @para[:info][3], nil), 
              lambda {|b, context|
                cargs = []
                context = rec[1].call(b, context)
@@ -138,7 +138,7 @@ module MethodDefinition
 
                initarea = context.array_alloca_area
                args.each_with_index do |ele, n|
-                 context = args[1].call(b, context)
+                 context = ele[1].call(b, context)
                  rcvalue = ele[0].type.to_value(context.rc, b, context)
                  sptr = b.gep(initarea, n.llvm)
                  b.store(rcvalue, sptr)

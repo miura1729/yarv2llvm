@@ -1171,6 +1171,9 @@ class YarvTranslator<YarvVisitor
 
           when Type::Int32Ty
           context.rc = b.icmp_eq(s1val, s2val)
+
+          when VALUE
+          context.rc = b.icmp_eq(s1val, s2val)
         end
         context
       }
@@ -1190,6 +1193,9 @@ class YarvTranslator<YarvVisitor
           context.rc = b.fcmp_une(s1val, s2val)
 
           when Type::Int32Ty
+          context.rc = b.icmp_ne(s1val, s2val)
+
+          when VALUE
           context.rc = b.icmp_ne(s1val, s2val)
         end
         context
