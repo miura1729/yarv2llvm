@@ -314,6 +314,38 @@ EOS
    assert_equal(newtest, 13)
   end
 
+  def test_array_each
+    YARV2LLVM::compile(<<-EOS)
+def tarray_each  
+  rc = 0
+  a = [1, 2, 4, 8, 16]
+  a.each do |i|
+    p i
+    rc = rc + i
+  end
+  rc
+end
+EOS
+    assert_equal(tarray_each, 31)
+  end
+
+  def test_array_each2
+#    YARV2LLVM::compile(<<-EOS, {:func_signature => true})
+    YARV2LLVM::compile(<<-EOS)
+def tarray_each2
+  rc = 0
+  a = [1, 2, 4, 8, 16]
+  a.each do |i|
+    a.each do |j|
+      rc = rc + i
+    end
+  end
+  rc
+end
+EOS
+    assert_equal(tarray_each2, 155)
+  end
+
 # I can't pass this test yet.
 =begin
   def test_complex_type

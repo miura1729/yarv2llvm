@@ -16,6 +16,8 @@ class Context
     @current_frame = nil
     @array_alloca_area = nil
     @array_alloca_size = nil
+    @loop_cnt_alloca_area = []
+    @loop_cnt_alloca_size = nil
     @instance_var_tab = nil
   end
 
@@ -28,6 +30,8 @@ class Context
   attr_accessor :current_frame
   attr_accessor :array_alloca_area
   attr_accessor :array_alloca_size
+  attr_accessor :loop_cnt_alloca_area
+  attr_accessor :loop_cnt_alloca_size
   attr_accessor :instance_var_tab
   attr :builder
   attr :frame_struct
@@ -42,11 +46,15 @@ class YarvVisitor
     @iseqs.each do |iseq|
       iseq.traverse_code([nil, nil, nil, nil]) do |code, info|
         ccde = code
+
+        if code.header['type'] == :block then
+          info[1] = (info[1].to_s + '+blk+' + ccde.info[2].to_s).to_sym
+        end
+
         while ccde.header['type'] == :block
-          info[1] = (info[1].to_s + '_blk_' + ccde.info[2].to_s).to_sym
           ccde = ccde.parent
         end
-        
+                
         local = []
         visit_block_start(code, nil, local, nil, info)
         curln = nil
@@ -132,9 +140,12 @@ class YarvTranslator<YarvVisitor
     # invokeblock instruction (yield statement)
     @have_yield = false
 
-    # Size of alloca area for call rb_ary_new4
+    # Size of alloca area for call rb_ary_new4 and new
     #  nil is not allocate
     @array_alloca_size = nil
+
+    @loop_cnt_alloca_size = 0
+    @loop_cnt_current = 0
 
     # Table of instance variable. The table contains type information.
     @instance_var_tab = Hash.new {|hash, klass|
@@ -168,6 +179,13 @@ class YarvTranslator<YarvVisitor
   
   def visit_block_start(code, ins, local, ln, info)
     @have_yield = false
+
+    @array_alloca_size = nil
+    @loop_cnt_alloca_size = 0
+    @loop_cnt_current = 0
+
+    @have_yield = false
+
     ([nil, nil, nil] + code.header['locals'].reverse).each_with_index do |n, i|
       local[i] = {
         :name => n, 
@@ -216,6 +234,7 @@ class YarvTranslator<YarvVisitor
           argt.push local[0][:type]
           argt.push local[1][:type]
         end
+
         MethodDefinition::RubyMethod[info[1]][info[0]]= {
           :defined => true,
           :argtype => argt,
@@ -247,10 +266,19 @@ class YarvTranslator<YarvVisitor
       frstp = Type.pointer(frst)
       @frame_struct[code] = frstp
       curframe = b.alloca(frst, 1)
+      context.current_frame = curframe
+
       if context.array_alloca_size then
         context.array_alloca_area = b.alloca(VALUE, context.array_alloca_size)
       end
-      context.current_frame = curframe
+
+      if ncnt = context.loop_cnt_alloca_size then
+        ncnt.times do |i|
+          area =  b.alloca(Type::Int32Ty, 1)
+          context.loop_cnt_alloca_area.push area
+        end
+      end
+
       # Generate pointer to variable access
       context.local_vars.each_with_index {|vars, n|
         lv = b.struct_gep(curframe, n)
@@ -321,6 +349,8 @@ class YarvTranslator<YarvVisitor
       RubyType.resolve
       
       have_yield = @have_yield
+      array_alloca_size = @array_alloca_size
+      loop_cnt_alloca_size = @loop_cnt_alloca_size
 
       @generated_code[info[1]] = lambda {
         if OPTION[:func_signature] then
@@ -377,7 +407,8 @@ class YarvTranslator<YarvVisitor
         b = @builder.define_function(info[0], info[1].to_s, 
                                    retexp[0], argtype, is_mkstub)
         context = Context.new(local, @builder)
-        context.array_alloca_size = @array_alloca_size
+        context.array_alloca_size = array_alloca_size
+        context.loop_cnt_alloca_size = loop_cnt_alloca_size
         context = rescode.call(b, context)
         rc = retexp[1].call(b, context).rc
         if rc then
@@ -692,7 +723,12 @@ class YarvTranslator<YarvVisitor
     end
         
     inits.reverse!
-    @expstack.push [RubyType.new(ArrayType.new(etype), info[3]),
+    atype = RubyType.array(info[3])
+    if inits[0] then
+      atype.type.element_type.add_same_type(inits[0][0])
+      inits[0][0].add_same_type(atype.type.element_type)
+    end
+    @expstack.push [atype,
       lambda {|b, context|
         if nele == 0 then
           ftype = Type.function(VALUE, [])
@@ -826,7 +862,11 @@ class YarvTranslator<YarvVisitor
     end
 
     if funcinfo = MethodDefinition::InlineMethod[mname] then
-      @para = {:info => info, :args => args, :receiver => receiver}
+      @para = {:info => info, 
+               :ins => ins,
+               :args => args, 
+               :receiver => receiver, 
+               :local => local}
       instance_eval &funcinfo[:inline_proc]
       return
     end
@@ -1419,8 +1459,10 @@ class YarvTranslator<YarvVisitor
           fcp = context.local_vars[0][:area]
           slev.times do
             fcp = b.load(fcp)
+            fcp = b.bit_cast(fcp, Type.pointer(P_CHAR))
           end
           frstruct = @frame_struct[acode]
+
           fi = b.ptr_to_int(fcp, MACHINE_WORD)
           frame = b.int_to_ptr(fi, frstruct)
 
@@ -1454,6 +1496,7 @@ class YarvTranslator<YarvVisitor
 
       fcp = context.local_vars[0][:area]
       (slev).times do
+        fcp = b.bit_cast(fcp, Type.pointer(P_CHAR))
         fcp = b.load(fcp)
       end
       frstruct = @frame_struct[acode]

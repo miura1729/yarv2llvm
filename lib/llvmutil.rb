@@ -87,7 +87,7 @@ module SendUtil
 =end
 
   def gen_get_block_ptr(recklass, info, blk, b, context)
-    blab = (info[1].to_s + '_blk_' + blk[1].to_s).to_sym
+    blab = (info[1].to_s + '+blk+' + blk[1].to_s).to_sym
     minfo = MethodDefinition::RubyMethod[blab][recklass]
 
     func2 = minfo[:func]

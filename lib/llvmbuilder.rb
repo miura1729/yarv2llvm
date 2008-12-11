@@ -23,10 +23,11 @@ class LLVMBuilder
 
   def to_label(s)
     ns = s.gsub(/_/, "__")
-    ns.gsub!(/=/, "e_e")
-    ns.gsub!(/!/, "b_b")
-    ns.gsub!(/@/, "a_a")
-    ns.gsub!(/\+/, "p_p")
+    ns.gsub!(/=/, "_e")
+    ns.gsub!(/!/, "_b")
+    ns.gsub!(/@/, "_a")
+    ns.gsub!(/\?/, "_q")
+    ns.gsub!(/\+/, "_p")
     ns
   end
 

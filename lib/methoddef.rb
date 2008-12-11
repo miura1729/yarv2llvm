@@ -28,7 +28,7 @@ module MethodDefinition
                        :specialized_instruction  => true,}).to_a
           iseq = VMLib::InstSeqTree.new(nil, is)
           @iseqs.push iseq
-        }
+       }
     },
           
     :[]= => {
@@ -76,27 +76,27 @@ module MethodDefinition
             lambda {|b, context|
               context.rc = v
               context}]
-        },
+      },
     },
 
     :to_f => {
       :inline_proc => 
         lambda {
           recv = @para[:args][:receiver]
-
-          @expstack.push [RubyType.float(@para[:info][3], 'Return type of to_f'),
-            lambda {|b, context|
-              context = recv.call(b, context)
-              val = context.rc
-              case val[0].type.llvm
-              when Type::DoubleTy
-                context.rc = val
-              when Type::Int32Ty
-                context.rc = b.si_to_fp(val)
-              end
-              context}]
-        },
-      },
+          rettype = RubyType.float(@para[:info][3], 'Return type of to_f')
+          @expstack.push [rettype,
+                        lambda {|b, context|
+                          context = recv.call(b, context)
+                          val = context.rc
+                          case val[0].type.llvm
+                          when Type::DoubleTy
+                            context.rc = val
+                          when Type::Int32Ty
+                            context.rc = b.si_to_fp(val)
+                          end
+                          context}]
+       },
+    },
 
     :p => {
       :inline_proc =>
@@ -113,7 +113,117 @@ module MethodDefinition
         }
      },
 
-     :new => {
+    :each => {
+      :inline_proc =>
+        lambda {
+          ins = @para[:ins]
+          info = @para[:info]
+          rec = @para[:receiver]
+          local = @para[:local]
+          recval = nil
+
+          loop_cnt_current = @loop_cnt_current
+          @loop_cnt_current += 1
+          if @loop_cnt_alloca_size < @loop_cnt_current then
+            @loop_cnt_alloca_size = @loop_cnt_current
+          end
+
+          gen_loop = 
+              lambda {|lst, led, body|
+                 @expstack.push [rec[0],
+                   lambda {|b, context|
+                     bcond = context.builder.create_block
+                     bbody = context.builder.create_block
+                     bexit = context.builder.create_block
+                     lcntp = context.loop_cnt_alloca_area[loop_cnt_current]
+                     lstval = lst.call(b, context)
+                     ledval = led.call(b, context)
+                     b.store(lstval, lcntp)
+                     b.br(bcond)
+
+                     # loop branch
+                     b.set_insert_point(bcond)
+                     clcnt = b.load(lcntp)
+                     cnd = b.icmp_slt(clcnt, ledval)
+                     b.cond_br(cnd, bbody, bexit)
+
+                     b.set_insert_point(bbody)
+
+                     # do type specicated
+                     bodyrc = body.call(b, context)
+
+                     # invoke block
+                     blk = ins[3]
+                     blab = (info[1].to_s + '+blk+' + blk[1].to_s).to_sym
+                     recklass = rec ? rec[0].klass : nil
+                     minfo = MethodDefinition::RubyMethod[blab][recklass]
+                     if minfo == nil then
+                       minfo = MethodDefinition::RubyMethod[blab][nil]
+                     end
+                     func = minfo[:func]
+                     if func == nil then
+                       argtype = minfo[:argtype].map {|ele|
+                         if ele.type == nil
+                           VALUE
+                         else
+                           ele.type.llvm
+                         end
+                       }
+                       rett = minfo[:rettype]
+                       rettllvm = rett.type
+                       if rettllvm == nil then
+                         rettllvm = VALUE
+                       else
+                         rettllvm = rettllvm.llvm
+                       end
+                       ftype = Type.function(rettllvm, argtype)
+                       func = context.builder.get_or_insert_function(blab.to_s, ftype)
+                     end
+                     fm = context.current_frame
+                     frame = b.bit_cast(fm, P_CHAR)
+                     slf = b.load(local[2][:area])
+                     b.call(func, bodyrc, slf, frame, 0.llvm)
+
+                     # update blocks, because make blocks
+                     fmlab = context.curln
+                     context.blocks[fmlab] = bexit
+
+                     nclcnt = b.add(clcnt, 1.llvm)
+                     b.store(nclcnt, lcntp)
+                     b.br(bcond)
+                     b.set_insert_point(bexit)
+                     context.rc = recval
+                     context
+                   }]
+           }
+
+           case (rec[0].klass)
+           when :Array
+             lst = lambda {|b, context| 0.llvm}
+             led = lambda {|b, context|
+                     context = rec[1].call(b, context)
+                     recval = context.rc
+                     aptr = b.int_to_ptr(recval, P_RARRAY)
+                     lenptr = b.struct_gep(aptr, 1)
+                     b.load(lenptr)
+                   }
+             body = lambda {|b, context|
+                      lcntp = context.loop_cnt_alloca_area[loop_cnt_current]
+                      idxp = b.load(lcntp)
+                      ftype = Type.function(VALUE, [VALUE, Type::Int32Ty])
+                      func = context.builder.external_function('rb_ary_entry', ftype)
+                      av = b.call(func, recval, idxp)
+                      arrelet = rec[0].type.element_type.type
+                      rc = arrelet.from_value(av, b, context)
+                    }
+                     
+                     
+             gen_loop.call(lst, led, body)
+           end
+      }
+    },
+
+    :new => {
        :inline_proc =>
          lambda {
            rec = @para[:receiver]
@@ -130,7 +240,8 @@ module MethodDefinition
            if @array_alloca_size == nil then
              @array_alloca_size = 1
            end
-           @expstack.push [RubyType.from_sym(rec[0].klass, @para[:info][3], nil), 
+           rettype = RubyType.from_sym(rec[0].klass, @para[:info][3], nil)
+           @expstack.push [rettype, 
              lambda {|b, context|
                cargs = []
                context = rec[1].call(b, context)
