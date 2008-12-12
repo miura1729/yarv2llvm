@@ -194,6 +194,11 @@ class RubyType
     RubyType.new(na, lno, name, Array)
   end
 
+  def self.range(fst, lst, excl, lno = nil, name = nil)
+    na = RangeType.new(fst, lst, excl)
+    RubyType.new(na, lno, name, Range)
+  end
+
   def self.symbol(lno = nil, name = nil, klass = Symbol)
     RubyType.new(VALUE, lno, name, klass)
   end
@@ -260,8 +265,10 @@ class PrimitiveType
   def initialize(type)
     @type = type
     @content = nil
+    @constant = nil
   end
   attr_accessor :content
+  attr_accessor :constant
 
   def dup_type
     self.class.new(@type)
@@ -362,6 +369,38 @@ end
 class ComplexType
   def dup_type
     self.class.new
+  end
+end
+
+class RangeType<ComplexType
+  include LLVM
+  include RubyHelpers
+
+  def initialize(first, last, excl)
+    @first = first
+    @last = last
+    @excl = excl
+    @content = nil
+  end
+  attr_accessor :first
+  attr_accessor :last
+  attr_accessor :excl
+  attr_accessor :content
+
+  def dup_type
+    dup
+  end
+
+  def llvm
+    VALUE
+  end
+
+  def element_type
+    @first
+  end
+
+  def inspect2
+    "Range(#{@first.inspect2})"
   end
 end
 

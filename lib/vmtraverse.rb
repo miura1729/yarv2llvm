@@ -773,7 +773,19 @@ class YarvTranslator<YarvVisitor
   # splatarray
   # checkincludearray
   # newhash
-  # newrange
+  def visit_newrange(code, ins, local, ln, info)
+    lst = @expstack.pop
+    fst = @expstack.pop
+    flg = ins[1]
+    rtype = RubyType.range(fst[0], lst[0], flg, info[3])
+    @expstack.push [rtype,
+       lambda {|b, context|
+         rtype.type.first.type.constant = fst[1].call(b, context).rc
+         rtype.type.last.type.constant = lst[1].call(b, context).rc
+         context.rc = 4.llvm
+         context
+    }]
+  end
 
   def visit_pop(code, ins, local, ln, info)
     exp = @expstack.pop

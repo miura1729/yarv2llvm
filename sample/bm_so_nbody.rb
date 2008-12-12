@@ -62,7 +62,20 @@ BODIES = [
 ]
 
 require 'yarv2llvm'
-YARV2LLVM::compile(<<-EOS, {:func_signature => true})
+YARV2LLVM::compile(<<-EOS)
+#YARV2LLVM::compile(<<-EOS, {:func_signature => true})
+#YARV2LLVM::compile(<<-EOS, {:disasm => true, :optimize => false})
+class Fixnum
+  def times
+    j = 0
+    while j < self
+      yield
+      j = j + 1
+    end
+    0
+  end
+end
+
 class Planet
  def x; @x;end
  def y; @y;end
@@ -145,7 +158,7 @@ def offset_momentum(bodies)
 end
 
 def main
-n = init = 200_000 # ARGV[0]
+n = 200_000 # ARGV[0]
 
 offset_momentum(BODIES)
 
@@ -167,3 +180,5 @@ p energy(BODIES)
 end
 
 EOS
+
+main

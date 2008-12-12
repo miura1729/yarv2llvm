@@ -55,6 +55,13 @@ module LLVMUtil
     end
     Type.struct(member)
   end
+
+  def gen_array_size(b, context, arr)
+    recval = context.rc
+    aptr = b.int_to_ptr(recval, P_RARRAY)
+    lenptr = b.struct_gep(aptr, 1)
+    b.load(lenptr)
+  end
 end
 
 module SendUtil

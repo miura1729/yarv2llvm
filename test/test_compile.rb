@@ -330,8 +330,8 @@ EOS
   end
 
   def test_array_each2
-#    YARV2LLVM::compile(<<-EOS, {:func_signature => true})
-    YARV2LLVM::compile(<<-EOS)
+    YARV2LLVM::compile(<<-EOS, {:func_signature => true})
+#    YARV2LLVM::compile(<<-EOS)
 def tarray_each2
   rc = 0
   a = [1, 2, 4, 8, 16]
