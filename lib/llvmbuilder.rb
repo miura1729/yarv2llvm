@@ -76,9 +76,18 @@ class LLVMBuilder
     eb.builder
   end
 
+  def define_function_raw(name, type)
+    @func = @module.get_or_insert_function(name, type)
+    @func.create_block.builder
+  end
+
   def get_or_insert_function(name, type)
     ns = to_label(name.to_s)
     @module.get_or_insert_function(ns, type)
+  end
+
+  def get_or_insert_function_raw(name, type)
+    @module.get_or_insert_function(name, type)
   end
 
   def arguments

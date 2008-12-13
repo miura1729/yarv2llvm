@@ -7,6 +7,7 @@ require 'lib/instruction.rb'
 require 'lib/type.rb'
 require 'lib/llvmbuilder.rb'
 require 'lib/methoddef.rb'
+require 'lib/intruby.rb'
 require 'lib/vmtraverse.rb'
 
 def pppp(n)
@@ -22,6 +23,8 @@ DEF_OPTION = {
   :func_signature => false,
 
   :array_range_check => true,
+
+  :cache_instance_variable => false,
 }
 OPTION = {}
 

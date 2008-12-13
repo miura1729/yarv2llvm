@@ -19,6 +19,7 @@ class Context
     @loop_cnt_alloca_area = []
     @loop_cnt_alloca_size = nil
     @instance_var_tab = nil
+    @instance_vars_local = nil
   end
 
   attr_accessor :local_vars
@@ -33,6 +34,7 @@ class Context
   attr_accessor :loop_cnt_alloca_area
   attr_accessor :loop_cnt_alloca_size
   attr_accessor :instance_var_tab
+  attr_accessor :instance_vars_local
   attr :builder
   attr :frame_struct
 end
@@ -154,14 +156,24 @@ class YarvTranslator<YarvVisitor
       }
     }
 
+    # Table of instanse variable which is used current block
+    @instance_vars_local = {}
+
     # Table of type of constant.
     @constant_type_tab = Hash.new {|hash, klass|
       hash[klass] = {}
     }
   end
 
+  include IntRuby
   def run
     super
+
+    # generate code for access Ruby internal
+    if OPTION[:cache_instance_variable] then
+      gen_ivar_ptr(@builder)
+    end
+    
     @generated_code.each do |fname, gen|
       gen.call
     end
@@ -183,6 +195,8 @@ class YarvTranslator<YarvVisitor
     @array_alloca_size = nil
     @loop_cnt_alloca_size = 0
     @loop_cnt_current = 0
+
+    @instance_vars_local = {}
 
     @have_yield = false
 
@@ -285,6 +299,21 @@ class YarvTranslator<YarvVisitor
         vars[:area] = lv
       }
 
+      context.instance_vars_local.each do |key, cnt|
+        if cnt > 1 and OPTION[:cache_instance_variable] then
+          area = b.alloca(VALUE, 1)
+          ftype = Type.function(VALUE, [VALUE, VALUE])
+          func = context.builder.get_or_insert_function_raw('llvm_ivar_ptr', ftype)
+          ivid = ((key.object_id << 1) / RVALUE_SIZE)
+          slf = b.load(context.local_vars[2][:area])
+          val = b.call(func, slf, ivid.llvm)
+          b.store(val, area)
+          context.instance_vars_local[key] = area
+        else
+          context.instance_vars_local[key] = nil
+        end
+      end
+
       # Copy argument in reg. to allocated area
       arg = context.builder.arguments
       lvars = context.local_vars
@@ -351,6 +380,7 @@ class YarvTranslator<YarvVisitor
       have_yield = @have_yield
       array_alloca_size = @array_alloca_size
       loop_cnt_alloca_size = @loop_cnt_alloca_size
+      instance_vars_local = @instance_vars_local
 
       @generated_code[info[1]] = lambda {
         if OPTION[:func_signature] then
@@ -409,6 +439,7 @@ class YarvTranslator<YarvVisitor
         context = Context.new(local, @builder)
         context.array_alloca_size = array_alloca_size
         context.loop_cnt_alloca_size = loop_cnt_alloca_size
+        context.instance_vars_local = instance_vars_local
         context = rescode.call(b, context)
         rc = retexp[1].call(b, context).rc
         if rc then
@@ -569,6 +600,8 @@ class YarvTranslator<YarvVisitor
 
   def visit_getinstancevariable(code, ins, local, ln, info)
     ivname = ins[1]
+    @instance_vars_local[ivname] ||= 0
+    @instance_vars_local[ivname] += 1
     type = @instance_var_tab[info[0]][ivname][:type]
     unless type
       type = RubyType.new(nil, info[3], "#{info[0]}##{ivname}")
@@ -576,18 +609,25 @@ class YarvTranslator<YarvVisitor
     end
     @expstack.push [type,
       lambda {|b, context|
-        ftype = Type.function(VALUE, [VALUE, VALUE])
-        func = context.builder.external_function('rb_ivar_get', ftype)
-        ivid = ((ivname.object_id << 1) / RVALUE_SIZE)
-        slf = b.load(context.local_vars[2][:area])
-        val = b.call(func, slf, ivid.llvm)
-        context.rc = type.type.from_value(val, b, context)
+        if area = context.instance_vars_local[ivname] then
+          val = b.load(area)
+          context.rc = type.type.from_value(val, b, context)
+        else
+          ftype = Type.function(VALUE, [VALUE, VALUE])
+          func = context.builder.external_function('rb_ivar_get', ftype)
+          ivid = ((ivname.object_id << 1) / RVALUE_SIZE)
+          slf = b.load(context.local_vars[2][:area])
+          val = b.call(func, slf, ivid.llvm)
+          context.rc = type.type.from_value(val, b, context)
+        end
         context
       }]
   end
 
   def visit_setinstancevariable(code, ins, local, ln, info)
     ivname = ins[1]
+    @instance_vars_local[ivname] ||= 0
+    @instance_vars_local[ivname] += 1
     dsttype = @instance_var_tab[info[0]][ivname][:type]
     unless dsttype
       dsttype = RubyType.new(nil, info[3], "#{info[0]}##{ivname}")
@@ -610,12 +650,20 @@ class YarvTranslator<YarvVisitor
 
       dsttype.type = dsttype.type.dup_type
       dsttype.type.content = srcval
-      ftype = Type.function(VALUE, [VALUE, VALUE, VALUE])
-      func = context.builder.external_function('rb_ivar_set', ftype)
-      ivid = ((ivname.object_id << 1) / RVALUE_SIZE)
-      slf = b.load(context.local_vars[2][:area])
+
+      if area = context.instance_vars_local[ivname] then
+        context.rc = srcval
+        b.store(srcval2, area)
+
+      else
+        ftype = Type.function(VALUE, [VALUE, VALUE, VALUE])
+        func = context.builder.external_function('rb_ivar_set', ftype)
+        ivid = ((ivname.object_id << 1) / RVALUE_SIZE)
+        slf = b.load(context.local_vars[2][:area])
       
-      context.rc = b.call(func, slf, ivid.llvm, srcval2)
+        context.rc = srcval
+        b.call(func, slf, ivid.llvm, srcval2)
+      end
       context.org = dsttype.name
       pppp "Setinstancevariable end"
       context
