@@ -611,7 +611,6 @@ class YarvTranslator<YarvVisitor
       lambda {|b, context|
         if area = context.instance_vars_local[ivname] then
           parea = b.load(area)
-#          parea = b.int_to_ptr(parea, P_VALUE)
           val = b.load(parea)
           context.rc = type.type.from_value(val, b, context)
         else
@@ -763,7 +762,7 @@ class YarvTranslator<YarvVisitor
       v = @expstack.pop
       inits.push v
       if etype and etype != v[0].type.llvm then
-#        raise "Element of array must be same type in yarv2llvm #{etype} expected but #{v[0].inspect2}"
+        raise "Element of array must be same type in yarv2llvm #{etype} expected but #{v[0].inspect2}"
       end
       etype = v[0].type.llvm
     }
