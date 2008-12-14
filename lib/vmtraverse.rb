@@ -301,8 +301,8 @@ class YarvTranslator<YarvVisitor
 
       context.instance_vars_local.each do |key, cnt|
         if cnt > 1 and OPTION[:cache_instance_variable] then
-          area = b.alloca(VALUE, 1)
-          ftype = Type.function(VALUE, [VALUE, VALUE])
+          area = b.alloca(P_VALUE, 1)
+          ftype = Type.function(P_VALUE, [VALUE, VALUE])
           func = context.builder.get_or_insert_function_raw('llvm_ivar_ptr', ftype)
           ivid = ((key.object_id << 1) / RVALUE_SIZE)
           slf = b.load(context.local_vars[2][:area])
@@ -610,7 +610,9 @@ class YarvTranslator<YarvVisitor
     @expstack.push [type,
       lambda {|b, context|
         if area = context.instance_vars_local[ivname] then
-          val = b.load(area)
+          parea = b.load(area)
+#          parea = b.int_to_ptr(parea, P_VALUE)
+          val = b.load(parea)
           context.rc = type.type.from_value(val, b, context)
         else
           ftype = Type.function(VALUE, [VALUE, VALUE])
@@ -653,7 +655,8 @@ class YarvTranslator<YarvVisitor
 
       if area = context.instance_vars_local[ivname] then
         context.rc = srcval
-        b.store(srcval2, area)
+        parea = b.load(area)
+        b.store(srcval2, parea)
 
       else
         ftype = Type.function(VALUE, [VALUE, VALUE, VALUE])
@@ -760,7 +763,7 @@ class YarvTranslator<YarvVisitor
       v = @expstack.pop
       inits.push v
       if etype and etype != v[0].type.llvm then
-        raise "Element of array must be same type in yarv2llvm #{etype.inspect2} expected but #{v[0].inspect2}"
+#        raise "Element of array must be same type in yarv2llvm #{etype} expected but #{v[0].inspect2}"
       end
       etype = v[0].type.llvm
     }

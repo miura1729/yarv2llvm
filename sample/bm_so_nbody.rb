@@ -62,7 +62,7 @@ BODIES = [
 ]
 
 require 'yarv2llvm'
-YARV2LLVM::compile(<<-EOS)
+YARV2LLVM::compile(<<-EOS, {:cache_instance_variable => true})
 #YARV2LLVM::compile(<<-EOS, {:func_signature => true})
 #YARV2LLVM::compile(<<-EOS, {:disasm => true, :optimize => false})
 class Fixnum

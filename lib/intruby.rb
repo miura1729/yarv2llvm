@@ -16,7 +16,7 @@ module IntRuby
   include LLVMUtil
 
   def gen_ivar_ptr(builder)
-    ftype = Type.function(VALUE, [VALUE, VALUE])
+    ftype = Type.function(P_VALUE, [VALUE, VALUE])
     b = builder.define_function_raw('llvm_ivar_ptr', ftype)
     args = builder.arguments
     embed = builder.create_block
@@ -63,8 +63,7 @@ module IntRuby
     
     index = b.load(indexp)
     resp = b.gep(ptr, index)
-    res = b.load(resp)
-    b.return(res)
+    b.return(resp)
     
   end
 end
