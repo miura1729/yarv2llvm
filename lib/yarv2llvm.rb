@@ -35,6 +35,8 @@ OPTION = {}
 #     *  40 if 64-bit
 RVALUE_SIZE = 20
 RUBY_SYMBOL_FLAG = 0xe
+
+PROFILE_RAW_DATA = []
 end
 
 class Object

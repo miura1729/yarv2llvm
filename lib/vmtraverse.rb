@@ -67,6 +67,7 @@ class YarvVisitor
           code.lblock[ln].each do |ins|
             if ins.is_a?(Fixnum) then
               info[3] = ins
+              visit_number(code, ins, local, curln, info)
             else
               opname = ins[0].to_s
               send(("visit_" + opname).to_sym, code, ins, local, curln, info)
@@ -79,7 +80,7 @@ class YarvVisitor
           end
           visit_local_block_end(code, ln, local, ln, info)
         end
-        
+
         visit_block_end(code, nil, local, nil, info)
       end
     end
@@ -495,25 +496,34 @@ class YarvTranslator<YarvVisitor
         end
         n += 1
       end
+
+      rc = nil
+      oldrescode2 = @rescode
+      @rescode = lambda {|b, context|
+        context = oldrescode2.call(b, context)
+        if ln then
+          # foobar It is ad-hoc
+          if commer_label[0] == nil then
+            commer_label.shift
+          end
+          if context.block_value[commer_label[0]] then
+            rc = b.phi(context.block_value[commer_label[0]][0].type.llvm)
+            
+            commer_label.reverse.each do |lab|
+              rc.add_incoming(context.block_value[lab][1], 
+                              context.blocks[lab])
+            end
+          end
+          
+          context.rc = rc
+          context
+        end
+      }
+
       @expstack.pop
       @expstack.push [valexp[0],
         lambda {|b, context|
-          if ln then
-            # foobar It is ad-hoc
-            if commer_label[0] == nil then
-              commer_label.shift
-            end
-            if context.block_value[commer_label[0]] then
-              rc = b.phi(context.block_value[commer_label[0]][0].type.llvm)
-            
-              commer_label.reverse.each do |lab|
-                rc.add_incoming(context.block_value[lab][1], 
-                                context.blocks[lab])
-              end
-            end
-
-            context.rc = rc
-          end
+          context.rc = rc
           context
         }]
     end
@@ -535,6 +545,9 @@ class YarvTranslator<YarvVisitor
   
   def visit_default(code, ins, local, ln, info)
     pppp "Unprocessed instruction #{ins}"
+  end
+
+  def visit_number(code, ins, local, ln, info)
   end
 
   def visit_getlocal(code, ins, local, ln, info)
@@ -878,7 +891,42 @@ class YarvTranslator<YarvVisitor
   # adjuststack
   
   # defined
-  # trace
+
+  def visit_trace(code, ins, local, ln, info)
+    if info[1] == :trace_func and info[0] == :YARV2LLVM then
+      return
+    end
+
+    evt = ins[1]
+    if minfo = MethodDefinition::RubyMethod[:trace_func][:YARV2LLVM] then
+      argt = minfo[:argtype]
+      if argt[0].type == nil then
+        RubyType.fixnum.add_same_type argt[0]
+        RubyType.fixnum.add_same_type argt[1]
+        RubyType.value.add_same_type argt[2]
+        RubyType.resolve
+      end
+    end
+        
+    oldrescode = @rescode
+    lno = info[3]
+    @rescode = lambda {|b, context|
+      context = oldrescode.call(b, context)
+      if minfo = MethodDefinition::RubyMethod[:trace_func][:YARV2LLVM] then
+        argt = minfo[:argtype]
+        if argt[0].type == nil then
+          RubyType.fixnum.add_same_type argt[0]
+          RubyType.fixnum.add_same_type argt[1]
+          RubyType.value.add_same_type argt[2]
+          RubyType.resolve
+        end
+        slf = b.load(context.local_vars[2][:area])
+        func = minfo[:func]
+        b.call(func, evt.llvm, lno.llvm, slf)
+      end
+      context
+    }
+  end
 
   # defineclass
   
