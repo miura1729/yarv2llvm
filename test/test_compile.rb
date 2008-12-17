@@ -329,6 +329,24 @@ EOS
     assert_equal(tarray_each, 31)
   end
 
+  def test_return1
+    YARV2LLVM::compile(<<-EOS, {:dump_yarv => true})
+def treturn(f)
+  if f == 1 then
+    return 2
+  elsif f == 2 then
+    a = 3
+    return 3
+  else
+    a = 4
+  end
+end
+EOS
+    assert_equal(treturn(1), 2)
+    assert_equal(treturn(2), 3)
+    assert_equal(treturn(3), 4)
+  end
+
   def test_array_each2
     YARV2LLVM::compile(<<-EOS, {:func_signature => true})
 #    YARV2LLVM::compile(<<-EOS)
