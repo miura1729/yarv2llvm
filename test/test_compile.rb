@@ -364,6 +364,29 @@ EOS
     assert_equal(tarray_each2, 155)
   end
 
+  def test_print1
+#    YARV2LLVM::compile(<<-EOS, {:func_signature => true})
+    YARV2LLVM::compile(<<-EOS)
+def tprint1(n)
+  print "The value is "
+  print n
+  print "\n"
+end
+EOS
+    assert_equal(tprint1("abc"), nil)
+  end
+
+  def test_print2
+#    YARV2LLVM::compile(<<-EOS, {:func_signature => true})
+#    YARV2LLVM::compile(<<-EOS, {:disasm => true})
+    YARV2LLVM::compile(<<-EOS)
+def tprint2(n)
+  print "The value is ", n, "\n"
+end
+EOS
+    assert_equal(tprint2("foo"), nil)
+  end
+
 # I can't pass this test yet.
 =begin
   def test_complex_type
