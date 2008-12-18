@@ -330,7 +330,8 @@ EOS
   end
 
   def test_return1
-    YARV2LLVM::compile(<<-EOS, {:dump_yarv => true})
+#    YARV2LLVM::compile(<<-EOS, {:dump_yarv => true})
+    YARV2LLVM::compile(<<-EOS)
 def treturn(f)
   if f == 1 then
     return 2
@@ -385,6 +386,15 @@ def tprint2(n)
 end
 EOS
     assert_equal(tprint2("foo"), nil)
+  end
+
+  def test_sprintf
+    YARV2LLVM::compile(<<-EOS)
+def tsprintf(n)
+  sprintf "The value is %p", n
+end
+EOS
+    assert_equal(tsprintf("foo"), "The value is \"foo\"")
   end
 
 # I can't pass this test yet.

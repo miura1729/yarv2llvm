@@ -117,28 +117,20 @@ module MethodDefinition
     :print => {
       :inline_proc =>
         lambda {
-          args = @para[:args].reverse
           info = @para[:info]
-          nele = @para[:args].size
-          if @array_alloca_size == nil or @array_alloca_size < nele then
-            @array_alloca_size = nele
-          end
-          @expstack.push [RubyType.value(info[3], "Return type of print"),
-            lambda {|b, context|
-              ftype = Type.function(VALUE, [Type::Int32Ty, P_VALUE, VALUE])
-              func = @builder.external_function('rb_io_print', ftype)
-              io = STDOUT.immediate
+          rtype = RubyType.value(info[3], "Return type of print")
+          fname = 'rb_io_print'
+          gen_call_var_args_and_self('rb_io_print', rtype, STDOUT.immediate)
+        }
+     },
 
-              argarea = context.array_alloca_area
-              args.each_with_index {|pterm, i|
-                context = pterm[1].call(b, context)
-                srcval = context.rc
-                src = pterm[0].type.to_value(srcval, b, context)
-                dst = b.gep(argarea, i.llvm)
-                b.store(src, dst)
-              }
-              context.rc = b.call(func, nele.llvm, argarea, io)
-              context}]
+    :sprintf => {
+      :inline_proc =>
+        lambda {
+          info = @para[:info]
+          rtype = RubyType.value(info[3], "Return type of sprint")
+          fname = 'rb_f_sprintf'
+          gen_call_var_args('rb_f_sprintf', rtype)
         }
      },
 

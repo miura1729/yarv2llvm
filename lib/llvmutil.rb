@@ -62,6 +62,42 @@ module LLVMUtil
     lenptr = b.struct_gep(aptr, 1)
     b.load(lenptr)
   end
+
+  def gen_call_var_args_and_self(fname, rtype, slf)
+    ftype = Type.function(VALUE, [Type::Int32Ty, P_VALUE, VALUE])
+    gen_call_var_args_common(fname, rtype, ftype) {|b, context, func, nele, argarea|
+      b.call(func, nele.llvm, argarea, slf)
+    }
+  end
+
+  def gen_call_var_args(fname, rtype)
+    ftype = Type.function(VALUE, [Type::Int32Ty, P_VALUE])
+    gen_call_var_args_common(fname, rtype, ftype) {|b, context, func, nele, argarea|
+      b.call(func, nele.llvm, argarea)
+    }
+  end
+
+  def gen_call_var_args_common(fname, rtype, ftype)
+    args = @para[:args].reverse
+    nele = @para[:args].size
+    if @array_alloca_size == nil or @array_alloca_size < nele then
+      @array_alloca_size = nele
+    end
+    @expstack.push [rtype,
+      lambda {|b, context|
+        func = @builder.external_function(fname, ftype)
+        
+        argarea = context.array_alloca_area
+        args.each_with_index {|pterm, i|
+          context = pterm[1].call(b, context)
+          srcval = context.rc
+          src = pterm[0].type.to_value(srcval, b, context)
+          dst = b.gep(argarea, i.llvm)
+          b.store(src, dst)
+        }
+        context.rc = yield(b, context, func, nele, argarea)
+        context}]
+  end
 end
 
 module SendUtil
