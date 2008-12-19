@@ -59,16 +59,20 @@ class RubyType
   def add_same_type(fty)
     @same_type.push fty
     # Complex type -> element type is same also.
-    if type.is_a?(ComplexType) and fty.type.is_a?(ComplexType) then
-      type.element_type.add_same_type(fty.type.element_type)
+    if @type.is_a?(ComplexType) and fty.type.is_a?(ComplexType) then
+      if fty.type.element_type.type.llvm != VALUE then
+        @type.element_type.add_same_type(fty.type.element_type)
+      end
     end
   end
 
   def add_same_value(fty)
     @same_value.push fty
     # Complex type -> element type is same also.
-    if type.is_a?(ComplexType) and fty.type.is_a?(ComplexType) then
-      type.element_type.add_same_value(fty.type.element_type)
+    if @type.is_a?(ComplexType) and fty.type.is_a?(ComplexType) then
+      if fty.type.element_type.type.llvm != VALUE then
+        @type.element_type.add_same_value(fty.type.element_type)
+      end
     end
   end
   
@@ -133,17 +137,33 @@ class RubyType
             ty.resolve
             next
           end
+
+          if @type.llvm == VALUE then
+            return
+          end
         end
         
         if ty.type and ty.type.llvm != @type.llvm then
           mess = "Type conflict \n"
           mess += "  #{ty.name}(#{ty.type.inspect2}) defined in #{ty.line_no} \n"
           mess += "  #{@name}(#{@type.inspect2}) define in #{@line_no} \n"
-          raise mess
+          if OPTION[:strict_type_inference] then
+            raise mess
+          else
+            print mess
+
+            if ty.type.is_a?(PrimitiveType) then
+              ty.type = PrimitiveType.new(VALUE)
+            end
+            if @type.is_a?(PrimitiveType) then
+              @type = PrimitiveType.new(VALUE)
+            end
+         end
+
         elsif ty.type then
-#          if dupp then
-#            ty.type = @type.dup_type
-#          end
+          if dupp then
+            ty.type = @type.dup_type
+          end
         else
           if dupp then
             ty.type = @type.dup_type
@@ -421,6 +441,14 @@ class AbstructContainerType<ComplexType
     no
   end
 
+  def to_value(val, b, context)
+    val
+  end
+
+  def from_value(val, b, context)
+    val
+  end
+
   def llvm
     VALUE
   end
@@ -449,9 +477,31 @@ class ArrayType<AbstructContainerType
     no
   end
 
+  def has_cycle_aux(r, t)
+    if r == t then
+      return true
+    else
+      if r.is_a?(ComplexType) and t.is_a?(ComplexType) then
+        r = r.element_type.type.element_type.type
+        t = t.element_type.type
+        return has_cycle_aux(r, t)
+      else
+        return false
+      end
+    end
+  end
+
+  def has_cycle?
+    has_cycle_aux(@element_type.type, self)
+  end
+
   def inspect2
     if @element_type then
-      "Array of #{@element_type.inspect2}"
+      if has_cycle? then
+        "Array of VALUE"
+      else
+        "Array of #{@element_type.inspect2}"
+      end
     else
       "Array of nil"
     end

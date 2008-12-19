@@ -441,6 +441,7 @@ class YarvTranslator<YarvVisitor
         context.array_alloca_size = array_alloca_size
         context.loop_cnt_alloca_size = loop_cnt_alloca_size
         context.instance_vars_local = instance_vars_local
+        context.block_value[nil] = [RubyType.value, 4.llvm]
         context = rescode.call(b, context)
         rc = retexp[1].call(b, context).rc
         if rc then
@@ -775,7 +776,8 @@ class YarvTranslator<YarvVisitor
       v = @expstack.pop
       inits.push v
       if etype and etype != v[0].type.llvm then
-        raise "Element of array must be same type in yarv2llvm #{etype} expected but #{v[0].inspect2}"
+#        raise "Element of array must be same type in yarv2llvm #{etype} expected but #{v[0].inspect2}"
+        print "Element of array must be same type in yarv2llvm #{etype} expected but #{v[0].inspect2}\n"
       end
       etype = v[0].type.llvm
     }
@@ -843,8 +845,36 @@ class YarvTranslator<YarvVisitor
     rtype = RubyType.range(fst[0], lst[0], flg, info[3])
     @expstack.push [rtype,
        lambda {|b, context|
-         rtype.type.first.type.constant = fst[1].call(b, context).rc
-         rtype.type.last.type.constant = lst[1].call(b, context).rc
+         case fst[0].type.llvm
+         when Type::Int32Ty
+           valint = fst[1].call(b, context).rc
+           rtype.type.first.type.constant = valint
+
+         when VALUE
+           val = fst[1].call(b, context).rc
+           valint = b.lshr(val, 1.llvm)
+           rtype.type.first.type.constant = valint
+
+         else
+           raise "Not support type #{lst[0].type.inspect2} in Range"
+         end
+
+         case lst[0].type.llvm
+         when Type::Int32Ty
+           valint = lst[1].call(b, context).rc
+           valint = b.add(valint, 1.llvm) if flg == 0
+           rtype.type.last.type.constant = valint
+
+         when VALUE
+           val = lst[1].call(b, context).rc
+           valint = b.lshr(val, 1.llvm)
+           valint = b.add(valint, 1.llvm) if flg == 0
+           rtype.type.last.type.constant = valint
+
+         else
+           raise "Not support type #{lst[0].type.inspect2} in Range"
+         end
+
          context.rc = 4.llvm
          context
     }]
@@ -1233,7 +1263,17 @@ class YarvTranslator<YarvVisitor
     @expstack.push [s1[0].dup_type,
       lambda {|b, context|
         s1val, s2val, context = gen_common_opt_2arg(b, context, s1, s2)
-        context.rc = b.add(s1val, s2val)
+        case s1[0].type.llvm
+        when Type::DoubleTy, Type::Int32Ty
+          context.rc = b.add(s1val, s2val)
+          
+        when VALUE
+          s1int = b.lshr(s1val, 1.llvm)
+          s2int = b.lshr(s2val, 1.llvm)
+          addint = b.add(s1int, s2int)
+          x = b.shl(addint, 1.llvm)
+          context.rc = b.or(FIXNUM_FLAG, x)
+        end
         context
       }
     ]
@@ -1247,7 +1287,17 @@ class YarvTranslator<YarvVisitor
     @expstack.push [s1[0].dup_type,
       lambda {|b, context|
         s1val, s2val, context = gen_common_opt_2arg(b, context, s1, s2)
-        context.rc = b.sub(s1val, s2val)
+        case s1[0].type.llvm
+        when Type::DoubleTy, Type::Int32Ty
+          context.rc = b.sub(s1val, s2val)
+          
+        when VALUE
+          s1int = b.lshr(s1val, 1.llvm)
+          s2int = b.lshr(s2val, 1.llvm)
+          addint = b.sub(s1int, s2int)
+          x = b.shl(addint, 1.llvm)
+          context.rc = b.or(FIXNUM_FLAG, x)
+        end
         context
       }
     ]
@@ -1261,7 +1311,17 @@ class YarvTranslator<YarvVisitor
     @expstack.push [s1[0].dup_type,
       lambda {|b, context|
         s1val, s2val, context = gen_common_opt_2arg(b, context, s1, s2)
-        context.rc = b.mul(s1val, s2val)
+        case s1[0].type.llvm
+        when Type::DoubleTy, Type::Int32Ty
+          context.rc = b.mul(s1val, s2val)
+          
+        when VALUE
+          s1int = b.lshr(s1val, 1.llvm)
+          s2int = b.lshr(s2val, 1.llvm)
+          mulint = b.mul(s1val, s2val)
+          x = b.shl(mulint, 1.llvm)
+          context.rc = b.or(FIXNUM_FLAG, x)
+        end
         context
       }
     ]
@@ -1316,13 +1376,13 @@ class YarvTranslator<YarvVisitor
       lambda {|b, context|
         s1val, s2val, context = gen_common_opt_2arg(b, context, s1, s2)
         case s1[0].type.llvm
-          when Type::DoubleTy
+        when Type::DoubleTy
           context.rc = b.fcmp_ueq(s1val, s2val)
 
-          when Type::Int32Ty
+        when Type::Int32Ty
           context.rc = b.icmp_eq(s1val, s2val)
 
-          when VALUE
+        when VALUE
           context.rc = b.icmp_eq(s1val, s2val)
         end
         context
@@ -1493,10 +1553,11 @@ class YarvTranslator<YarvVisitor
           end
         elsif arr[0].type.is_a?(StringType) then
           raise "Not impremented String::[] in #{info[3]}"
-
+          context
         else
           # Todo: Hash table?
-          raise "Not impremented in #{info[3]}"
+#          raise "Not impremented #{arr[0].inspect2} in #{info[3]}"
+          context
         end
       }
     ]

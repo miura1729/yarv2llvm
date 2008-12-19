@@ -25,6 +25,7 @@ DEF_OPTION = {
   :array_range_check => true,
 
   :cache_instance_variable => false,
+  :strict_type_inference => false,
 }
 OPTION = {}
 

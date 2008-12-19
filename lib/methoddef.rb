@@ -83,19 +83,39 @@ module MethodDefinition
     :to_f => {
       :inline_proc => 
         lambda {
-          recv = @para[:args][:receiver]
+          recv = @para[:receiver]
           rettype = RubyType.float(@para[:info][3], 'Return type of to_f')
           @expstack.push [rettype,
-                        lambda {|b, context|
-                          context = recv.call(b, context)
-                          val = context.rc
-                          case val[0].type.llvm
-                          when Type::DoubleTy
-                            context.rc = val
-                          when Type::Int32Ty
-                            context.rc = b.si_to_fp(val)
-                          end
-                          context}]
+            lambda {|b, context|
+              context = recv.call(b, context)
+              val = context.rc
+              case val[0].type.llvm
+              when Type::DoubleTy
+                context.rc = val
+              when Type::Int32Ty
+                context.rc = b.si_to_fp(val)
+              end
+              context}]
+       },
+    },
+
+    :-@ => {
+      :inline_proc => 
+        lambda {
+          recv = @para[:receiver]
+          @expstack.push [recv[0],
+            lambda {|b, context|
+              context = recv[1].call(b, context)
+              val = context.rc
+              case recv[0].type.llvm
+              when Type::DoubleTy
+                context.rc = b.sub((0.0).llvm, val)
+              when Type::Int32Ty
+                context.rc = b.sub(0.llvm, val)
+              else
+                raise "Unsupported type #{val[0].inspect2} in -@"
+              end
+              context}]
        },
     },
 
