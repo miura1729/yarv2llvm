@@ -400,7 +400,7 @@ class YarvTranslator<YarvVisitor
         1.upto(numarg) do |n|
           if argtype[n - 1].type == nil then
 #            raise "Argument type is ambious #{local[-n][:name]} of #{info[1]} in #{info[3]}"
-            argtype[n - 1].type = PrimitiveType.new(VALUE)
+            argtype[n - 1].type = PrimitiveType.new(VALUE, nil)
           end
         end
 
@@ -408,7 +408,7 @@ class YarvTranslator<YarvVisitor
         if info[0] or code.header['type'] != :method then
           if argtype[numarg].type == nil then
 #            raise "Argument type is ambious self #{info[1]} in #{info[3]}"
-            argtype[numarg].type = PrimitiveType.new(VALUE)
+            argtype[numarg].type = PrimitiveType.new(VALUE, nil)
           end
           blkpoff = blkpoff + 1
         end
@@ -416,18 +416,18 @@ class YarvTranslator<YarvVisitor
         if code.header['type'] == :block or have_yield then
           if argtype[blkpoff].type == nil then
 #            raise "Argument type is ambious parsnt frame #{info[1]} in #{info[3]}"
-            argtype[blkpoff].type = PrimitiveType.new(VALUE)
+            argtype[blkpoff].type = PrimitiveType.new(VALUE, nil)
           end
           if argtype[blkpoff + 1].type == nil then
 #            raise "Block function pointer is ambious parsnt frame #{info[1]} in #{info[3]}"
-            argtype[blkpoff + 1].type = PrimitiveType.new(VALUE)
+            argtype[blkpoff + 1].type = PrimitiveType.new(VALUE, nil)
           end
 
         end
 
         if retexp[0].type == nil then
 #          raise "Return type is ambious #{info[1]} in #{info[3]}"
-          retexp[0].type = PrimitiveType.new(VALUE)
+          retexp[0].type = PrimitiveType.new(VALUE, nil)
         end
 
         is_mkstub = true
@@ -772,14 +772,20 @@ class YarvTranslator<YarvVisitor
     nele = ins[1]
     inits = []
     etype = nil
+    atype = RubyType.array(info[3])
     nele.times {|n|
       v = @expstack.pop
       inits.push v
       if etype and etype != v[0].type.llvm then
-#        raise "Element of array must be same type in yarv2llvm #{etype} expected but #{v[0].inspect2}"
-        print "Element of array must be same type in yarv2llvm #{etype} expected but #{v[0].inspect2}\n"
+        mess = "Element of array must be same type in yarv2llvm #{etype} expected but #{v[0].inspect2}"
+        if OPTION[:strict_type_inference] then
+          raise mess
+        else
+          print mess, "\n"
+        end
       end
       etype = v[0].type.llvm
+      atype.type.element_type.conflicted_types[etype.llvm] = etype
     }
     if nele != 0 then
       if @array_alloca_size == nil or @array_alloca_size < nele then
@@ -788,7 +794,6 @@ class YarvTranslator<YarvVisitor
     end
         
     inits.reverse!
-    atype = RubyType.array(info[3])
     if inits[0] then
       atype.type.element_type.add_same_type(inits[0][0])
       inits[0][0].add_same_type(atype.type.element_type)
@@ -887,7 +892,7 @@ class YarvTranslator<YarvVisitor
       context = oldrescode.call(b, context)
       if exp then
         if exp[0].type == nil then
-          exp[0].type = PrimitiveType.new(VALUE)
+          exp[0].type = PrimitiveType.new(VALUE, nil)
           exp[0].clear_same
         end
         context.rc = exp[1].call(b, context)
@@ -1058,7 +1063,7 @@ class YarvTranslator<YarvVisitor
         }
         if rett.type == nil then
 #          raise "Return type is ambious: #{receiver ? receiver[0].klass : nil}##{mname}"
-          rett.type = PrimitiveType.new(VALUE)
+          rett.type = PrimitiveType.new(VALUE, nil)
         end
         ftype = Type.function(rett.type.llvm, argtype)
         func = context.builder.get_or_insert_function(mname, ftype)
@@ -1108,12 +1113,12 @@ class YarvTranslator<YarvVisitor
         arg.map {|e|
           if e[0].type == nil then
             # raise "Return type is ambious #{e[0].name} in #{e[0].line_no}"
-            e[0].type = PrimitiveType.new(VALUE)
+            e[0].type = PrimitiveType.new(VALUE, nil)
           end
         }
         if rett.type == nil then
           # raise "Return type is ambious #{rett.name} in #{rett.line_no}"
-          rett.type = PrimitiveType.new(VALUE)
+          rett.type = PrimitiveType.new(VALUE, nil)
         end
 
         ftype = Type.function(rett.type.llvm, 
@@ -1255,49 +1260,88 @@ class YarvTranslator<YarvVisitor
   # opt_checkenv
   
   def visit_opt_plus(code, ins, local, ln, info)
-    s2 = @expstack.pop
-    s1 = @expstack.pop
-    #    p @expstack
-    check_same_type_2arg_static(s1, s2)
+    s = []
+    s[1] = @expstack.pop
+    s[0] = @expstack.pop
+    check_same_type_2arg_static(s[0], s[1])
     
-    @expstack.push [s1[0].dup_type,
+    @expstack.push [s[0][0].dup_type,
       lambda {|b, context|
-        s1val, s2val, context = gen_common_opt_2arg(b, context, s1, s2)
-        case s1[0].type.llvm
+        sval = []
+        sval[0], sval[1], context = gen_common_opt_2arg(b, context, s[0], s[1])
+        case s[0][0].type.llvm
         when Type::DoubleTy, Type::Int32Ty
-          context.rc = b.add(s1val, s2val)
+          context.rc = b.add(sval[0], sval[1])
           
         when VALUE
-          s1int = b.lshr(s1val, 1.llvm)
-          s2int = b.lshr(s2val, 1.llvm)
-          addint = b.add(s1int, s2int)
-          x = b.shl(addint, 1.llvm)
-          context.rc = b.or(FIXNUM_FLAG, x)
+          if s[0][0].conflicted_types.size == 1 and
+             s[1][0].conflicted_types.size == 1 then
+            conf1 = s[0][0].conflicted_types.to_a[0]
+            al1 = conf1[0]
+            at1 = conf1[1]
+            conf2 = s[0][0].conflicted_types.to_a[0]
+            al2 = conf2[0]
+            at2 = conf2[1]
+            if al1 == al2 then
+              case al1
+              when Type::DoubleTy, Type::Int32Ty
+                s1ne = at1.from_value(sval[0], b, context)
+                s2ne = at2.from_value(sval[1], b, context)
+                addne = b.add(s1ne, s2ne)
+                context.rc = at1.to_value(addne, b, context)
+              end
+            else
+              # Generic + dispatch
+            end
+          else
+            # Generic + dispatch
+          end
         end
+
         context
       }
     ]
   end
   
   def visit_opt_minus(code, ins, local, ln, info)
-    s2 = @expstack.pop
-    s1 = @expstack.pop
-    check_same_type_2arg_static(s1, s2)
+    s = []
+    s[1] = @expstack.pop
+    s[0] = @expstack.pop
+    check_same_type_2arg_static(s[0], s[1])
     
-    @expstack.push [s1[0].dup_type,
+    @expstack.push [s[0][0].dup_type,
       lambda {|b, context|
-        s1val, s2val, context = gen_common_opt_2arg(b, context, s1, s2)
-        case s1[0].type.llvm
+        sval = []
+        sval[0], sval[1], context = gen_common_opt_2arg(b, context, s[0], s[1])
+        case s[0][0].type.llvm
         when Type::DoubleTy, Type::Int32Ty
-          context.rc = b.sub(s1val, s2val)
+          context.rc = b.sub(sval[0], sval[1])
           
         when VALUE
-          s1int = b.lshr(s1val, 1.llvm)
-          s2int = b.lshr(s2val, 1.llvm)
-          addint = b.sub(s1int, s2int)
-          x = b.shl(addint, 1.llvm)
-          context.rc = b.or(FIXNUM_FLAG, x)
+          if s[0][0].conflicted_types.size == 1 and
+             s[1][0].conflicted_types.size == 1 then
+            conf1 = s[0][0].conflicted_types.to_a[0]
+            al1 = conf1[0]
+            at1 = conf1[1]
+            conf2 = s[0][0].conflicted_types.to_a[0]
+            al2 = conf2[0]
+            at2 = conf2[1]
+            if al1 == al2 then
+              case al1
+              when Type::DoubleTy, Type::Int32Ty
+                s1ne = at1.from_value(sval[0], b, context)
+                s2ne = at2.from_value(sval[1], b, context)
+                addne = b.sub(s1ne, s2ne)
+                context.rc = at1.to_value(addne, b, context)
+              end
+            else
+              # Generic + dispatch
+            end
+          else
+            # Generic + dispatch
+          end
         end
+
         context
       }
     ]

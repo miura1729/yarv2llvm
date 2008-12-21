@@ -20,20 +20,27 @@ class RubyType
     elsif type.is_a?(ComplexType) then
       @type = type
     else
-      @type = PrimitiveType.new(type)
+      @type = PrimitiveType.new(type, klass)
     end
-    if klass then
-      @klass = klass.name.to_sym
-    else
-      @klass = nil
-    end
+
+#      @klass = klass.name.to_sym
+
     @resolveed = false
     @same_type = []
     @same_value = []
     @@type_table.push self
+    @conflicted_types = Hash.new(0)
   end
   attr_accessor :type
-  attr_accessor :klass
+  attr_accessor :conflicted_types
+
+  def klass
+    if @type then
+      @type.klass
+    else
+      nil
+    end
+  end
 
   def dup_type
 #    no = self.class.new(nil)
@@ -114,10 +121,8 @@ class RubyType
           if ty.type.is_a?(@type.class) and ty.type.class != @type.class then
             if dupp then
               @type = ty.type.dup_type
-              @klass = ty.klass
             else
               @type = ty.type
-              @klass = ty.klass
             end
             @resolveed = false
             resolve
@@ -128,10 +133,8 @@ class RubyType
             if ty.type != @type then
               if dupp then
                 ty.type = @type.dup_type
-                ty.klass = klass
               else
                 ty.type = @type
-                ty.klass = klass
               end
             end
             ty.resolve
@@ -153,10 +156,10 @@ class RubyType
             print mess
 
             if ty.type.is_a?(PrimitiveType) then
-              ty.type = PrimitiveType.new(VALUE)
-            end
-            if @type.is_a?(PrimitiveType) then
-              @type = PrimitiveType.new(VALUE)
+              unless ty.type.klass == :Object
+                ty.conflicted_types[ty.type.llvm] = ty.type
+              end
+              ty.type = PrimitiveType.new(VALUE, Object)
             end
          end
 
@@ -164,14 +167,14 @@ class RubyType
           if dupp then
             ty.type = @type.dup_type
           end
+          ty.conflicted_types = @conflicted_types
         else
           if dupp then
             ty.type = @type.dup_type
-            ty.klass = klass
           else
             ty.type = @type
-            ty.klass = klass
           end
+          ty.conflicted_types = @conflicted_types
           ty.resolve
         end
       }
@@ -282,16 +285,26 @@ class PrimitiveType
   include LLVM
   include RubyHelpers
 
-  def initialize(type)
+  def initialize(type, klass)
+    if klass.is_a?(Symbol) then
+      @klass = klass
+    elsif klass then
+      @klass = klass.name.to_sym
+    else
+      @klass = :nil
+    end
     @type = type
     @content = nil
     @constant = nil
   end
+
+  attr_accessor :klass
   attr_accessor :content
   attr_accessor :constant
 
   def dup_type
-    self.class.new(@type)
+    nt = self.class.new(@type, @klass)
+    nt
   end
 
   TYPE_HANDLER = {
@@ -341,7 +354,7 @@ class PrimitiveType
       },
 
     VALUE =>
-      {:inspect => "VALUE",
+    {:inspect => "VALUE (#{@type ? @type.conflicted_types.map{|t, v| t.klass} : ''})",
 
        :to_value => lambda {|val, b, context|
         val
@@ -387,6 +400,18 @@ class PrimitiveType
 end
 
 class ComplexType
+  def set_klass(klass)
+    if klass.is_a?(::Class) then
+      @klass = klass.name.to_sym
+    elsif klass.is_a?(Symbol) then
+      @klass = klass.to_sym
+    else
+      @klass = :nil
+    end
+  end
+
+  attr_accessor :klass
+
   def dup_type
     self.class.new
   end
@@ -397,6 +422,7 @@ class RangeType<ComplexType
   include RubyHelpers
 
   def initialize(first, last, excl)
+    set_klass(Range)
     @first = first
     @last = last
     @excl = excl
@@ -429,6 +455,7 @@ class AbstructContainerType<ComplexType
   include RubyHelpers
 
   def initialize(etype)
+    set_klass(Object)
     @element_type = RubyType.new(etype)
     @content = nil
   end
@@ -463,6 +490,7 @@ class ArrayType<AbstructContainerType
   include RubyHelpers
 
   def initialize(etype)
+    set_klass(Array)
     @element_type = RubyType.new(etype, nil, nil)
     @ptr = nil
     @element_content = Hash.new
@@ -525,6 +553,7 @@ class StringType<AbstructContainerType
   include RubyHelpers
 
   def initialize
+    set_klass(String)
     @element_type = RubyType.new(CHAR, nil, nil, Fixnum)
   end
   attr :element_type
