@@ -66,7 +66,7 @@ class YarvVisitor
           curln = ln
           code.lblock[ln].each do |ins|
             if ins.is_a?(Fixnum) then
-              info[3] = ins
+              info[3] = "#{code.header['filename']}:#{ins}"
               visit_number(code, ins, local, curln, info)
             else
               opname = ins[0].to_s
@@ -937,7 +937,7 @@ class YarvTranslator<YarvVisitor
       argt = minfo[:argtype]
       if argt[0].type == nil then
         RubyType.fixnum.add_same_type argt[0]
-        RubyType.fixnum.add_same_type argt[1]
+        RubyType.value.add_same_type argt[1]
         RubyType.value.add_same_type argt[2]
         RubyType.resolve
       end
@@ -951,13 +951,13 @@ class YarvTranslator<YarvVisitor
         argt = minfo[:argtype]
         if argt[0].type == nil then
           RubyType.fixnum.add_same_type argt[0]
-          RubyType.fixnum.add_same_type argt[1]
+          RubyType.value.add_same_type argt[1]
           RubyType.value.add_same_type argt[2]
           RubyType.resolve
         end
         slf = b.load(context.local_vars[2][:area])
         func = minfo[:func]
-        b.call(func, evt.llvm, lno.llvm, slf)
+        b.call(func, evt.llvm, lno.immediate, slf)
       end
       context
     }
