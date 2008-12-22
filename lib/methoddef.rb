@@ -354,15 +354,26 @@ module MethodDefinition
       :sqrt => 
         {:rettype => Type::DoubleTy,
         :argtype => [Type::DoubleTy],
+        :send_self => false,
         :cname => "llvm.sqrt.f64"},
       :sin => 
         {:rettype => Type::DoubleTy,
         :argtype => [Type::DoubleTy],
+        :send_self => false,
         :cname => "llvm.sin.f64"},
       :cos => 
         {:rettype => Type::DoubleTy,
         :argtype => [Type::DoubleTy],
+        :send_self => false,
         :cname => "llvm.cos.f64"},
+    },
+
+    :Process => {
+      :times => 
+        {:rettype => RubyType.struct(nil, nil),
+        :argtype => [RubyType.value(nil, nil, Process)],
+        :send_self => true,
+        :cname => "rb_proc_times"},
     },
   }
 

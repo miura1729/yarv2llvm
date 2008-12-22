@@ -397,6 +397,18 @@ EOS
     assert_equal(tsprintf("foo"), "The value is \"foo\"")
   end
 
+  def test_porcess_times
+    YARV2LLVM::compile(<<-EOS)
+def tprocesstimes
+  times = Process.times
+  p times
+  p times[0]
+  nil
+end
+EOS
+   assert_equal(tprocesstimes, nil)
+end
+
 # I can't pass this test yet.
 =begin
   def test_complex_type

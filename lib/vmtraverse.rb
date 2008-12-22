@@ -1022,14 +1022,31 @@ class YarvTranslator<YarvVisitor
     end
 
     if funcinfo then
-      rettype = RubyType.new(funcinfo[:rettype], info[3], "return type of #{mname} in forward call")
-      argtype = funcinfo[:argtype].map {|ts| RubyType.new(ts, info[3])}
+      rettype = funcinfo[:rettype]
+      argtype = funcinfo[:argtype]
+      unless rettype.is_a?(RubyType) then
+        rettype = RubyType.new(rettype, 
+                               info[3], 
+                               "return type of #{mname} in forward call")
+        argtype = funcinfo[:argtype].map {|ts| RubyType.new(ts, info[3])}
+      end
       cname = funcinfo[:cname]
+      send_self = funcinfo[:send_self]
+      argnum = ins[2]
+      if send_self then
+        argnum += 1
+      end
       
-      if argtype.size == ins[2] then
+      if argtype.size == argnum then
         argtype2 = argtype.map {|tc| tc.type.llvm}
         ftype = Type.function(rettype.type.llvm, argtype2)
         func = @builder.external_function(cname, ftype)
+
+        if send_self then
+          para = gen_arg_eval(args, receiver, ins, local, info, nil)
+        else
+          para = gen_arg_eval(args, nil, ins, local, info, nil)
+        end
 
         args.each_with_index do |pe, n|
           pe[0].add_same_type argtype[n]
@@ -1038,7 +1055,7 @@ class YarvTranslator<YarvVisitor
           
         @expstack.push [rettype,
           lambda {|b, context|
-            gen_call(func, args, b, context)
+            gen_call(func, para, b, context)
           }
         ]
         return
@@ -1277,11 +1294,11 @@ class YarvTranslator<YarvVisitor
           if s[0][0].conflicted_types.size == 1 and
              s[1][0].conflicted_types.size == 1 then
             conf1 = s[0][0].conflicted_types.to_a[0]
-            al1 = conf1[0]
             at1 = conf1[1]
-            conf2 = s[0][0].conflicted_types.to_a[0]
-            al2 = conf2[0]
+            al1 = at1.llvm
+            conf2 = s[1][0].conflicted_types.to_a[0]
             at2 = conf2[1]
+            al2 = at2.llvm
             if al1 == al2 then
               case al1
               when Type::DoubleTy, Type::Int32Ty
@@ -1321,18 +1338,18 @@ class YarvTranslator<YarvVisitor
           if s[0][0].conflicted_types.size == 1 and
              s[1][0].conflicted_types.size == 1 then
             conf1 = s[0][0].conflicted_types.to_a[0]
-            al1 = conf1[0]
             at1 = conf1[1]
-            conf2 = s[0][0].conflicted_types.to_a[0]
-            al2 = conf2[0]
+            al1 = at1.llvm
+            conf2 = s[1][0].conflicted_types.to_a[0]
             at2 = conf2[1]
+            al2 = at2.llvm
             if al1 == al2 then
               case al1
               when Type::DoubleTy, Type::Int32Ty
                 s1ne = at1.from_value(sval[0], b, context)
                 s2ne = at2.from_value(sval[1], b, context)
-                addne = b.sub(s1ne, s2ne)
-                context.rc = at1.to_value(addne, b, context)
+                subne = b.sub(s1ne, s2ne)
+                context.rc = at1.to_value(subne, b, context)
               end
             else
               # Generic + dispatch
@@ -1558,7 +1575,8 @@ class YarvTranslator<YarvVisitor
     @expstack.push [arr[0].type.element_type, 
       lambda {|b, context|
         pppp "aref start"
-        if arr[0].type.is_a?(ArrayType) then
+        case arr[0].klass
+        when :Array
           context = idx[1].call(b, context)
           idxp = context.rc
           if OPTION[:array_range_check] then
@@ -1595,8 +1613,23 @@ class YarvTranslator<YarvVisitor
             end
             context
           end
-        elsif arr[0].type.is_a?(StringType) then
+
+        when :String
           raise "Not impremented String::[] in #{info[3]}"
+          context
+
+        when :Struct
+          context = idx[1].call(b, context)
+          idxp = context.rc
+          idxval = idx[0].type.to_value(idxp, b, context)
+          context = arr[1].call(b, context)
+          arrp = context.rc
+          ftype = Type.function(VALUE, [VALUE, VALUE])
+          func = context.builder.external_function('rb_struct_aref', ftype)
+          av = b.call(func, arrp, idxval)
+          arrelet = arr[0].type.element_type.type
+          context.rc = arrelet.from_value(av, b, context)
+          
           context
         else
           # Todo: Hash table?

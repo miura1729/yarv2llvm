@@ -146,6 +146,7 @@ class RubyType
           end
         end
         
+        ty.conflicted_types.merge!(@conflicted_types)
         if ty.type and ty.type.llvm != @type.llvm then
           mess = "Type conflict \n"
           mess += "  #{ty.name}(#{ty.type.inspect2}) defined in #{ty.line_no} \n"
@@ -155,26 +156,20 @@ class RubyType
           else
             print mess
 
-            if ty.type.is_a?(PrimitiveType) then
-              unless ty.type.klass == :Object
-                ty.conflicted_types[ty.type.llvm] = ty.type
-              end
-              ty.type = PrimitiveType.new(VALUE, Object)
-            end
+            ty.conflicted_types[ty.type.klass] = ty.type
+            ty.type = PrimitiveType.new(VALUE, Object)
          end
 
         elsif ty.type then
           if dupp then
             ty.type = @type.dup_type
           end
-          ty.conflicted_types = @conflicted_types
         else
           if dupp then
             ty.type = @type.dup_type
           else
             ty.type = @type
           end
-          ty.conflicted_types = @conflicted_types
           ty.resolve
         end
       }
@@ -217,6 +212,11 @@ class RubyType
     RubyType.new(na, lno, name, Array)
   end
 
+  def self.struct(lno = nil, name = nil)
+    na = StructType.new
+    RubyType.new(na, lno, name, Struct)
+  end
+
   def self.range(fst, lst, excl, lno = nil, name = nil)
     na = RangeType.new(fst, lst, excl)
     RubyType.new(na, lno, name, Range)
@@ -248,7 +248,15 @@ class RubyType
       RubyType.array(lno, name)
 
     else
-      RubyType.value(lno, name, Object)
+      obj = nil
+      if sym then
+        obj = const_get(sym)
+      end
+      unless obj
+        obj = Object
+      end
+
+      RubyType.value(lno, name, obj)
     end
   end
 
@@ -583,6 +591,38 @@ class StringType<AbstructContainerType
 
   def llvm
     P_CHAR
+  end
+end
+
+class StructType<AbstructContainerType
+  include LLVM
+  include RubyHelpers
+
+  def initialize
+    set_klass(Struct)
+    @element_type = RubyType.new(VALUE, nil, nil, Object)
+  end
+  attr :element_type
+
+  def dup_type
+    no = self.class.new
+    no
+  end
+
+  def inspect2
+    "Struct"
+  end
+
+  def to_value(val, b, context)
+    val
+  end
+
+  def from_value(val, b, context)
+    val
+  end
+
+  def llvm
+    VALUE
   end
 end
 end
