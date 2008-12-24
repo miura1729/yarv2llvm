@@ -164,6 +164,12 @@ class YarvTranslator<YarvVisitor
     @constant_type_tab = Hash.new {|hash, klass|
       hash[klass] = {}
     }
+
+    # Information of global variables by malloc
+    @global_malloc_area_tab = {}
+
+    # Number of trace(for profile speed up)
+    @trace_no = 0
   end
 
   include IntRuby
@@ -174,6 +180,8 @@ class YarvTranslator<YarvVisitor
     if OPTION[:cache_instance_variable] then
       gen_ivar_ptr(@builder)
     end
+
+    initfunc = gen_init_ruby(@builder)
     
     @generated_code.each do |fname, gen|
       gen.call
@@ -188,6 +196,8 @@ class YarvTranslator<YarvVisitor
     if OPTION[:write_bc] then
       @builder.write_bc(OPTION[:write_bc])
     end
+
+    LLVM::ExecutionEngine.run_function(initfunc)
   end
   
   def visit_block_start(code, ins, local, ln, info)
@@ -692,14 +702,22 @@ class YarvTranslator<YarvVisitor
   def visit_getconstant(code, ins, local, ln, info)
     klass = @expstack.pop
     val = nil
-    if klass[0].name == "nil" then
-      val = eval(ins[1].to_s, @binding)
+    const_path = ins[1].to_s
+    kn = klass[0].name
+    unless kn == "nil" then
+      const_path = "#{kn}::#{const_path}"
     end
+    if info[0] then
+      const_path = "#{info[0]}::#{const_path}"
+    end
+    val = eval(const_path, @binding)
+
     type = @constant_type_tab[@binding][ins[1]]
     if type == nil then
       type = RubyType.typeof(val, info[3], ins[1])
       @constant_type_tab[@binding][ins[1]] = type
     end
+
     @expstack.push [type,
       lambda {|b, context|
         context.rc = val.llvm
@@ -713,8 +731,60 @@ class YarvTranslator<YarvVisitor
     eval("#{ins[1].to_s} = #{val[0].name}", @binding)
   end
 
-  # getglobal
-  # setglobal
+  def visit_getglobal(code, ins, local, ln, info)
+    glname = ins[1]
+    type = RubyType.new(nil, info[3], "$#{glname}")
+
+    @expstack.push [type,
+      lambda {|b, context|
+        ftype = Type.function(VALUE, [VALUE])
+        func1 = context.builder.external_function('rb_global_entry', ftype)
+        func2 = context.builder.external_function('rb_gvar_get', ftype)
+        glid = ((glname.object_id << 1) / RVALUE_SIZE)
+        glob = b.call(func1, glid.llvm)
+        val = b.call(func2, glob)
+        context.rc = type.type.from_value(val, b, context)
+        context
+      }]
+  end
+
+  def visit_setglobal(code, ins, local, ln, info)
+    glname = ins[1]
+    
+    dsttype = RubyType.new(nil, info[3], "$#{glname}")
+
+    src = @expstack.pop
+    srctype = src[0]
+    srcvalue = src[1]
+    
+    srctype.add_same_value(dsttype)
+    dsttype.add_same_value(srctype)
+
+    oldrescode = @rescode
+    @rescode = lambda {|b, context|
+      context = oldrescode.call(b, context)
+      context = srcvalue.call(b, context)
+      srcval = context.rc
+      srcval2 = srctype.type.to_value(srcval, b, context)
+
+      dsttype.type = dsttype.type.dup_type
+      dsttype.type.content = srcval
+
+      ftype1 = Type.function(VALUE, [VALUE])
+      func1 = context.builder.external_function('rb_global_entry', ftype1)
+
+      ftype2 = Type.function(VALUE, [VALUE, VALUE])
+      func2 = context.builder.external_function('rb_gvar_set', ftype2)
+
+      glid = ((glname.object_id << 1) / RVALUE_SIZE)
+
+      gent = b.call(func1, glid.llvm)
+      b.call(func2, gent, srcval2)
+      context.org = dsttype.name
+
+      context
+    }
+  end
 
   def visit_putnil(code, ins, local, ln, info)
     # Nil is not support yet.
@@ -918,7 +988,33 @@ class YarvTranslator<YarvVisitor
       }]
   end
 
-  # dupn
+  def visit_dupn(code, ins, local, ln, info)
+    s = []
+    n = ins[1]
+    n.times do |i|
+      s.push @expstack.pop
+    end
+    s.reverse!
+    
+    stacktop_value = []
+    n.times do |i|
+      @expstack.push [s[i][0],
+        lambda {|b, context|
+          context.rc = stacktop_value[i]
+          context
+        }]
+    end
+      
+    n.times do |i|
+      @expstack.push [s[i][0],
+        lambda {|b, context|
+          context = s[i][1].call(b, context)
+          stacktop_value[i] = context.rc
+          context
+        }]
+    end
+  end
+
   # swap
   # reput
   # topn
@@ -928,17 +1024,19 @@ class YarvTranslator<YarvVisitor
   # defined
 
   def visit_trace(code, ins, local, ln, info)
+    curtrace_no = @trace_no
+    evt = ins[1]
+    TRACE_INFO[curtrace_no] = [evt, info.clone]
+    @trace_no += 1
     if info[1] == :trace_func and info[0] == :YARV2LLVM then
       return
     end
 
-    evt = ins[1]
     if minfo = MethodDefinition::RubyMethod[:trace_func][:YARV2LLVM] then
       argt = minfo[:argtype]
       if argt[0].type == nil then
         RubyType.fixnum.add_same_type argt[0]
-        RubyType.value.add_same_type argt[1]
-        RubyType.value.add_same_type argt[2]
+        RubyType.fixnum.add_same_type argt[1]
         RubyType.resolve
       end
     end
@@ -951,13 +1049,17 @@ class YarvTranslator<YarvVisitor
         argt = minfo[:argtype]
         if argt[0].type == nil then
           RubyType.fixnum.add_same_type argt[0]
-          RubyType.value.add_same_type argt[1]
-          RubyType.value.add_same_type argt[2]
+          RubyType.fixnum.add_same_type argt[1]
           RubyType.resolve
         end
-        slf = b.load(context.local_vars[2][:area])
+        if info[0] == nil then
+          slf = 4.llvm
+        else
+          slf = b.load(context.local_vars[2][:area])
+        end
         func = minfo[:func]
-        b.call(func, evt.llvm, lno.immediate, slf)
+        EXPORTED_OBJECT[lno] = true
+        b.call(func, evt.llvm, curtrace_no.llvm, slf)
       end
       context
     }
@@ -1756,6 +1858,26 @@ class YarvTranslator<YarvVisitor
       context.org = alocal[:name]
       context
     }
+  end
+
+  def gen_init_ruby(builder)
+    ftype = Type.function(VALUE, [])
+    b = builder.define_function_raw('init_ruby', ftype)
+    member = []
+    @global_malloc_area_tab.each do |vname, val|
+      member.push val[0]
+    end
+    type = Type.struct(member)
+
+    initarg = []
+    @global_malloc_area_tab.each do |vname, val|
+      initarg.push val[1]
+    end
+    init = Value.get_struct_constant(type, *initarg)
+    gl = builder.define_global_variable(type, init)
+
+    b.return(4.llvm)
+    builder.current_function
   end
 end
 

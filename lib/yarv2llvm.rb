@@ -29,6 +29,9 @@ DEF_OPTION = {
 }
 OPTION = {}
 
+# Protect from GC
+EXPORTED_OBJECT = {}
+
 # From gc.c in ruby1.9
 #     *  sizeof(RVALUE) is
 #     *  20 if 32-bit, double is 4-byte aligned
@@ -36,10 +39,13 @@ OPTION = {}
 #     *  40 if 64-bit
 RVALUE_SIZE = 20
 RUBY_SYMBOL_FLAG = 0xe
+
+TRACE_INFO = []
 end
 
 class Object
   def llvm
+    YARV2LLVM::EXPORTED_OBJECT[self] = true
     immediate
   end
 end
@@ -58,6 +64,7 @@ end
 
 class Symbol
   def llvm
+    YARV2LLLVM::EXPORTED_OBJECT[self] = true
     immediate
   end
 end

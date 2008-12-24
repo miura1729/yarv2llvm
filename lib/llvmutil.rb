@@ -98,6 +98,11 @@ module LLVMUtil
         context.rc = yield(b, context, func, nele, argarea)
         context}]
   end
+
+  def add_global_variable(name, type, init)
+    @global_malloc_area_tab[name] = [type, init]
+    @global_malloc_area_tab.size - 1
+  end
 end
 
 module SendUtil

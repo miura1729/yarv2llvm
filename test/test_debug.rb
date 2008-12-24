@@ -4,13 +4,14 @@ require 'yarv2llvm'
 class DebugTests < Test::Unit::TestCase
 
   def test_trace_func
-    YARV2LLVM::compile(<<-EOS, {disasm: true})
+    YARV2LLVM::compile(<<-EOS, {dump_yarv: true, disasm: true, optimize: true})
 module YARV2LLVM
-  def trace_func(event, line)
+  def trace_func(event, no)
     p event
-    p line
-    p "----"
-    p self
+    p no
+    p TRACE_INFO[no]
+    get_interval_cycle
+    p get_interval_cycle
   end
 end
 

@@ -13,6 +13,7 @@ class LLVMBuilder
     @module = LLVM::Module.new('yarv2llvm')
     @externed_function = {}
     @func = nil
+    @global_ptr = nil
     ExecutionEngine.get(@module)
   end
   
@@ -89,6 +90,14 @@ class LLVMBuilder
   def get_or_insert_function_raw(name, type)
     @module.get_or_insert_function(name, type)
   end
+  
+  def define_global_variable(type, init)
+    @global_ptr = @module.global_variable(type, init)
+  end
+
+  def global_variable
+    @global_ptr
+  end
 
   def arguments
     @func.arguments
@@ -96,6 +105,10 @@ class LLVMBuilder
 
   def create_block
     @func.create_block
+  end
+
+  def current_function
+    @func
   end
 
   def external_function(name, type)

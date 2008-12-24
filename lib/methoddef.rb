@@ -345,7 +345,33 @@ module MethodDefinition
                context.rc = b.call(func, nargs.llvm, initarea, recv)
                context}]
          }
-     }
+     },
+
+    :get_interval_cycle => {
+      :inline_proc =>
+        lambda {
+          info = @para[:info]
+          rettype = RubyType.fixnum(info[3], "Return type of gen_interval_cycle")
+          glno = add_global_variable("interval_cycle", 
+                                     Type::Int64Ty, 
+                                     0.llvm(Type::Int64Ty))
+          @expstack.push [rettype,
+            lambda {|b, context|
+              prevvalp = context.builder.global_variable
+              prevvalp = b.struct_gep(prevvalp, glno)
+              prevval = b.load(prevvalp)
+              ftype = Type.function(Type::Int64Ty, [])
+              fname = 'llvm.readcyclecounter'
+              func = context.builder.external_function(fname, ftype)
+              curval = b.call(func)
+              diffval = b.sub(curval, prevval)
+              rc = b.trunc(diffval, Type::Int32Ty)
+              b.store(curval, prevvalp)
+              context.rc = rc
+              context
+            }]
+          }
+        }
   }
   
   # can be maped to C function
