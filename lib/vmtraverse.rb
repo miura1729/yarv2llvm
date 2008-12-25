@@ -78,7 +78,7 @@ class YarvVisitor
               curln = (curln.to_s + "_1").to_sym
             end
           end
-          visit_local_block_end(code, ln, local, ln, info)
+          visit_local_block_end(code, ln, local, curln, info)
         end
 
         visit_block_end(code, nil, local, nil, info)
@@ -481,7 +481,7 @@ class YarvTranslator<YarvVisitor
     if live and @expstack.size > 0 then
       valexp = @expstack.pop
     end
-    
+
     @jump_from[ln] ||= []
     @jump_from[ln].push @prev_label
     @rescode = lambda {|b, context|
@@ -523,8 +523,7 @@ class YarvTranslator<YarvVisitor
           end
           if context.block_value[commer_label[0]] then
             rc = b.phi(context.block_value[commer_label[0]][0].type.llvm)
-            
-            commer_label.reverse.each do |lab|
+            commer_label.uniq.reverse.each do |lab|
               rc.add_incoming(context.block_value[lab][1], 
                               context.blocks[lab])
             end
@@ -537,10 +536,14 @@ class YarvTranslator<YarvVisitor
 
       @expstack.pop
       @expstack.push [valexp[0],
-        lambda {|b, context|
-          context.rc = rc
-          context
-        }]
+                      lambda {|b, context|
+                        if rc then
+                          context.rc = rc
+                        else
+                          context.rc = 4.llvm
+                        end
+                        context
+                      }]
     end
   end
   
@@ -798,14 +801,11 @@ class YarvTranslator<YarvVisitor
   end
 
   def visit_putnil(code, ins, local, ln, info)
-    # Nil is not support yet.
-#=begin
     @expstack.push [RubyType.value(info[3], "nil"), 
       lambda {|b, context| 
         context.rc = 4.llvm   # 4 means nil
         context
       }]
-#=end
   end
 
   def visit_putself(code, ins, local, ln, info)

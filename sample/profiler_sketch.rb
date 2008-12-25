@@ -48,10 +48,10 @@ YARV2LLVM::TRACE_INFO.each do |n|
   src_content[fn] = File.readlines(fn)
 end
 
-res = {}
+res = Hash.new(0)
 YARV2LLVM::TRACE_INFO.each_with_index do |n, i|
   fn, ln = n[1][3].split(/:/)
-  res[n[1][3]] = YARV2LLVM::PROFILER_STATICS[i]
+  res[n[1][3]] += YARV2LLVM::PROFILER_STATICS[i]
 end
 
 src_content.each do |fn, cont|
