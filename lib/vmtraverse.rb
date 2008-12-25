@@ -170,6 +170,10 @@ class YarvTranslator<YarvVisitor
 
     # Number of trace(for profile speed up)
     @trace_no = 0
+
+    @global_var_tab = Hash.new {|gltab, glname|
+      gltab[glname] = {}
+    }
   end
 
   include IntRuby
@@ -733,8 +737,11 @@ class YarvTranslator<YarvVisitor
 
   def visit_getglobal(code, ins, local, ln, info)
     glname = ins[1]
-    type = RubyType.new(nil, info[3], "$#{glname}")
-
+    type = @global_var_tab[glname][:type]
+    unless type 
+      type = RubyType.new(nil, info[3], "$#{glname}")
+      @global_var_tab[glname][:type] = type
+    end
     @expstack.push [type,
       lambda {|b, context|
         ftype = Type.function(VALUE, [VALUE])
@@ -751,7 +758,11 @@ class YarvTranslator<YarvVisitor
   def visit_setglobal(code, ins, local, ln, info)
     glname = ins[1]
     
-    dsttype = RubyType.new(nil, info[3], "$#{glname}")
+    dsttype = @global_var_tab[glname][:type]
+    unless dsttype
+      dsttype = RubyType.new(nil, info[3], "$#{glname}")
+      @global_var_tab[glname][:type] = dsttype
+    end
 
     src = @expstack.pop
     srctype = src[0]

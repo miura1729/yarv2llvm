@@ -87,13 +87,13 @@ module MethodDefinition
           rettype = RubyType.float(@para[:info][3], 'Return type of to_f')
           @expstack.push [rettype,
             lambda {|b, context|
-              context = recv.call(b, context)
+              context = recv[1].call(b, context)
               val = context.rc
-              case val[0].type.llvm
+              case recv[0].type.llvm
               when Type::DoubleTy
                 context.rc = val
               when Type::Int32Ty
-                context.rc = b.si_to_fp(val)
+                context.rc = b.si_to_fp(val, Type::DoubleTy)
               end
               context}]
        },
