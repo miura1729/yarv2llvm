@@ -35,6 +35,10 @@ class LLVMBuilder
   def make_stub(receiver, name, rett, argt, orgfunc)
     pppp "Make stub #{name}"
     sname = "__stub_" + name
+    nargs = argt.size
+    if receiver == nil then
+      argt.unshift RubyType.value
+    end
     stype = Type.function(VALUE, [VALUE] * argt.size)
     @stubfunc = @module.get_or_insert_function(to_label(sname), stype)
     eb = @stubfunc.create_block
@@ -45,6 +49,10 @@ class LLVMBuilder
     argt.each_with_index do |ar, n|
       v = ar.type.from_value(@stubfunc.arguments[n], b, context)
       argv.push v
+    end
+
+    if receiver == nil then
+      argv.shift
     end
 
     ret = b.call(orgfunc, *argv)

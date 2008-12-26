@@ -1157,6 +1157,8 @@ class YarvTranslator<YarvVisitor
 
         if send_self then
           para = gen_arg_eval(args, receiver, ins, local, info, nil)
+          slf = para.pop
+          para.unshift slf
         else
           para = gen_arg_eval(args, nil, ins, local, info, nil)
         end
@@ -1932,19 +1934,13 @@ def compcommon(is, opt, bind)
     n = 0
     args = ""
     args2 = ""
-    if m[:receiver] then
-      m[:argt].pop
-      if m[:argt] != [] then
-        args = m[:argt].map {|x|  n += 1; "p" + n.to_s}.join(',')
-        args2 = ', ' + args
-      end
-      args2 = args2 + ", self"
-    else
-      if m[:argt] != [] then
-        args = m[:argt].map {|x|  n += 1; "p" + n.to_s}.join(',')
-        args2 = ', ' + args
-      end
+
+    m[:argt].pop
+    if m[:argt] != [] then
+      args = m[:argt].map {|x|  n += 1; "p" + n.to_s}.join(',')
+      args2 = ', ' + args
     end
+    args2 = ", self" + args2 
 
 #    df = "def #{key}(#{args});LLVM::ExecutionEngine.run_function(YARV2LLVM::MethodDefinition::RubyMethodStub['#{key}'][:stub]#{args2});end" 
     df = "def #{key}(#{args});LLVM::ExecutionEngine.run_function(YARV2LLVM::MethodDefinition::RubyMethodStub['#{key}'][:stub]#{args2});end" 
