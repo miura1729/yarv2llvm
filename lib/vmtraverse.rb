@@ -97,8 +97,10 @@ class YarvTranslator<YarvVisitor
   include LLVMUtil
 
   @@builder = LLVMBuilder.new
+  @@instance_num = 0
   def initialize(iseq, bind)
     super(iseq)
+    @@instance_num += 1
 
     # Pack of utilty method for llvm code generation
     @builder = @@builder
@@ -186,10 +188,10 @@ class YarvTranslator<YarvVisitor
     end
 
     initfunc = gen_init_ruby(@builder)
-    
     @generated_code.each do |fname, gen|
       gen.call
     end
+    deffunc = gen_define_ruby(@builder)
 
     if OPTION[:optimize] then
       @builder.optimize
@@ -202,6 +204,7 @@ class YarvTranslator<YarvVisitor
     end
 
     LLVM::ExecutionEngine.run_function(initfunc)
+    LLVM::ExecutionEngine.run_function(deffunc)
   end
   
   def visit_block_start(code, ins, local, ln, info)
@@ -1892,6 +1895,29 @@ class YarvTranslator<YarvVisitor
     b.return(4.llvm)
     builder.current_function
   end
+
+  def gen_define_ruby(builder)
+    ftype = Type.function(VALUE, [])
+    fname = "define_ruby"
+    b = builder.define_function_raw(fname, ftype)
+
+#    ftype = Type.function(Type::VoidTy, [VALUE, P_CHAR, VALUE, Type::Int32Ty])
+#    funcm = builder.external_function('rb_define_method', ftype)
+#=begin
+    ftype = Type.function(Type::VoidTy, [P_CHAR, VALUE, Type::Int32Ty])
+    funcg = builder.external_function('rb_define_global_function', ftype)
+    MethodDefinition::RubyMethodStub.each do |name, m|
+      unless m[:outputp]
+        nameptr = name.llvm(b)
+        stubval = b.ptr_to_int(m[:stub], VALUE)
+        b.call(funcg, nameptr, stubval, (m[:argt].size - 1).llvm)
+        m[:outputp] = true
+      end
+    end
+#=end
+    b.return(4.llvm)
+    builder.current_function
+  end
 end
 
 def compile_file(fn, opt = {}, bind = TOPLEVEL_BINDING)
@@ -1929,6 +1955,7 @@ def compcommon(is, opt, bind)
     p iseq.to_a
   end
   YarvTranslator.new(iseq, bind).run
+#=begin
   MethodDefinition::RubyMethodStub.each do |key, m|
     name = key
     n = 0
@@ -1946,6 +1973,7 @@ def compcommon(is, opt, bind)
     df = "def #{key}(#{args});LLVM::ExecutionEngine.run_function(YARV2LLVM::MethodDefinition::RubyMethodStub['#{key}'][:stub]#{args2});end" 
     eval df, bind
   end
+#=end
 end
 
 module_function :compile_file

@@ -65,7 +65,8 @@ class LLVMBuilder
       :stub => @stubfunc,
       :argt => argt,
       :type => stype,
-      :receiver => receiver}
+      :receiver => receiver,
+      :outputp => false}
     pppp "Make stub #{name} end"
   end
 

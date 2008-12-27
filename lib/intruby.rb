@@ -35,6 +35,7 @@ module IntRuby
 #    elen = ROBJECT_EMBED_LEN_MAX.llvm
     eptr = b.struct_gep(slfop, 1)
     eptr = b.bit_cast(eptr, P_VALUE)
+    
     b.br(comm)
 
     b.set_insert_point(nonembed)
@@ -55,7 +56,7 @@ module IntRuby
     ivitp = b.struct_gep(slfop, 3)
     iv_index_tbl = b.load(ivitp)
 
-    indexp = b.alloca(LONG, 1)
+    indexp = b.alloca(VALUE, 1)
 
     ftype = Type.function(VALUE, [P_CHAR, VALUE, P_VALUE])
     func = builder.external_function('st_lookup', ftype)
