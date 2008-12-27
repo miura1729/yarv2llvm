@@ -76,7 +76,7 @@ class LLVMBuilder
     type = Type.function(rettl, argtl)
     @func = @module.get_or_insert_function(to_label(name), type)
     
-    if is_mkstub and receiver == nil then
+    if is_mkstub then
       @stub = make_stub(receiver, name, rett, argt, @func)
     end
 

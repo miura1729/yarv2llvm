@@ -448,7 +448,9 @@ class YarvTranslator<YarvVisitor
         end
 
         is_mkstub = true
-        if code.header['type'] == :block or have_yield then
+        if code.header['type'] == :block or 
+           have_yield or 
+           info[0] == :YARV2LLVM then
           is_mkstub = false
         end
 
@@ -1901,16 +1903,21 @@ class YarvTranslator<YarvVisitor
     fname = "define_ruby"
     b = builder.define_function_raw(fname, ftype)
 
-#    ftype = Type.function(Type::VoidTy, [VALUE, P_CHAR, VALUE, Type::Int32Ty])
-#    funcm = builder.external_function('rb_define_method', ftype)
 #=begin
+    ftype = Type.function(Type::VoidTy, [VALUE, P_CHAR, VALUE, Type::Int32Ty])
+    funcm = builder.external_function('rb_define_method', ftype)
     ftype = Type.function(Type::VoidTy, [P_CHAR, VALUE, Type::Int32Ty])
     funcg = builder.external_function('rb_define_global_function', ftype)
     MethodDefinition::RubyMethodStub.each do |name, m|
       unless m[:outputp]
         nameptr = name.llvm(b)
         stubval = b.ptr_to_int(m[:stub], VALUE)
-        b.call(funcg, nameptr, stubval, (m[:argt].size - 1).llvm)
+        if rec = m[:receiver] then
+          recptr = Object.const_get(rec)
+          b.call(funcm, recptr.llvm, nameptr, stubval, (m[:argt].size - 1).llvm)
+        else
+          b.call(funcg, nameptr, stubval, (m[:argt].size - 1).llvm)
+        end
         m[:outputp] = true
       end
     end
