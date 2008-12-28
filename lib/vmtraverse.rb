@@ -20,6 +20,7 @@ class Context
     @loop_cnt_alloca_size = nil
     @instance_var_tab = nil
     @instance_vars_local = nil
+    @inline_args = nil
   end
 
   attr_accessor :local_vars
@@ -35,6 +36,7 @@ class Context
   attr_accessor :loop_cnt_alloca_size
   attr_accessor :instance_var_tab
   attr_accessor :instance_vars_local
+  attr_accessor :inline_args
   attr :builder
   attr :frame_struct
 end
@@ -189,7 +191,7 @@ class YarvTranslator<YarvVisitor
 
     initfunc = gen_init_ruby(@builder)
     @generated_code.each do |fname, gen|
-      gen.call
+      gen.call(nil)
     end
     deffunc = gen_define_ruby(@builder)
 
@@ -333,7 +335,9 @@ class YarvTranslator<YarvVisitor
       end
 
       # Copy argument in reg. to allocated area
-      arg = context.builder.arguments
+      unless arg = context.inline_args then
+        arg = context.builder.arguments
+      end
       lvars = context.local_vars
       1.upto(numarg) do |n|
         b.store(arg[n - 1], lvars[-n][:area])
@@ -400,7 +404,7 @@ class YarvTranslator<YarvVisitor
       loop_cnt_alloca_size = @loop_cnt_alloca_size
       instance_vars_local = @instance_vars_local
 
-      @generated_code[info[1]] = lambda {
+      @generated_code[info[1]] = lambda {|inlineargs|
         if OPTION[:func_signature] then
           # write function prototype
           print "#{info[1]} :("
@@ -454,19 +458,26 @@ class YarvTranslator<YarvVisitor
           is_mkstub = false
         end
 
-        b = @builder.define_function(info[0], info[1].to_s, 
-                                   retexp[0], argtype, is_mkstub)
+        if inlineargs then
+          b = inlineargs[0]
+        else
+          b = @builder.define_function(info[0], info[1].to_s, 
+                                       retexp[0], argtype, is_mkstub)
+        end
         context = Context.new(local, @builder)
         context.array_alloca_size = array_alloca_size
         context.loop_cnt_alloca_size = loop_cnt_alloca_size
         context.instance_vars_local = instance_vars_local
         context.block_value[nil] = [RubyType.value, 4.llvm]
+        context.inline_args = inlineargs[1] if inlineargs
         context = rescode.call(b, context)
         rc = retexp[1].call(b, context).rc
-        if rc then
-          b.return(rc)
-        else
-          b.return(4.llvm)  # nil
+        unless inlineargs
+          if rc then
+            b.return(rc)
+          else
+            b.return(4.llvm)  # nil
+          end
         end
 
         pppp "ret type #{retexp[0].type}"
@@ -1824,19 +1835,24 @@ class YarvTranslator<YarvVisitor
     @expstack.push [type,
       lambda {|b, context|
         unless context.rc = type.type.content
-          fcp = context.local_vars[0][:area]
-          slev.times do
-            fcp = b.load(fcp)
-            fcp = b.bit_cast(fcp, Type.pointer(P_CHAR))
+          if context.inline_args then
+            varp = alocal[:area]
+          else
+            fcp = context.local_vars[0][:area]
+            slev.times do
+              fcp = b.load(fcp)
+              fcp = b.bit_cast(fcp, Type.pointer(P_CHAR))
+            end
+            frstruct = @frame_struct[acode]
+
+            fi = b.ptr_to_int(fcp, MACHINE_WORD)
+            frame = b.int_to_ptr(fi, frstruct)
+            varp = b.struct_gep(frame, voff)
           end
-          frstruct = @frame_struct[acode]
 
-          fi = b.ptr_to_int(fcp, MACHINE_WORD)
-          frame = b.int_to_ptr(fi, frstruct)
-
-          varp = b.struct_gep(frame, voff)
           context.rc = b.load(varp)
         end
+
         context.org = alocal[:name]
         context
       }]
@@ -1862,16 +1878,20 @@ class YarvTranslator<YarvVisitor
       dsttype.type = dsttype.type.dup_type
       dsttype.type.content = rval
 
-      fcp = context.local_vars[0][:area]
-      (slev).times do
-        fcp = b.bit_cast(fcp, Type.pointer(P_CHAR))
-        fcp = b.load(fcp)
+      if context.inline_args then
+        lvar = alocal[:area]
+      else
+        fcp = context.local_vars[0][:area]
+        (slev).times do
+          fcp = b.bit_cast(fcp, Type.pointer(P_CHAR))
+          fcp = b.load(fcp)
+        end
+        frstruct = @frame_struct[acode]
+        fi = b.ptr_to_int(fcp, MACHINE_WORD)
+        frame = b.int_to_ptr(fi, frstruct)
+        lvar = b.struct_gep(frame, voff)
       end
-      frstruct = @frame_struct[acode]
-      fi = b.ptr_to_int(fcp, MACHINE_WORD)
-      frame = b.int_to_ptr(fi, frstruct)
-      
-      lvar = b.struct_gep(frame, voff)
+
       context.rc = b.store(rval, lvar)
       context.org = alocal[:name]
       context

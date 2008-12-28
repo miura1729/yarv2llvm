@@ -249,7 +249,14 @@ module MethodDefinition
                 fm = context.current_frame
                 frame = b.bit_cast(fm, P_CHAR)
                 slf = b.load(local[2][:area])
-                b.call(func, bodyrc, slf, frame, 0.llvm)
+                blgenfnc = @generated_code[blab]
+                if OPTION[:inline_block] and blgenfnc then
+                  args = [b, [bodyrc, slf, frame, 0.llvm]]
+                  blgenfnc.call(args)
+                  @generated_code.delete(blab)
+                else
+                  b.call(func, bodyrc, slf, frame, 0.llvm)
+                end
                 
                 # update blocks, because make blocks
                 fmlab = context.curln
@@ -288,10 +295,20 @@ module MethodDefinition
                   lst = lambda {|b, context|
                     context = rec[1].call(b, context)
                     recval = context.rc
-                    rec[0].type.first.type.constant
+                    fstt = rec[0].type.first
+                    if fstt.type.constant then
+                      fstt.type.constant
+                    else
+                      fstt.name.llvm
+                    end
                   }
                   led = lambda {|b, context|
-                    rec[0].type.last.type.constant
+                    lstt = rec[0].type.last
+                    if lstt.type.constant then
+                      lstt.type.constant
+                    else
+                      lstt.name.llvm
+                    end
                   }
                   body = lambda {|b, context|
                     lcntp = context.loop_cnt_alloca_area[loop_cnt_current]

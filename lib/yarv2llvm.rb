@@ -26,6 +26,8 @@ DEF_OPTION = {
 
   :cache_instance_variable => false,
   :strict_type_inference => false,
+
+  :inline_block => false,
 }
 OPTION = {}
 

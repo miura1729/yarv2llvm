@@ -277,6 +277,12 @@ class RubyType
     when ::Array
       RubyType.array(lno, obj)
 
+    when ::Range
+      fst = RubyType.typeof(obj.first, nil, obj.first)
+      lst = RubyType.typeof(obj.last, nil, obj.last)
+      exc = RubyType.typeof(obj.exclude_end?, nil, obj.exclude_end?)
+      RubyType.range(fst, lst, exc, lno, obj)
+
     when ::Class
       RubyType.value(lno, obj, obj)
 
