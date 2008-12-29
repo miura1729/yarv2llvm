@@ -158,7 +158,7 @@ def offset_momentum(bodies)
 end
 
 def main
-n = 20_000_000 # ARGV[0]
+n = 200_000 # ARGV[0]
 
 offset_momentum(BODIES)
 
@@ -178,7 +178,5 @@ end
 
 p energy(BODIES)
 end
-
 EOS
-
 main

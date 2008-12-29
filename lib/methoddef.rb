@@ -8,6 +8,8 @@ module MethodDefinition
   # Use ruby internal and ignor in yarv2llvm.
   SystemMethod = {
     :"core#define_method" => 
+      {:args => 1},
+    :"core#define_singleton_method" => 
       {:args => 1}
   }
   

@@ -23,8 +23,8 @@ for y in 0..count_size
   for x in 0..count_size
     zr = 0.0
     zi = 0.0
-    cr = (2.0*x/size)-1.5
-    ci = (2.0*y/size)-1.0
+    cr = (2.0*x.to_f/size.to_f)-1.5
+    ci = (2.0*y.to_f/size.to_f)-1.0
     escape = false
 
     zrzr = zr*zr

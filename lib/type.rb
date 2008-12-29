@@ -422,9 +422,11 @@ class ComplexType
     else
       @klass = :nil
     end
+    @constant = nil
   end
 
   attr_accessor :klass
+  attr_accessor :constant
 
   def dup_type
     self.class.new

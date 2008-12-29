@@ -151,6 +151,7 @@ EOS
    assert(compute_e[0], 2)
  end
 
+
  def test_send_with_block
    # This test don't move when optimize => true
    # This resason is optimizer tries to ilining calling function pointer
@@ -408,9 +409,9 @@ end
 EOS
    assert_equal(tprocesstimes, nil)
 end
-
-# I can't pass this test yet.
 =begin
+# I can't pass this test yet.
+
   def test_complex_type
     YARV2LLVM::compile(<<-EOS, {:optimize => false})
         def t_complex_str(arr)

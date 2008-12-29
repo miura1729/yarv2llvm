@@ -16,7 +16,7 @@ def fib(n)
   end
 end
 
-YARV2LLVM::compile( <<EOS
+YARV2LLVM::compile(<<EOS, {})
 =begin
 def fact(n)
   n
@@ -33,7 +33,7 @@ def llvmfib(n)
 end
 
 EOS
-)
+
 Benchmark.bm do |x|
   x.report("Ruby   "){  p fib(35)}
   x.report("llvm   "){  p llvmfib(35)}
