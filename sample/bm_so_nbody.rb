@@ -62,7 +62,7 @@ BODIES = [
 ]
 
 require 'yarv2llvm'
-YARV2LLVM::compile(<<-EOS, {:cache_instance_variable => true})
+YARV2LLVM::compile(<<-EOS, {:cache_instance_variable => true, :inline_block => false})
 #YARV2LLVM::compile(<<-EOS, {:func_signature => true})
 #YARV2LLVM::compile(<<-EOS, {:disasm => true, :optimize => false})
 class Fixnum
@@ -158,7 +158,7 @@ def offset_momentum(bodies)
 end
 
 def main
-n = 200_000 # ARGV[0]
+n = 20_000_000 # ARGV[0]
 
 offset_momentum(BODIES)
 
