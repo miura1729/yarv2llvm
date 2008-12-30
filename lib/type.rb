@@ -431,6 +431,14 @@ class ComplexType
   def dup_type
     self.class.new
   end
+
+  def to_value(val, b, context)
+    val
+  end
+
+  def from_value(val, b, context)
+    val
+  end
 end
 
 class RangeType<ComplexType

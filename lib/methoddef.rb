@@ -246,7 +246,7 @@ module MethodDefinition
                     rettllvm = rettllvm.llvm
                   end
                   ftype = Type.function(rettllvm, argtype)
-                  func = context.builder.get_or_insert_function(blab.to_s, ftype)
+                  func = context.builder.get_or_insert_function(recklass, blab.to_s, ftype)
                 end
                 fm = context.current_frame
                 frame = b.bit_cast(fm, P_CHAR)

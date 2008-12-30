@@ -21,6 +21,8 @@ module YARV2LLVM
       nil
     end
   end
+
+  $fst = 1
 end
 
 def fib(n)
@@ -38,7 +40,6 @@ EOS
 YARV2LLVM::TRACE_INFO.each_with_index do |n, i|
   YARV2LLVM::PROFILER_STATICS[i] = 0.0
 end
-$fst = 1
 p fib(29)
 p compute_e
 

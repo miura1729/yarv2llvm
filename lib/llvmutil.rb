@@ -109,6 +109,31 @@ module SendUtil
   include LLVM
   include RubyHelpers
 
+  MaxSmallPolymotphicNum = 4
+  def gen_method_select(recklass, mname)
+    minfo = MethodDefinition::RubyMethod[mname][recklass]
+    if minfo then
+      return [minfo, lambda { minfo[:func]}]
+    end
+
+    candidatenum = MethodDefinition::RubyMethod[mname].size
+    if candidatenum == 0 then
+      return [nil, lambda {nil}]
+
+    elsif candidatenum == 1 then
+      minfo = MethodDefinition::RubyMethod[mname].values[0]
+      return [minfo, lambda {minfo[:func]}]
+
+    elsif candidatenum < MaxSmallPolymotphicNum
+      # TODO : Use inline hash function generation
+      raise('Not implimented polymorphic methed call yet')
+
+    else
+      # TODO : Use cukko-hasing and inline hash function generation
+      raise('Not implimented polymorphic methed call yet')
+    end
+  end
+
   def gen_call(func, arg, b, context)
     args = []
     arg.each do |pe|
@@ -151,7 +176,7 @@ module SendUtil
         rettllvm = rettllvm.llvm
       end
       ftype = Type.function(rettllvm, argtype)
-      func2 = context.builder.get_or_insert_function(blab.to_s, ftype)
+      func2 = context.builder.get_or_insert_function(recklass, blab.to_s, ftype)
     end
     context.rc = b.ptr_to_int(func2, MACHINE_WORD)
     context

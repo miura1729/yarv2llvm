@@ -23,7 +23,11 @@ class LLVMBuilder
     @externed_function = {}
   end
 
-  def to_label(s)
+  def to_label(rec, s)
+    to_label_aux(rec) + "_" + to_label_aux(s)
+  end
+
+  def to_label_aux(s)
     ns = s.gsub(/_/, "__")
     ns.gsub!(/=/, "_e")
     ns.gsub!(/!/, "_b")
@@ -33,11 +37,11 @@ class LLVMBuilder
     ns
   end
 
-  def make_stub(receiver, name, rett, argt, orgfunc)
+  def make_stub(recklass, name, rett, argt, orgfunc)
     pppp "Make stub #{name}"
-    sname = "__stub_" + to_label(name)
+    sname = "__stub_" + to_label(recklass.to_s, name)
     nargs = argt.size
-    if receiver == nil then
+    if recklass == nil then
       argt.unshift RubyType.value
     end
     stype = Type.function(VALUE, [VALUE] * argt.size)
@@ -52,7 +56,7 @@ class LLVMBuilder
       argv.push v
     end
 
-    if receiver == nil then
+    if recklass == nil then
       argv.shift
     end
 
@@ -66,22 +70,23 @@ class LLVMBuilder
       :stub => @stubfunc,
       :argt => argt,
       :type => stype,
-      :receiver => receiver,
+      :receiver => recklass,
       :outputp => false}
     pppp "Make stub #{name} end"
   end
 
-  def define_function(receiver, name, rett, argt, is_mkstub)
+  def define_function(recklass, name, rett, argt, is_mkstub)
     argtl = argt.map {|a| a.type.llvm}
     rettl = rett.type.llvm
     type = Type.function(rettl, argtl)
-    @func = @module.get_or_insert_function(to_label(name), type)
+    fname = to_label(recklass.to_s, name)
+    @func = @module.get_or_insert_function(fname, type)
     
     if is_mkstub then
-      @stub = make_stub(receiver, name, rett, argt, @func)
+      @stub = make_stub(recklass, name, rett, argt, @func)
     end
 
-    MethodDefinition::RubyMethod[name.to_sym][receiver][:func] = @func
+    MethodDefinition::RubyMethod[name.to_sym][recklass][:func] = @func
 
     eb = @func.create_block
     b =eb.builder
@@ -100,8 +105,8 @@ class LLVMBuilder
     b
   end
 
-  def get_or_insert_function(name, type)
-    ns = to_label(name.to_s)
+  def get_or_insert_function(recklass, name, type)
+    ns = to_label(recklass.to_s, name.to_s)
     @module.get_or_insert_function(ns, type)
   end
 

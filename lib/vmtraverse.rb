@@ -953,7 +953,11 @@ class YarvTranslator<YarvVisitor
           inits.each_with_index do |e, n|
             context = e[1].call(b, context)
             sptr = b.gep(initarea, n.llvm)
-            rcvalue = e[0].type.to_value(context.rc, b, context)
+            if e[0].type then
+              rcvalue = e[0].type.to_value(context.rc, b, context)
+            else
+              rcvalue = context.rc
+            end
             b.store(rcvalue, sptr)
           end
 
@@ -1165,19 +1169,14 @@ class YarvTranslator<YarvVisitor
     RubyType.resolve
     recklass = receiver ? receiver[0].klass : nil
 
-    minfo = MethodDefinition::RubyMethod[mname][recklass]
-    if minfo == nil and MethodDefinition::RubyMethod[mname].size == 1 then
-      minfo = MethodDefinition::RubyMethod[mname].values[0]
-    end
-
+    minfo, func = gen_method_select(recklass, mname)
     if minfo then
       pppp "RubyMethod called #{mname.inspect}"
-      para = gen_arg_eval(args, receiver, ins, local, info, minfo)
 
+      para = gen_arg_eval(args, receiver, ins, local, info, minfo)
       @expstack.push [minfo[:rettype],
         lambda {|b, context|
-          func = minfo[:func]
-          gen_call(func, para ,b, context)
+          gen_call(func.call, para ,b, context)
         }]
       return
     end
@@ -1253,21 +1252,8 @@ class YarvTranslator<YarvVisitor
     rett = RubyType.new(nil, info[3], "Return type of #{mname}")
     @expstack.push [rett,
       lambda {|b, context|
-        argtype = para.map {|ele|
-          if ele[0].type then
-            ele[0].type.llvm
-          else
-            VALUE
-          end
-        }
-        if rett.type == nil then
-#          raise "Return type is ambious: #{receiver ? receiver[0].klass : nil}##{mname}"
-          rett.type = PrimitiveType.new(VALUE, nil)
-        end
-        ftype = Type.function(rett.type.llvm, argtype)
-        func = context.builder.get_or_insert_function(mname, ftype)
-        args = []
-        gen_call(func, para, b, context)
+        minfo, func = gen_method_select(recklass, mname)
+        gen_call(func.call, para, b, context)
 
       }]
 
@@ -1768,7 +1754,11 @@ class YarvTranslator<YarvVisitor
             func = context.builder.external_function('rb_ary_entry', ftype)
             av = b.call(func, arrp, idxp)
             arrelet = arr[0].type.element_type.type
-            context.rc = arrelet.from_value(av, b, context)
+            if arrelet then
+              context.rc = arrelet.from_value(av, b, context)
+            else
+              context.rc = av
+            end
             context
 
           else
