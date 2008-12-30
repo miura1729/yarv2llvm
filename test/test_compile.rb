@@ -1,5 +1,12 @@
 require 'test/unit'
 require 'yarv2llvm'
+
+class Foo
+  def initialize
+    @bar = 10
+  end
+end
+
 class CompileTests < Test::Unit::TestCase
   def test_fib
     YARV2LLVM::compile(<<-EOS)
@@ -144,6 +151,7 @@ EOS
    assert(compute_e[0], 2)
  end
 
+
  def test_send_with_block
    # This test don't move when optimize => true
    # This resason is optimizer tries to ilining calling function pointer
@@ -273,8 +281,137 @@ EOS
    GC::Profiler.report
   end
 
-# I can't pass this test yet.
+  def test_iv1
+    YARV2LLVM::compile(<<-EOS)
+class Foo
+  def test
+    a = @bar
+    @bar = 20
+    @bar + a
+  end
+end
+
+def ivtest1(obj)
+  obj.test + 3
+end
+EOS
+   assert_equal(ivtest1(Foo.new), 33)
+  end
+
+  def test_newtest
+    YARV2LLVM::compile(<<-EOS)
+class Foo
+  def test2
+    @bar = 10
+    @bar
+  end
+end
+
+def newtest
+  a = Foo.new
+  a.test2 + 3
+end
+EOS
+   assert_equal(newtest, 13)
+  end
+
+  def test_array_each
+    YARV2LLVM::compile(<<-EOS)
+def tarray_each  
+  rc = 0
+  a = [1, 2, 4, 8, 16]
+  a.each do |i|
+    p i
+    rc = rc + i
+  end
+  rc
+end
+EOS
+    assert_equal(tarray_each, 31)
+  end
+
+  def test_return1
+#    YARV2LLVM::compile(<<-EOS, {:dump_yarv => true})
+    YARV2LLVM::compile(<<-EOS)
+def treturn(f)
+  if f == 1 then
+    return 2
+  elsif f == 2 then
+    a = 3
+    return 3
+  else
+    a = 4
+  end
+end
+EOS
+    assert_equal(treturn(1), 2)
+    assert_equal(treturn(2), 3)
+    assert_equal(treturn(3), 4)
+  end
+
+  def test_array_each2
+    YARV2LLVM::compile(<<-EOS, {:func_signature => true})
+#    YARV2LLVM::compile(<<-EOS)
+def tarray_each2
+  rc = 0
+  a = [1, 2, 4, 8, 16]
+  a.each do |i|
+    a.each do |j|
+      rc = rc + i
+    end
+  end
+  rc
+end
+EOS
+    assert_equal(tarray_each2, 155)
+  end
+
+  def test_print1
+#    YARV2LLVM::compile(<<-EOS, {:func_signature => true})
+    YARV2LLVM::compile(<<-EOS)
+def tprint1(n)
+  print "The value is "
+  print n
+  print "\n"
+end
+EOS
+    assert_equal(tprint1("abc"), nil)
+  end
+
+  def test_print2
+#    YARV2LLVM::compile(<<-EOS, {:func_signature => true})
+#    YARV2LLVM::compile(<<-EOS, {:disasm => true})
+    YARV2LLVM::compile(<<-EOS)
+def tprint2(n)
+  print "The value is ", n, "\n"
+end
+EOS
+    assert_equal(tprint2("foo"), nil)
+  end
+
+  def test_sprintf
+    YARV2LLVM::compile(<<-EOS)
+def tsprintf(n)
+  sprintf "The value is %p", n
+end
+EOS
+    assert_equal(tsprintf("foo"), "The value is \"foo\"")
+  end
+
+  def test_porcess_times
+    YARV2LLVM::compile(<<-EOS)
+def tprocesstimes
+  times = Process.times
+  p times
+  p times[0]
+  nil
+end
+EOS
+   assert_equal(tprocesstimes, nil)
+end
 =begin
+# I can't pass this test yet.
+
   def test_complex_type
     YARV2LLVM::compile(<<-EOS, {:optimize => false})
         def t_complex_str(arr)

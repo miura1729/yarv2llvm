@@ -16,6 +16,11 @@ class Context
     @current_frame = nil
     @array_alloca_area = nil
     @array_alloca_size = nil
+    @loop_cnt_alloca_area = []
+    @loop_cnt_alloca_size = nil
+    @instance_var_tab = nil
+    @instance_vars_local = nil
+    @inline_args = nil
   end
 
   attr_accessor :local_vars
@@ -27,6 +32,11 @@ class Context
   attr_accessor :current_frame
   attr_accessor :array_alloca_area
   attr_accessor :array_alloca_size
+  attr_accessor :loop_cnt_alloca_area
+  attr_accessor :loop_cnt_alloca_size
+  attr_accessor :instance_var_tab
+  attr_accessor :instance_vars_local
+  attr_accessor :inline_args
   attr :builder
   attr :frame_struct
 end
@@ -40,11 +50,15 @@ class YarvVisitor
     @iseqs.each do |iseq|
       iseq.traverse_code([nil, nil, nil, nil]) do |code, info|
         ccde = code
+
+        if code.header['type'] == :block then
+          info[1] = (info[1].to_s + '+blk+' + ccde.info[2].to_s).to_sym
+        end
+
         while ccde.header['type'] == :block
-          info[1] = (info[1].to_s + '_blk_' + ccde.info[2].to_s).to_sym
           ccde = ccde.parent
         end
-        
+                
         local = []
         visit_block_start(code, nil, local, nil, info)
         curln = nil
@@ -54,7 +68,8 @@ class YarvVisitor
           curln = ln
           code.lblock[ln].each do |ins|
             if ins.is_a?(Fixnum) then
-              info[3] = ins
+              info[3] = "#{code.header['filename']}:#{ins}"
+              visit_number(code, ins, local, curln, info)
             else
               opname = ins[0].to_s
               send(("visit_" + opname).to_sym, code, ins, local, curln, info)
@@ -65,9 +80,9 @@ class YarvVisitor
               curln = (curln.to_s + "_1").to_sym
             end
           end
-          visit_local_block_end(code, ln, local, ln, info)
+          visit_local_block_end(code, ln, local, curln, info)
         end
-        
+
         visit_block_end(code, nil, local, nil, info)
       end
     end
@@ -84,8 +99,10 @@ class YarvTranslator<YarvVisitor
   include LLVMUtil
 
   @@builder = LLVMBuilder.new
+  @@instance_num = 0
   def initialize(iseq, bind)
     super(iseq)
+    @@instance_num += 1
 
     # Pack of utilty method for llvm code generation
     @builder = @@builder
@@ -104,6 +121,7 @@ class YarvTranslator<YarvVisitor
     # When this value call by call method, generate llvm code correspond 
     # to function name.
     @generated_code = {}
+    @generated_define_func = {}
 
     # Hash name of local block to name of local block jump to the 
     # local block of the key
@@ -130,16 +148,67 @@ class YarvTranslator<YarvVisitor
     # invokeblock instruction (yield statement)
     @have_yield = false
 
-    # Size of alloca area for call rb_ary_new4
+    # Size of alloca area for call rb_ary_new4 and new
     #  nil is not allocate
     @array_alloca_size = nil
+
+    @loop_cnt_alloca_size = 0
+    @loop_cnt_current = 0
+
+    # Table of instance variable. The table contains type information.
+    @instance_var_tab = Hash.new {|hash, klass|
+      hash[klass] = Hash.new {|ivtab, ivname|
+        ivtab[ivname] = {}
+      }
+    }
+
+    # Table of instanse variable which is used current block
+    @instance_vars_local = {}
+
+    # Table of type of constant.
+    @constant_type_tab = Hash.new {|hash, klass|
+      hash[klass] = {}
+    }
+
+    # Information of global variables by malloc
+    @global_malloc_area_tab = {}
+
+    # Number of trace(for profile speed up)
+    @trace_no = 0
+
+    @global_var_tab = Hash.new {|gltab, glname|
+      gltab[glname] = {}
+    }
   end
 
+  include IntRuby
   def run
     super
-    @generated_code.each do |fname, gen|
-      gen.call
+
+    # generate code for access Ruby internal
+    if OPTION[:cache_instance_variable] then
+      gen_ivar_ptr(@builder)
     end
+
+    @generated_define_func.each do |klass, value|
+      value.each do |name, gen|
+        if name then
+          gen.call(nil)
+        end
+      end
+    end
+
+    initfunc = gen_init_ruby(@builder)
+
+    @generated_code.each do |klass, value|
+      value.each do |name, gen|
+        if name then
+          gen.call
+        end
+      end
+    end
+
+    deffunc = gen_define_ruby(@builder)
 
     if OPTION[:optimize] then
       @builder.optimize
@@ -150,10 +219,22 @@ class YarvTranslator<YarvVisitor
     if OPTION[:write_bc] then
       @builder.write_bc(OPTION[:write_bc])
     end
+
+    LLVM::ExecutionEngine.run_function(initfunc)
+    LLVM::ExecutionEngine.run_function(deffunc)
   end
   
   def visit_block_start(code, ins, local, ln, info)
     @have_yield = false
+
+    @array_alloca_size = nil
+    @loop_cnt_alloca_size = 0
+    @loop_cnt_current = 0
+
+    @instance_vars_local = {}
+
+    @have_yield = false
+
     ([nil, nil, nil] + code.header['locals'].reverse).each_with_index do |n, i|
       local[i] = {
         :name => n, 
@@ -181,7 +262,13 @@ class YarvTranslator<YarvVisitor
 
     # regist function to RubyMthhod for recursive call
     if info[1] then
-      minfo = MethodDefinition::RubyMethod[info[0]][info[1]]
+      minfo = MethodDefinition::RubyMethod[info[1]][info[0]]
+      if minfo == nil then
+        minfo = MethodDefinition::RubyMethod[info[1]][nil]
+        if minfo then
+          MethodDefinition::RubyMethod[info[1]][info[0]] = minfo
+        end
+      end
       if minfo == nil then
         argt = []
         1.upto(numarg) do |n|
@@ -196,10 +283,11 @@ class YarvTranslator<YarvVisitor
           argt.push local[0][:type]
           argt.push local[1][:type]
         end
-        MethodDefinition::RubyMethod[info[0]][info[1]]= {
+
+        MethodDefinition::RubyMethod[info[1]][info[0]]= {
           :defined => true,
           :argtype => argt,
-          :rettype => RubyType.new(nil, info[3], "return type of #{info[1]}")
+          :rettype => RubyType.new(nil, info[3], "Return type of #{info[1]}")
         }
       elsif minfo[:defined] then
         raise "#{info[1]} is already defined in #{info[3]}"
@@ -211,8 +299,11 @@ class YarvTranslator<YarvVisitor
           argt[n - 1].add_same_value local[-n][:type]
           local[-n][:type].add_same_type argt[n - 1]
         end
-        argt[numarg - 1].add_same_value local[-numarg][:type]
-        local[-numarg][:type].add_same_type argt[numarg - 1]
+
+        if info[0] or code.header['type'] != :method then
+          argt[numarg - 1].add_same_value local[-numarg][:type]
+          local[-numarg][:type].add_same_type argt[numarg - 1]
+        end
         
         minfo[:defined] = true
       end
@@ -227,18 +318,44 @@ class YarvTranslator<YarvVisitor
       frstp = Type.pointer(frst)
       @frame_struct[code] = frstp
       curframe = b.alloca(frst, 1)
+      context.current_frame = curframe
+
       if context.array_alloca_size then
         context.array_alloca_area = b.alloca(VALUE, context.array_alloca_size)
       end
-      context.current_frame = curframe
+
+      if ncnt = context.loop_cnt_alloca_size then
+        ncnt.times do |i|
+          area =  b.alloca(Type::Int32Ty, 1)
+          context.loop_cnt_alloca_area.push area
+        end
+      end
+
       # Generate pointer to variable access
       context.local_vars.each_with_index {|vars, n|
         lv = b.struct_gep(curframe, n)
         vars[:area] = lv
       }
 
+      context.instance_vars_local.each do |key, cnt|
+        if cnt > 1 and OPTION[:cache_instance_variable] then
+          area = b.alloca(P_VALUE, 1)
+          ftype = Type.function(P_VALUE, [VALUE, VALUE])
+          func = context.builder.get_or_insert_function_raw('llvm_ivar_ptr', ftype)
+          ivid = ((key.object_id << 1) / RVALUE_SIZE)
+          slf = b.load(context.local_vars[2][:area])
+          val = b.call(func, slf, ivid.llvm)
+          b.store(val, area)
+          context.instance_vars_local[key] = area
+        else
+          context.instance_vars_local[key] = nil
+        end
+      end
+
       # Copy argument in reg. to allocated area
-      arg = context.builder.arguments
+      unless arg = context.inline_args then
+        arg = context.builder.arguments
+      end
       lvars = context.local_vars
       1.upto(numarg) do |n|
         b.store(arg[n - 1], lvars[-n][:area])
@@ -285,24 +402,34 @@ class YarvTranslator<YarvVisitor
       argtype.push local[1][:type]
     end
 
+    if @expstack.last then
+      retexp = @expstack.pop
+    else
+      retexp = [RubyType.value, lambda {|b, context|
+                  context.rc = 4.llvm
+                  context
+                }]
+    end
+
+    rescode = @rescode
     if info[1] then
-      if @expstack.last then
-        retexp = @expstack.pop
-      else
-        retexp = [RubyType.value, lambda {|b, context|
-            context.rc = 4.llvm
-            context
-          }]
-      end
-      rescode = @rescode
-      rett2 = MethodDefinition::RubyMethod[info[0]][info[1]][:rettype]
+      rett2 = MethodDefinition::RubyMethod[info[1]][info[0]][:rettype]
       rett2.add_same_value retexp[0]
       retexp[0].add_same_type rett2
       RubyType.resolve
+    end
       
-      have_yield = @have_yield
+    have_yield = @have_yield
+    array_alloca_size = @array_alloca_size
+    loop_cnt_alloca_size = @loop_cnt_alloca_size
+    instance_vars_local = @instance_vars_local
 
-      @generated_code[info[1]] = lambda {
+    b = nil
+    inlineargs = nil
+    @generated_define_func[info[0]] ||= {}
+    @generated_define_func[info[0]][info[1]] = lambda {|iargs|
+      inlineargs = iargs
+      if info[1] then
         if OPTION[:func_signature] then
           # write function prototype
           print "#{info[1]} :("
@@ -310,7 +437,7 @@ class YarvTranslator<YarvVisitor
             e.inspect2
           }.join(', ')
           print ") -> #{retexp[0].inspect2}\n"
-          p "foo"
+          p "---"
         end
 
         pppp "define #{info[1]}"
@@ -318,41 +445,72 @@ class YarvTranslator<YarvVisitor
       
         1.upto(numarg) do |n|
           if argtype[n - 1].type == nil then
-            raise "Argument type is ambious #{local[-n][:name]} of #{info[1]} in #{info[3]}"
+#            raise "Argument type is ambious #{local[-n][:name]} of #{info[1]} in #{info[3]}"
+            argtype[n - 1].type = PrimitiveType.new(VALUE, nil)
           end
         end
 
         blkpoff = numarg
         if info[0] or code.header['type'] != :method then
           if argtype[numarg].type == nil then
-            raise "Argument type is ambious self #{info[1]} in #{info[3]}"
+#            raise "Argument type is ambious self #{info[1]} in #{info[3]}"
+            argtype[numarg].type = PrimitiveType.new(VALUE, nil)
           end
           blkpoff = blkpoff + 1
         end
 
         if code.header['type'] == :block or have_yield then
           if argtype[blkpoff].type == nil then
-            raise "Argument type is ambious parsnt frame #{info[1]} in #{info[3]}"
+#            raise "Argument type is ambious parsnt frame #{info[1]} in #{info[3]}"
+            argtype[blkpoff].type = PrimitiveType.new(VALUE, nil)
           end
           if argtype[blkpoff + 1].type == nil then
-            raise "Block function pointer is ambious parsnt frame #{info[1]} in #{info[3]}"
+#            raise "Block function pointer is ambious parsnt frame #{info[1]} in #{info[3]}"
+            argtype[blkpoff + 1].type = PrimitiveType.new(VALUE, nil)
           end
 
         end
 
         if retexp[0].type == nil then
-          raise "Return type is ambious #{info[1]} in #{info[3]}"
+#          raise "Return type is ambious #{info[1]} in #{info[3]}"
+          retexp[0].type = PrimitiveType.new(VALUE, nil)
         end
 
         is_mkstub = true
-        if code.header['type'] == :block or have_yield then
+        if code.header['type'] == :block or 
+           have_yield or 
+           info[0] == :YARV2LLVM then
           is_mkstub = false
         end
+      else
+        retexp[0] = RubyType.value
+        argtype = []
+        is_mkstub = false
+      end
 
+      if inlineargs then
+        b = inlineargs[0]
+      else
         b = @builder.define_function(info[0], info[1].to_s, 
-                                   retexp[0], argtype, is_mkstub)
-        context = Context.new(local, @builder)
-        context.array_alloca_size = @array_alloca_size
+                                     retexp[0], argtype, is_mkstub)
+      end
+    }
+
+    @generated_code[info[0]] ||= {}
+    @generated_code[info[0]][info[1]] = lambda {
+      context = Context.new(local, @builder)
+      context.array_alloca_size = array_alloca_size
+      context.loop_cnt_alloca_size = loop_cnt_alloca_size
+      context.instance_vars_local = instance_vars_local
+      context.block_value[nil] = [RubyType.value, 4.llvm]
+      context.builder.select_func(b)
+
+      if inlineargs then
+        context.inline_args = inlineargs[1]
+        context = rescode.call(b, context)
+        rc = retexp[1].call(b, context).rc
+      else
+        context.inline_args = nil
         context = rescode.call(b, context)
         rc = retexp[1].call(b, context).rc
         if rc then
@@ -360,11 +518,11 @@ class YarvTranslator<YarvVisitor
         else
           b.return(4.llvm)  # nil
         end
+      end
 
-        pppp "ret type #{retexp[0].type}"
-        pppp "end"
-      }
-    end
+      pppp "ret type #{retexp[0].type}"
+      pppp "end"
+    }
 
 #    @expstack = []
     @rescode = lambda {|b, context| context}
@@ -373,12 +531,15 @@ class YarvTranslator<YarvVisitor
   def visit_local_block_start(code, ins, local, ln, info)
     oldrescode = @rescode
     live =  @is_live
+    if live == nil and info[1] == nil then
+      live = true
+    end
 
     @is_live = nil
     if live and @expstack.size > 0 then
       valexp = @expstack.pop
     end
-    
+
     @jump_from[ln] ||= []
     @jump_from[ln].push @prev_label
     @rescode = lambda {|b, context|
@@ -408,27 +569,39 @@ class YarvTranslator<YarvVisitor
         end
         n += 1
       end
+
+      rc = nil
+      oldrescode2 = @rescode
+      @rescode = lambda {|b, context|
+        context = oldrescode2.call(b, context)
+        if ln then
+          # foobar It is ad-hoc
+          if commer_label[0] == nil then
+            commer_label.shift
+          end
+          if context.block_value[commer_label[0]] then
+            rc = b.phi(context.block_value[commer_label[0]][0].type.llvm)
+            commer_label.uniq.reverse.each do |lab|
+              rc.add_incoming(context.block_value[lab][1], 
+                              context.blocks[lab])
+            end
+          end
+          
+          context.rc = rc
+        end
+        context
+      }
+
       @expstack.pop
       @expstack.push [valexp[0],
-        lambda {|b, context|
-          if ln then
-            # foobar It is ad-hoc
-            if commer_label[0] == nil then
-              commer_label.shift
-            end
-            if context.block_value[commer_label[0]] then
-              rc = b.phi(context.block_value[commer_label[0]][0].type.llvm)
-            
-              commer_label.reverse.each do |lab|
-                rc.add_incoming(context.block_value[lab][1], 
-                                context.blocks[lab])
-              end
-            end
-
-            context.rc = rc
-          end
-          context
-        }]
+                      lambda {|b, context|
+                        if rc then
+                          context.rc = rc
+                        else
+                          context.rc = 4.llvm
+                        end
+                        context
+                      }]
     end
   end
   
@@ -448,6 +621,9 @@ class YarvTranslator<YarvVisitor
   
   def visit_default(code, ins, local, ln, info)
     pppp "Unprocessed instruction #{ins}"
+  end
+
+  def visit_number(code, ins, local, ln, info)
   end
 
   def visit_getlocal(code, ins, local, ln, info)
@@ -511,18 +687,103 @@ class YarvTranslator<YarvVisitor
     end
   end
 
-  # getinstancevariable
-  # setinstancevariable
+  def visit_getinstancevariable(code, ins, local, ln, info)
+    ivname = ins[1]
+    @instance_vars_local[ivname] ||= 0
+    @instance_vars_local[ivname] += 1
+    type = @instance_var_tab[info[0]][ivname][:type]
+    unless type
+      type = RubyType.new(nil, info[3], "#{info[0]}##{ivname}")
+      @instance_var_tab[info[0]][ivname][:type] = type
+    end
+    @expstack.push [type,
+      lambda {|b, context|
+        if area = context.instance_vars_local[ivname] then
+          parea = b.load(area)
+          val = b.load(parea)
+          context.rc = type.type.from_value(val, b, context)
+        else
+          ftype = Type.function(VALUE, [VALUE, VALUE])
+          func = context.builder.external_function('rb_ivar_get', ftype)
+          ivid = ((ivname.object_id << 1) / RVALUE_SIZE)
+          slf = b.load(context.local_vars[2][:area])
+          val = b.call(func, slf, ivid.llvm)
+          context.rc = type.type.from_value(val, b, context)
+        end
+        context
+      }]
+  end
+
+  def visit_setinstancevariable(code, ins, local, ln, info)
+    ivname = ins[1]
+    @instance_vars_local[ivname] ||= 0
+    @instance_vars_local[ivname] += 1
+    dsttype = @instance_var_tab[info[0]][ivname][:type]
+    unless dsttype
+      dsttype = RubyType.new(nil, info[3], "#{info[0]}##{ivname}")
+      @instance_var_tab[info[0]][ivname][:type] = dsttype
+    end
+    src = @expstack.pop
+    srctype = src[0]
+    srcvalue = src[1]
+    
+    srctype.add_same_value(dsttype)
+    dsttype.add_same_value(srctype)
+
+    oldrescode = @rescode
+    @rescode = lambda {|b, context|
+      pppp "Setinstancevariable start"
+      context = oldrescode.call(b, context)
+      context = srcvalue.call(b, context)
+      srcval = context.rc
+      srcval2 = srctype.type.to_value(srcval, b, context)
+
+      dsttype.type = dsttype.type.dup_type
+      dsttype.type.content = srcval
+
+      if area = context.instance_vars_local[ivname] then
+        context.rc = srcval
+        parea = b.load(area)
+        b.store(srcval2, parea)
+
+      else
+        ftype = Type.function(VALUE, [VALUE, VALUE, VALUE])
+        func = context.builder.external_function('rb_ivar_set', ftype)
+        ivid = ((ivname.object_id << 1) / RVALUE_SIZE)
+        slf = b.load(context.local_vars[2][:area])
+      
+        context.rc = srcval
+        b.call(func, slf, ivid.llvm, srcval2)
+      end
+      context.org = dsttype.name
+      pppp "Setinstancevariable end"
+      context
+    }
+  end
+
   # getclassvariable
   # setclassvariable
 
   def visit_getconstant(code, ins, local, ln, info)
     klass = @expstack.pop
     val = nil
-    if klass[0].name == "nil" then
-      val = eval(ins[1].to_s, @binding)
+    const_path = ins[1].to_s
+    kn = klass[0].name
+    unless kn == "nil" then
+      const_path = "#{kn}::#{const_path}"
     end
-    @expstack.push [RubyType.typeof(val, info[3], ins[1]),
+    if info[0] then
+      const_path = "#{info[0]}::#{const_path}"
+    end
+    val = eval(const_path, @binding)
+
+    type = @constant_type_tab[@binding][ins[1]]
+    if type == nil then
+      type = RubyType.typeof(val, info[3], ins[1])
+      @constant_type_tab[@binding][ins[1]] = type
+    end
+
+    @expstack.push [type,
       lambda {|b, context|
         context.rc = val.llvm
         context.org = ins[1]
@@ -532,21 +793,77 @@ class YarvTranslator<YarvVisitor
 
   def visit_setconstant(code, ins, local, ln, info)
     val = @expstack.pop
-    eval("#{ins[1].to_s} = #{val[0].name}", @binding)
+    eval("#{ins[1].to_s} = #{val[0].type.constant}", @binding)
   end
 
-  # getglobal
-  # setglobal
+  def visit_getglobal(code, ins, local, ln, info)
+    glname = ins[1]
+    type = @global_var_tab[glname][:type]
+    unless type 
+      type = RubyType.new(nil, info[3], "$#{glname}")
+      @global_var_tab[glname][:type] = type
+    end
+    @expstack.push [type,
+      lambda {|b, context|
+        ftype = Type.function(VALUE, [VALUE])
+        func1 = context.builder.external_function('rb_global_entry', ftype)
+        func2 = context.builder.external_function('rb_gvar_get', ftype)
+        glid = ((glname.object_id << 1) / RVALUE_SIZE)
+        glob = b.call(func1, glid.llvm)
+        val = b.call(func2, glob)
+        context.rc = type.type.from_value(val, b, context)
+        context
+      }]
+  end
+
+  def visit_setglobal(code, ins, local, ln, info)
+    glname = ins[1]
+    
+    dsttype = @global_var_tab[glname][:type]
+    unless dsttype
+      dsttype = RubyType.new(nil, info[3], "$#{glname}")
+      @global_var_tab[glname][:type] = dsttype
+    end
+
+    src = @expstack.pop
+    srctype = src[0]
+    srcvalue = src[1]
+    
+    srctype.add_same_value(dsttype)
+    dsttype.add_same_value(srctype)
+
+    oldrescode = @rescode
+    @rescode = lambda {|b, context|
+      context = oldrescode.call(b, context)
+      context = srcvalue.call(b, context)
+      srcval = context.rc
+      srcval2 = srctype.type.to_value(srcval, b, context)
+
+      dsttype.type = dsttype.type.dup_type
+      dsttype.type.content = srcval
+
+      ftype1 = Type.function(VALUE, [VALUE])
+      func1 = context.builder.external_function('rb_global_entry', ftype1)
+
+      ftype2 = Type.function(VALUE, [VALUE, VALUE])
+      func2 = context.builder.external_function('rb_gvar_set', ftype2)
+
+      glid = ((glname.object_id << 1) / RVALUE_SIZE)
+
+      gent = b.call(func1, glid.llvm)
+      b.call(func2, gent, srcval2)
+      context.org = dsttype.name
+
+      context
+    }
+  end
 
   def visit_putnil(code, ins, local, ln, info)
-    # Nil is not support yet.
-#=begin
     @expstack.push [RubyType.value(info[3], "nil"), 
       lambda {|b, context| 
         context.rc = 4.llvm   # 4 means nil
         context
       }]
-#=end
   end
 
   def visit_putself(code, ins, local, ln, info)
@@ -564,7 +881,9 @@ class YarvTranslator<YarvVisitor
 
   def visit_putobject(code, ins, local, ln, info)
     p1 = ins[1]
-    @expstack.push [RubyType.typeof(p1, info[3], p1), 
+    type = RubyType.typeof(p1, info[3], p1)
+    type.type.constant = p1
+    @expstack.push [type, 
       lambda {|b, context| 
         pppp p1
         context.rc = p1.llvm 
@@ -594,13 +913,20 @@ class YarvTranslator<YarvVisitor
     nele = ins[1]
     inits = []
     etype = nil
+    atype = RubyType.array(info[3])
     nele.times {|n|
       v = @expstack.pop
       inits.push v
       if etype and etype != v[0].type.llvm then
-        raise "Element of array must be same type in yarv2llvm #{etype.inspect2} expected but #{v[0].inspect2}"
+        mess = "Element of array must be same type in yarv2llvm #{etype} expected but #{v[0].inspect2}"
+        if OPTION[:strict_type_inference] then
+          raise mess
+        else
+          print mess, "\n"
+        end
       end
       etype = v[0].type.llvm
+      atype.type.element_type.conflicted_types[etype.llvm] = etype
     }
     if nele != 0 then
       if @array_alloca_size == nil or @array_alloca_size < nele then
@@ -609,7 +935,11 @@ class YarvTranslator<YarvVisitor
     end
         
     inits.reverse!
-    @expstack.push [RubyType.new(ArrayType.new(etype), info[3]),
+    if inits[0] then
+      atype.type.element_type.add_same_type(inits[0][0])
+      inits[0][0].add_same_type(atype.type.element_type)
+    end
+    @expstack.push [atype,
       lambda {|b, context|
         if nele == 0 then
           ftype = Type.function(VALUE, [])
@@ -623,7 +953,11 @@ class YarvTranslator<YarvVisitor
           inits.each_with_index do |e, n|
             context = e[1].call(b, context)
             sptr = b.gep(initarea, n.llvm)
-            rcvalue = e[0].type.to_value(context.rc, b, context)
+            if e[0].type then
+              rcvalue = e[0].type.to_value(context.rc, b, context)
+            else
+              rcvalue = context.rc
+            end
             b.store(rcvalue, sptr)
           end
 
@@ -654,7 +988,47 @@ class YarvTranslator<YarvVisitor
   # splatarray
   # checkincludearray
   # newhash
-  # newrange
+  def visit_newrange(code, ins, local, ln, info)
+    lst = @expstack.pop
+    fst = @expstack.pop
+    flg = ins[1]
+    rtype = RubyType.range(fst[0], lst[0], flg, info[3])
+    @expstack.push [rtype,
+       lambda {|b, context|
+         case fst[0].type.llvm
+         when Type::Int32Ty
+           valint = fst[1].call(b, context).rc
+           rtype.type.first.type.constant = valint
+
+         when VALUE
+           val = fst[1].call(b, context).rc
+           valint = b.lshr(val, 1.llvm)
+           rtype.type.first.type.constant = valint
+
+         else
+           raise "Not support type #{lst[0].type.inspect2} in Range"
+         end
+
+         case lst[0].type.llvm
+         when Type::Int32Ty
+           valint = lst[1].call(b, context).rc
+           valint = b.add(valint, 1.llvm) if flg == 0
+           rtype.type.last.type.constant = valint
+
+         when VALUE
+           val = lst[1].call(b, context).rc
+           valint = b.lshr(val, 1.llvm)
+           valint = b.add(valint, 1.llvm) if flg == 0
+           rtype.type.last.type.constant = valint
+
+         else
+           raise "Not support type #{lst[0].type.inspect2} in Range"
+         end
+
+         context.rc = 4.llvm
+         context
+    }]
+  end
 
   def visit_pop(code, ins, local, ln, info)
     exp = @expstack.pop
@@ -663,7 +1037,7 @@ class YarvTranslator<YarvVisitor
       context = oldrescode.call(b, context)
       if exp then
         if exp[0].type == nil then
-          exp[0].type = PrimitiveType.new(VALUE)
+          exp[0].type = PrimitiveType.new(VALUE, nil)
           exp[0].clear_same
         end
         context.rc = exp[1].call(b, context)
@@ -689,7 +1063,33 @@ class YarvTranslator<YarvVisitor
       }]
   end
 
-  # dupn
+  def visit_dupn(code, ins, local, ln, info)
+    s = []
+    n = ins[1]
+    n.times do |i|
+      s.push @expstack.pop
+    end
+    s.reverse!
+    
+    stacktop_value = []
+    n.times do |i|
+      @expstack.push [s[i][0],
+        lambda {|b, context|
+          context.rc = stacktop_value[i]
+          context
+        }]
+    end
+      
+    n.times do |i|
+      @expstack.push [s[i][0],
+        lambda {|b, context|
+          context = s[i][1].call(b, context)
+          stacktop_value[i] = context.rc
+          context
+        }]
+    end
+  end
+
   # swap
   # reput
   # topn
@@ -697,9 +1097,57 @@ class YarvTranslator<YarvVisitor
   # adjuststack
   
   # defined
-  # trace
 
-  # defineclass
+  def visit_trace(code, ins, local, ln, info)
+    curtrace_no = @trace_no
+    evt = ins[1]
+    TRACE_INFO[curtrace_no] = [evt, info.clone]
+    @trace_no += 1
+    if (info[1] == :trace_func and info[0] == :YARV2LLVM) or info[1] == nil then
+      return
+    end
+
+    if minfo = MethodDefinition::RubyMethod[:trace_func][:YARV2LLVM] then
+      argt = minfo[:argtype]
+      if argt[0].type == nil then
+        RubyType.fixnum.add_same_type argt[0]
+        RubyType.fixnum.add_same_type argt[1]
+        RubyType.resolve
+      end
+    end
+        
+    oldrescode = @rescode
+    lno = info[3]
+    @rescode = lambda {|b, context|
+      context = oldrescode.call(b, context)
+      if minfo = MethodDefinition::RubyMethod[:trace_func][:YARV2LLVM] then
+        argt = minfo[:argtype]
+        if argt[0].type == nil then
+          RubyType.fixnum.add_same_type argt[0]
+          RubyType.fixnum.add_same_type argt[1]
+          RubyType.resolve
+        end
+        if info[0] == nil then
+          slf = 4.llvm
+        else
+          slf = b.load(context.local_vars[2][:area])
+        end
+        func = minfo[:func]
+        EXPORTED_OBJECT[lno] = true
+        b.call(func, evt.llvm, curtrace_no.llvm, slf)
+      end
+      context
+    }
+  end
+
+  def visit_defineclass(code, ins, local, ln, info)
+    case ins[3]
+    when 0
+      eval("class #{ins[1]};end", @binding)
+    when 2
+      eval("module #{ins[1]};end", @binding)
+    end
+  end
   
   include SendUtil
   def visit_send(code, ins, local, ln, info)
@@ -717,17 +1165,18 @@ class YarvTranslator<YarvVisitor
     else
       @expstack.pop
     end
+
     RubyType.resolve
     recklass = receiver ? receiver[0].klass : nil
-   
-    if minfo = MethodDefinition::RubyMethod[recklass][mname] then
-      pppp "RubyMethod called #{mname.inspect}"
-      para = gen_arg_eval(args, receiver, ins, local, info, minfo)
 
+    minfo, func = gen_method_select(recklass, mname)
+    if minfo then
+      pppp "RubyMethod called #{mname.inspect}"
+
+      para = gen_arg_eval(args, receiver, ins, local, info, minfo)
       @expstack.push [minfo[:rettype],
         lambda {|b, context|
-          func = minfo[:func]
-          gen_call(func, para ,b, context)
+          gen_call(func.call, para ,b, context)
         }]
       return
     end
@@ -737,7 +1186,11 @@ class YarvTranslator<YarvVisitor
     end
 
     if funcinfo = MethodDefinition::InlineMethod[mname] then
-      @para = {:info => info, :args => args, :receiver => receiver}
+      @para = {:info => info, 
+               :ins => ins,
+               :args => args, 
+               :receiver => receiver, 
+               :local => local}
       instance_eval &funcinfo[:inline_proc]
       return
     end
@@ -746,15 +1199,35 @@ class YarvTranslator<YarvVisitor
     if MethodDefinition::CMethod[recklass] then
       funcinfo = MethodDefinition::CMethod[recklass][mname]
     end
+
     if funcinfo then
-      rettype = RubyType.new(funcinfo[:rettype], info[3], "return type of #{mname}")
-      argtype = funcinfo[:argtype].map {|ts| RubyType.new(ts, info[3])}
+      rettype = funcinfo[:rettype]
+      argtype = funcinfo[:argtype]
+      unless rettype.is_a?(RubyType) then
+        rettype = RubyType.new(rettype, 
+                               info[3], 
+                               "return type of #{mname} in forward call")
+        argtype = funcinfo[:argtype].map {|ts| RubyType.new(ts, info[3])}
+      end
       cname = funcinfo[:cname]
+      send_self = funcinfo[:send_self]
+      argnum = ins[2]
+      if send_self then
+        argnum += 1
+      end
       
-      if argtype.size == ins[2] then
+      if argtype.size == argnum then
         argtype2 = argtype.map {|tc| tc.type.llvm}
         ftype = Type.function(rettype.type.llvm, argtype2)
         func = @builder.external_function(cname, ftype)
+
+        if send_self then
+          para = gen_arg_eval(args, receiver, ins, local, info, nil)
+          slf = para.pop
+          para.unshift slf
+        else
+          para = gen_arg_eval(args, nil, ins, local, info, nil)
+        end
 
         args.each_with_index do |pe, n|
           pe[0].add_same_type argtype[n]
@@ -763,7 +1236,7 @@ class YarvTranslator<YarvVisitor
           
         @expstack.push [rettype,
           lambda {|b, context|
-            gen_call(func, args, b, context)
+            gen_call(func, para, b, context)
           }
         ]
         return
@@ -779,24 +1252,12 @@ class YarvTranslator<YarvVisitor
     rett = RubyType.new(nil, info[3], "Return type of #{mname}")
     @expstack.push [rett,
       lambda {|b, context|
-        argtype = para.map {|ele|
-          if ele[0].type then
-            ele[0].type.llvm
-          else
-            VALUE
-          end
-        }
-        if rett.type == nil then
-          raise "Return type is ambious: #{recklass}##{mname}"
-        end
-        ftype = Type.function(rett.type.llvm, argtype)
-        func = context.builder.get_or_insert_function(mname, ftype)
-        args = []
-        gen_call(func, para, b, context)
+        minfo, func = gen_method_select(recklass, mname)
+        gen_call(func.call, para, b, context)
 
       }]
 
-    MethodDefinition::RubyMethod[recklass][mname]= {
+    MethodDefinition::RubyMethod[mname][recklass]= {
       :defined => false,
       :argtype => para.map {|ele| ele[0]},
       :rettype => rett
@@ -836,11 +1297,13 @@ class YarvTranslator<YarvVisitor
         # type error check
         arg.map {|e|
           if e[0].type == nil then
-            raise "Return type is ambious #{e[0].name} in #{e[0].line_no}"
+            # raise "Return type is ambious #{e[0].name} in #{e[0].line_no}"
+            e[0].type = PrimitiveType.new(VALUE, nil)
           end
         }
         if rett.type == nil then
-          raise "Return type is ambious #{rett.name} in #{rett.line_no}"
+          # raise "Return type is ambious #{rett.name} in #{rett.line_no}"
+          rett.type = PrimitiveType.new(VALUE, nil)
         end
 
         ftype = Type.function(rett.type.llvm, 
@@ -982,29 +1445,88 @@ class YarvTranslator<YarvVisitor
   # opt_checkenv
   
   def visit_opt_plus(code, ins, local, ln, info)
-    s2 = @expstack.pop
-    s1 = @expstack.pop
-    #    p @expstack
-    check_same_type_2arg_static(s1, s2)
+    s = []
+    s[1] = @expstack.pop
+    s[0] = @expstack.pop
+    check_same_type_2arg_static(s[0], s[1])
     
-    @expstack.push [s1[0].dup_type,
+    @expstack.push [s[0][0].dup_type,
       lambda {|b, context|
-        s1val, s2val, context = gen_common_opt_2arg(b, context, s1, s2)
-        context.rc = b.add(s1val, s2val)
+        sval = []
+        sval[0], sval[1], context = gen_common_opt_2arg(b, context, s[0], s[1])
+        case s[0][0].type.llvm
+        when Type::DoubleTy, Type::Int32Ty
+          context.rc = b.add(sval[0], sval[1])
+          
+        when VALUE
+          if s[0][0].conflicted_types.size == 1 and
+             s[1][0].conflicted_types.size == 1 then
+            conf1 = s[0][0].conflicted_types.to_a[0]
+            at1 = conf1[1]
+            al1 = at1.llvm
+            conf2 = s[1][0].conflicted_types.to_a[0]
+            at2 = conf2[1]
+            al2 = at2.llvm
+            if al1 == al2 then
+              case al1
+              when Type::DoubleTy, Type::Int32Ty
+                s1ne = at1.from_value(sval[0], b, context)
+                s2ne = at2.from_value(sval[1], b, context)
+                addne = b.add(s1ne, s2ne)
+                context.rc = at1.to_value(addne, b, context)
+              end
+            else
+              # Generic + dispatch
+            end
+          else
+            # Generic + dispatch
+          end
+        end
+
         context
       }
     ]
   end
   
   def visit_opt_minus(code, ins, local, ln, info)
-    s2 = @expstack.pop
-    s1 = @expstack.pop
-    check_same_type_2arg_static(s1, s2)
+    s = []
+    s[1] = @expstack.pop
+    s[0] = @expstack.pop
+    check_same_type_2arg_static(s[0], s[1])
     
-    @expstack.push [s1[0].dup_type,
+    @expstack.push [s[0][0].dup_type,
       lambda {|b, context|
-        s1val, s2val, context = gen_common_opt_2arg(b, context, s1, s2)
-        context.rc = b.sub(s1val, s2val)
+        sval = []
+        sval[0], sval[1], context = gen_common_opt_2arg(b, context, s[0], s[1])
+        case s[0][0].type.llvm
+        when Type::DoubleTy, Type::Int32Ty
+          context.rc = b.sub(sval[0], sval[1])
+          
+        when VALUE
+          if s[0][0].conflicted_types.size == 1 and
+             s[1][0].conflicted_types.size == 1 then
+            conf1 = s[0][0].conflicted_types.to_a[0]
+            at1 = conf1[1]
+            al1 = at1.llvm
+            conf2 = s[1][0].conflicted_types.to_a[0]
+            at2 = conf2[1]
+            al2 = at2.llvm
+            if al1 == al2 then
+              case al1
+              when Type::DoubleTy, Type::Int32Ty
+                s1ne = at1.from_value(sval[0], b, context)
+                s2ne = at2.from_value(sval[1], b, context)
+                subne = b.sub(s1ne, s2ne)
+                context.rc = at1.to_value(subne, b, context)
+              end
+            else
+              # Generic + dispatch
+            end
+          else
+            # Generic + dispatch
+          end
+        end
+
         context
       }
     ]
@@ -1018,7 +1540,17 @@ class YarvTranslator<YarvVisitor
     @expstack.push [s1[0].dup_type,
       lambda {|b, context|
         s1val, s2val, context = gen_common_opt_2arg(b, context, s1, s2)
-        context.rc = b.mul(s1val, s2val)
+        case s1[0].type.llvm
+        when Type::DoubleTy, Type::Int32Ty
+          context.rc = b.mul(s1val, s2val)
+          
+        when VALUE
+          s1int = b.lshr(s1val, 1.llvm)
+          s2int = b.lshr(s2val, 1.llvm)
+          mulint = b.mul(s1val, s2val)
+          x = b.shl(mulint, 1.llvm)
+          context.rc = b.or(FIXNUM_FLAG, x)
+        end
         context
       }
     ]
@@ -1073,10 +1605,13 @@ class YarvTranslator<YarvVisitor
       lambda {|b, context|
         s1val, s2val, context = gen_common_opt_2arg(b, context, s1, s2)
         case s1[0].type.llvm
-          when Type::DoubleTy
+        when Type::DoubleTy
           context.rc = b.fcmp_ueq(s1val, s2val)
 
-          when Type::Int32Ty
+        when Type::Int32Ty
+          context.rc = b.icmp_eq(s1val, s2val)
+
+        when VALUE
           context.rc = b.icmp_eq(s1val, s2val)
         end
         context
@@ -1097,6 +1632,9 @@ class YarvTranslator<YarvVisitor
           context.rc = b.fcmp_une(s1val, s2val)
 
           when Type::Int32Ty
+          context.rc = b.icmp_ne(s1val, s2val)
+
+          when VALUE
           context.rc = b.icmp_ne(s1val, s2val)
         end
         context
@@ -1205,7 +1743,8 @@ class YarvTranslator<YarvVisitor
     @expstack.push [arr[0].type.element_type, 
       lambda {|b, context|
         pppp "aref start"
-        if arr[0].type.is_a?(ArrayType) then
+        case arr[0].klass
+        when :Array
           context = idx[1].call(b, context)
           idxp = context.rc
           if OPTION[:array_range_check] then
@@ -1215,7 +1754,11 @@ class YarvTranslator<YarvVisitor
             func = context.builder.external_function('rb_ary_entry', ftype)
             av = b.call(func, arrp, idxp)
             arrelet = arr[0].type.element_type.type
-            context.rc = arrelet.from_value(av, b, context)
+            if arrelet then
+              context.rc = arrelet.from_value(av, b, context)
+            else
+              context.rc = av
+            end
             context
 
           else
@@ -1242,12 +1785,28 @@ class YarvTranslator<YarvVisitor
             end
             context
           end
-        elsif arr[0].type.is_a?(StringType) then
-          raise "Not impremented String::[] in #{info[3]}"
 
+        when :String
+          raise "Not impremented String::[] in #{info[3]}"
+          context
+
+        when :Struct
+          context = idx[1].call(b, context)
+          idxp = context.rc
+          idxval = idx[0].type.to_value(idxp, b, context)
+          context = arr[1].call(b, context)
+          arrp = context.rc
+          ftype = Type.function(VALUE, [VALUE, VALUE])
+          func = context.builder.external_function('rb_struct_aref', ftype)
+          av = b.call(func, arrp, idxval)
+          arrelet = arr[0].type.element_type.type
+          context.rc = arrelet.from_value(av, b, context)
+          
+          context
         else
           # Todo: Hash table?
-          raise "Not impremented in #{info[3]}"
+#          raise "Not impremented #{arr[0].inspect2} in #{info[3]}"
+          context
         end
       }
     ]
@@ -1317,17 +1876,24 @@ class YarvTranslator<YarvVisitor
     @expstack.push [type,
       lambda {|b, context|
         unless context.rc = type.type.content
-          fcp = context.local_vars[0][:area]
-          slev.times do
-            fcp = b.load(fcp)
-          end
-          frstruct = @frame_struct[acode]
-          fi = b.ptr_to_int(fcp, MACHINE_WORD)
-          frame = b.int_to_ptr(fi, frstruct)
+          if context.inline_args then
+            varp = alocal[:area]
+          else
+            fcp = context.local_vars[0][:area]
+            slev.times do
+              fcp = b.load(fcp)
+              fcp = b.bit_cast(fcp, Type.pointer(P_CHAR))
+            end
+            frstruct = @frame_struct[acode]
 
-          varp = b.struct_gep(frame, voff)
+            fi = b.ptr_to_int(fcp, MACHINE_WORD)
+            frame = b.int_to_ptr(fi, frstruct)
+            varp = b.struct_gep(frame, voff)
+          end
+
           context.rc = b.load(varp)
         end
+
         context.org = alocal[:name]
         context
       }]
@@ -1353,19 +1919,86 @@ class YarvTranslator<YarvVisitor
       dsttype.type = dsttype.type.dup_type
       dsttype.type.content = rval
 
-      fcp = context.local_vars[0][:area]
-      (slev).times do
-        fcp = b.load(fcp)
+      if context.inline_args then
+        lvar = alocal[:area]
+      else
+        fcp = context.local_vars[0][:area]
+        (slev).times do
+          fcp = b.bit_cast(fcp, Type.pointer(P_CHAR))
+          fcp = b.load(fcp)
+        end
+        frstruct = @frame_struct[acode]
+        fi = b.ptr_to_int(fcp, MACHINE_WORD)
+        frame = b.int_to_ptr(fi, frstruct)
+        lvar = b.struct_gep(frame, voff)
       end
-      frstruct = @frame_struct[acode]
-      fi = b.ptr_to_int(fcp, MACHINE_WORD)
-      frame = b.int_to_ptr(fi, frstruct)
-      
-      lvar = b.struct_gep(frame, voff)
+
       context.rc = b.store(rval, lvar)
       context.org = alocal[:name]
       context
     }
+  end
+
+  def gen_init_ruby(builder)
+    ftype = Type.function(VALUE, [])
+    b = builder.define_function_raw('init_ruby', ftype)
+    initfunc = builder.current_function
+    member = []
+    @global_malloc_area_tab.each do |vname, val|
+      member.push val[0]
+    end
+    type = Type.struct(member)
+
+    initarg = []
+    @global_malloc_area_tab.each do |vname, val|
+      initarg.push val[1]
+    end
+    init = Value.get_struct_constant(type, *initarg)
+    gl = builder.define_global_variable(type, init)
+
+    @generated_define_func.each do |klass, defperklass|
+      if klass then
+        klassval = Object.const_get(klass, true)
+      else
+        klassval = 4
+      end
+      defperklass[nil].call([b, [klassval.llvm]])
+    end
+    @generated_code.each do |klass, defperklass|
+      defperklass[nil].call
+    end
+
+    b.return(4.llvm)
+    initfunc
+  end
+
+  def gen_define_ruby(builder)
+    ftype = Type.function(VALUE, [])
+    fname = "define_ruby"
+    b = builder.define_function_raw(fname, ftype)
+
+#=begin
+    ftype = Type.function(Type::VoidTy, [VALUE, P_CHAR, VALUE, Type::Int32Ty])
+    funcm = builder.external_function('rb_define_method', ftype)
+    ftype = Type.function(Type::VoidTy, [P_CHAR, VALUE, Type::Int32Ty])
+    funcg = builder.external_function('rb_define_global_function', ftype)
+    MethodDefinition::RubyMethodStub.each do |name, m|
+      unless m[:outputp]
+        nameptr = name.llvm(b)
+        stubval = b.ptr_to_int(m[:stub], VALUE)
+        if rec = m[:receiver] then
+          recptr = Object.const_get(rec)
+          b.call(funcm, recptr.llvm, nameptr, stubval, (m[:argt].size - 1).llvm)
+        else
+          b.call(funcg, nameptr, stubval, (m[:argt].size - 1).llvm)
+        end
+        m[:outputp] = true
+      end
+    end
+#=end
+
+    b.return(4.llvm)
+    builder.current_function
   end
 end
 
@@ -1404,29 +2037,25 @@ def compcommon(is, opt, bind)
     p iseq.to_a
   end
   YarvTranslator.new(iseq, bind).run
+#=begin
   MethodDefinition::RubyMethodStub.each do |key, m|
     name = key
     n = 0
     args = ""
     args2 = ""
-    if m[:receiver] then
-      m[:argt].pop
-      if m[:argt] != [] then
-        args = m[:argt].map {|x|  n += 1; "p" + n.to_s}.join(',')
-        args2 = ', ' + args
-      end
-      args2 = args2 + ", self"
-    else
-      if m[:argt] != [] then
-        args = m[:argt].map {|x|  n += 1; "p" + n.to_s}.join(',')
-        args2 = ', ' + args
-      end
+
+    m[:argt].pop
+    if m[:argt] != [] then
+      args = m[:argt].map {|x|  n += 1; "p" + n.to_s}.join(',')
+      args2 = ', ' + args
     end
+    args2 = ", self" + args2 
 
 #    df = "def #{key}(#{args});LLVM::ExecutionEngine.run_function(YARV2LLVM::MethodDefinition::RubyMethodStub['#{key}'][:stub]#{args2});end" 
     df = "def #{key}(#{args});LLVM::ExecutionEngine.run_function(YARV2LLVM::MethodDefinition::RubyMethodStub['#{key}'][:stub]#{args2});end" 
     eval df, bind
   end
+#=end
 end
 
 module_function :compile_file

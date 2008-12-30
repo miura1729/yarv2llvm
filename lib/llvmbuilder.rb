@@ -13,6 +13,8 @@ class LLVMBuilder
     @module = LLVM::Module.new('yarv2llvm')
     @externed_function = {}
     @func = nil
+    @global_ptr = nil
+    @builder_to_func = {}
     ExecutionEngine.get(@module)
   end
   
@@ -21,9 +23,27 @@ class LLVMBuilder
     @externed_function = {}
   end
 
-  def make_stub(receiver, name, rett, argt, orgfunc)
+  def to_label(rec, s)
+    to_label_aux(rec) + "_" + to_label_aux(s)
+  end
+
+  def to_label_aux(s)
+    ns = s.gsub(/_/, "__")
+    ns.gsub!(/=/, "_e")
+    ns.gsub!(/!/, "_b")
+    ns.gsub!(/@/, "_a")
+    ns.gsub!(/\?/, "_q")
+    ns.gsub!(/\+/, "_p")
+    ns
+  end
+
+  def make_stub(recklass, name, rett, argt, orgfunc)
     pppp "Make stub #{name}"
-    sname = "__stub_" + name
+    sname = "__stub_" + to_label(recklass.to_s, name)
+    nargs = argt.size
+    if recklass == nil then
+      argt.unshift RubyType.value
+    end
     stype = Type.function(VALUE, [VALUE] * argt.size)
     @stubfunc = @module.get_or_insert_function(sname, stype)
     eb = @stubfunc.create_block
@@ -36,6 +56,10 @@ class LLVMBuilder
       argv.push v
     end
 
+    if recklass == nil then
+      argv.shift
+    end
+
     ret = b.call(orgfunc, *argv)
 
     x = rett.type.to_value(ret, b, context)
@@ -46,29 +70,56 @@ class LLVMBuilder
       :stub => @stubfunc,
       :argt => argt,
       :type => stype,
-      :receiver => receiver}
+      :receiver => recklass,
+      :outputp => false}
     pppp "Make stub #{name} end"
   end
 
-  def define_function(receiver, name, rett, argt, is_mkstub)
+  def define_function(recklass, name, rett, argt, is_mkstub)
     argtl = argt.map {|a| a.type.llvm}
     rettl = rett.type.llvm
     type = Type.function(rettl, argtl)
-    @func = @module.get_or_insert_function(name, type)
+    fname = to_label(recklass.to_s, name)
+    @func = @module.get_or_insert_function(fname, type)
     
     if is_mkstub then
-      @stub = make_stub(receiver, name, rett, argt, @func)
+      @stub = make_stub(recklass, name, rett, argt, @func)
     end
 
-    MethodDefinition::RubyMethod[receiver][name.to_sym][:func] = @func
+    MethodDefinition::RubyMethod[name.to_sym][recklass][:func] = @func
 
     eb = @func.create_block
-    eb.builder
+    b =eb.builder
+    @builder_to_func[b] = @func
+    b
   end
 
-  def get_or_insert_function(name, type)
-    ns = name.to_s
+  def select_func(b)
+    @func = @builder_to_func[b]
+  end
+  
+  def define_function_raw(name, type)
+    @func = @module.get_or_insert_function(name, type)
+    b = @func.create_block.builder
+    @builder_to_func[b] = @func
+    b
+  end
+
+  def get_or_insert_function(recklass, name, type)
+    ns = to_label(recklass.to_s, name.to_s)
     @module.get_or_insert_function(ns, type)
+  end
+
+  def get_or_insert_function_raw(name, type)
+    @module.get_or_insert_function(name, type)
+  end
+  
+  def define_global_variable(type, init)
+    @global_ptr = @module.global_variable(type, init)
+  end
+
+  def global_variable
+    @global_ptr
   end
 
   def arguments
@@ -77,6 +128,10 @@ class LLVMBuilder
 
   def create_block
     @func.create_block
+  end
+
+  def current_function
+    @func
   end
 
   def external_function(name, type)
@@ -94,7 +149,10 @@ class LLVMBuilder
       @module = LLVM::Module.read_bitcode(fp.read)
     }
     MethodDefinition::RubyMethodStub.each do |nm, val|
-      val[:stub] = @module.get_or_insert_function(val[:sname], val[:type])
+      if nm then
+        nn = val[:sname]
+        val[:stub] = @module.get_or_insert_function(nn, val[:type])
+      end
     end
   end
 

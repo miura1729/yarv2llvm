@@ -45,6 +45,7 @@ def compute_e
     while i < KETA do
       if b[i] != 0 then
         f = 1
+        break
       end
       i = i + 1
     end

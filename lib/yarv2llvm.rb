@@ -7,6 +7,7 @@ require 'lib/instruction.rb'
 require 'lib/type.rb'
 require 'lib/llvmbuilder.rb'
 require 'lib/methoddef.rb'
+require 'lib/intruby.rb'
 require 'lib/vmtraverse.rb'
 
 def pppp(n)
@@ -22,8 +23,33 @@ DEF_OPTION = {
   :func_signature => false,
 
   :array_range_check => true,
+
+  :cache_instance_variable => false,
+  :strict_type_inference => false,
+
+  :inline_block => false,
 }
 OPTION = {}
+
+# Protect from GC
+EXPORTED_OBJECT = {}
+
+# From gc.c in ruby1.9
+#     *  sizeof(RVALUE) is
+#     *  20 if 32-bit, double is 4-byte aligned
+#     *  24 if 32-bit, double is 8-byte aligned
+#     *  40 if 64-bit
+RVALUE_SIZE = 20
+RUBY_SYMBOL_FLAG = 0xe
+
+TRACE_INFO = []
+end
+
+class Object
+  def llvm
+    YARV2LLVM::EXPORTED_OBJECT[self] = true
+    immediate
+  end
 end
 
 class Float
@@ -40,6 +66,7 @@ end
 
 class Symbol
   def llvm
+    YARV2LLLVM::EXPORTED_OBJECT[self] = true
     immediate
   end
 end

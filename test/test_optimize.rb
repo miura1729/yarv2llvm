@@ -56,6 +56,7 @@ EOS
    assert_equal(array2, 12)
   end
 #=end
+
   def test_array3
     YARV2LLVM::compile(<<-EOS, {:disasm => true, :dump_yarv => false, :optimize=> false, :array_range_check => false})
 def array3
@@ -68,5 +69,23 @@ def array3
 end
 EOS
    assert_equal(array3, 7)
+  end
+
+  def test_each_inline
+    YARV2LLVM::compile(<<-EOS, {:disasm => true, :dump_yarv => false, :optimize=> false, :array_range_check => false})
+def eachinline
+  t = 0
+  (1..10).each do |n|
+    t += n
+  end
+
+  [1, 2, 3, 4].each do |n|
+    t += n
+  end
+
+  t
+end
+EOS
+  assert_equal(eachinline, 55)
   end
 end

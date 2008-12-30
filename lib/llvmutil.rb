@@ -55,11 +55,84 @@ module LLVMUtil
     end
     Type.struct(member)
   end
+
+  def gen_array_size(b, context, arr)
+    recval = context.rc
+    aptr = b.int_to_ptr(recval, P_RARRAY)
+    lenptr = b.struct_gep(aptr, 1)
+    b.load(lenptr)
+  end
+
+  def gen_call_var_args_and_self(fname, rtype, slf)
+    ftype = Type.function(VALUE, [Type::Int32Ty, P_VALUE, VALUE])
+    gen_call_var_args_common(fname, rtype, ftype) {|b, context, func, nele, argarea|
+      b.call(func, nele.llvm, argarea, slf)
+    }
+  end
+
+  def gen_call_var_args(fname, rtype)
+    ftype = Type.function(VALUE, [Type::Int32Ty, P_VALUE])
+    gen_call_var_args_common(fname, rtype, ftype) {|b, context, func, nele, argarea|
+      b.call(func, nele.llvm, argarea)
+    }
+  end
+
+  def gen_call_var_args_common(fname, rtype, ftype)
+    args = @para[:args].reverse
+    nele = @para[:args].size
+    if @array_alloca_size == nil or @array_alloca_size < nele then
+      @array_alloca_size = nele
+    end
+    @expstack.push [rtype,
+      lambda {|b, context|
+        func = @builder.external_function(fname, ftype)
+        
+        argarea = context.array_alloca_area
+        args.each_with_index {|pterm, i|
+          context = pterm[1].call(b, context)
+          srcval = context.rc
+          src = pterm[0].type.to_value(srcval, b, context)
+          dst = b.gep(argarea, i.llvm)
+          b.store(src, dst)
+        }
+        context.rc = yield(b, context, func, nele, argarea)
+        context}]
+  end
+
+  def add_global_variable(name, type, init)
+    @global_malloc_area_tab[name] = [type, init]
+    @global_malloc_area_tab.size - 1
+  end
 end
 
 module SendUtil
   include LLVM
   include RubyHelpers
+
+  MaxSmallPolymotphicNum = 4
+  def gen_method_select(recklass, mname)
+    minfo = MethodDefinition::RubyMethod[mname][recklass]
+    if minfo then
+      return [minfo, lambda { minfo[:func]}]
+    end
+
+    candidatenum = MethodDefinition::RubyMethod[mname].size
+    if candidatenum == 0 then
+      return [nil, lambda {nil}]
+
+    elsif candidatenum == 1 then
+      minfo = MethodDefinition::RubyMethod[mname].values[0]
+      return [minfo, lambda {minfo[:func]}]
+
+    elsif candidatenum < MaxSmallPolymotphicNum then
+      # TODO : Use inline hash function generation
+      raise('Not implimented polymorphic methed call yet')
+
+    else
+      # TODO : Use cukko-hasing and inline hash function generation
+      raise('Not implimented polymorphic methed call yet')
+    end
+  end
 
   def gen_call(func, arg, b, context)
     args = []
@@ -87,17 +160,23 @@ module SendUtil
 =end
 
   def gen_get_block_ptr(recklass, info, blk, b, context)
-    blab = (info[1].to_s + '_blk_' + blk[1].to_s).to_sym
-    minfo = MethodDefinition::RubyMethod[recklass][blab]
-    func2 = minfo[:func]
+    blab = (info[1].to_s + '+blk+' + blk[1].to_s).to_sym
+    minfo = MethodDefinition::RubyMethod[blab][recklass]
 
+    func2 = minfo[:func]
     if func2 == nil then
       argtype = minfo[:argtype].map {|ele|
         ele.type.llvm
       }
       rett = minfo[:rettype]
-      ftype = Type.function(rett.type.llvm, argtype)
-      func2 = context.builder.get_or_insert_function(blab.to_s, ftype)
+      rettllvm = rett.type
+      if rettllvm == nil then
+        rettllvm = VALUE
+      else
+        rettllvm = rettllvm.llvm
+      end
+      ftype = Type.function(rettllvm, argtype)
+      func2 = context.builder.get_or_insert_function(recklass, blab.to_s, ftype)
     end
     context.rc = b.ptr_to_int(func2, MACHINE_WORD)
     context

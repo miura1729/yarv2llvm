@@ -20,20 +20,27 @@ class RubyType
     elsif type.is_a?(ComplexType) then
       @type = type
     else
-      @type = PrimitiveType.new(type)
+      @type = PrimitiveType.new(type, klass)
     end
-    if klass then
-      @klass = klass.name.to_sym
-    else
-      @klass = nil
-    end
+
+#      @klass = klass.name.to_sym
+
     @resolveed = false
     @same_type = []
     @same_value = []
     @@type_table.push self
+    @conflicted_types = Hash.new(0)
   end
   attr_accessor :type
-  attr_accessor :klass
+  attr_accessor :conflicted_types
+
+  def klass
+    if @type then
+      @type.klass
+    else
+      nil
+    end
+  end
 
   def dup_type
 #    no = self.class.new(nil)
@@ -59,16 +66,20 @@ class RubyType
   def add_same_type(fty)
     @same_type.push fty
     # Complex type -> element type is same also.
-    if type.is_a?(ComplexType) and fty.type.is_a?(ComplexType) then
-      type.element_type.add_same_type(fty.type.element_type)
+    if @type.is_a?(ComplexType) and fty.type.is_a?(ComplexType) then
+      if fty.type.element_type.type.llvm != VALUE then
+        @type.element_type.add_same_type(fty.type.element_type)
+      end
     end
   end
 
   def add_same_value(fty)
     @same_value.push fty
     # Complex type -> element type is same also.
-    if type.is_a?(ComplexType) and fty.type.is_a?(ComplexType) then
-      type.element_type.add_same_value(fty.type.element_type)
+    if @type.is_a?(ComplexType) and fty.type.is_a?(ComplexType) then
+      if fty.type.element_type.type.llvm != VALUE then
+        @type.element_type.add_same_value(fty.type.element_type)
+      end
     end
   end
   
@@ -110,10 +121,8 @@ class RubyType
           if ty.type.is_a?(@type.class) and ty.type.class != @type.class then
             if dupp then
               @type = ty.type.dup_type
-              @klass = ty.klass
             else
               @type = ty.type
-              @klass = ty.klass
             end
             @resolveed = false
             resolve
@@ -124,33 +133,42 @@ class RubyType
             if ty.type != @type then
               if dupp then
                 ty.type = @type.dup_type
-                ty.klass = klass
               else
                 ty.type = @type
-                ty.klass = klass
               end
             end
             ty.resolve
             next
           end
+
+          if @type.llvm == VALUE then
+            return
+          end
         end
         
+        ty.conflicted_types.merge!(@conflicted_types)
         if ty.type and ty.type.llvm != @type.llvm then
           mess = "Type conflict \n"
           mess += "  #{ty.name}(#{ty.type.inspect2}) defined in #{ty.line_no} \n"
           mess += "  #{@name}(#{@type.inspect2}) define in #{@line_no} \n"
-          raise mess
+          if OPTION[:strict_type_inference] then
+            raise mess
+          else
+            print mess
+
+            ty.conflicted_types[ty.type.klass] = ty.type
+            ty.type = PrimitiveType.new(VALUE, Object)
+         end
+
         elsif ty.type then
-#          if dupp then
-#            ty.type = @type.dup_type
-#          end
+          if dupp then
+            ty.type = @type.dup_type
+          end
         else
           if dupp then
             ty.type = @type.dup_type
-            ty.klass = klass
           else
             ty.type = @type
-            ty.klass = klass
           end
           ty.resolve
         end
@@ -170,77 +188,109 @@ class RubyType
     end
   end
 
-  def self.fixnum(lno = nil, name = nil, klass = nil)
+  def self.fixnum(lno = nil, name = nil, klass = Fixnum)
     RubyType.new(Type::Int32Ty, lno, name, klass)
   end
 
-  def self.float(lno = nil, name = nil, klass = nil)
+  def self.float(lno = nil, name = nil, klass = Float)
     RubyType.new(Type::DoubleTy, lno, name, klass)
   end
 
-  def self.string(lno = nil, name = nil, klass = nil)
+  def self.string(lno = nil, name = nil, klass = String)
     RubyType.new(StringType.new, lno, name, klass)
   end
 
-  def self.array(lno = nil, name = nil, klass = nil)
-    RubyType.new(ArrayType.new, lno, name, klass)
+  def self.array(lno = nil, name = nil)
+    etype = nil
+    if name then
+      etype = RubyType.typeof(name[0], lno, name[0])
+    else
+      etype = RubyType.new(nil)
+    end
+    na = ArrayType.new(nil)
+    na.element_type = etype
+    RubyType.new(na, lno, name, Array)
   end
 
-  def self.symbol(lno = nil, name = nil, klass = nil)
+  def self.struct(lno = nil, name = nil)
+    na = StructType.new
+    RubyType.new(na, lno, name, Struct)
+  end
+
+  def self.range(fst, lst, excl, lno = nil, name = nil)
+    na = RangeType.new(fst, lst, excl)
+    RubyType.new(na, lno, name, Range)
+  end
+
+  def self.symbol(lno = nil, name = nil, klass = Symbol)
     RubyType.new(VALUE, lno, name, klass)
   end
 
-  def self.value(lno = nil, name = nil, klass = nil)
+  def self.value(lno = nil, name = nil, klass = Object)
     RubyType.new(VALUE, lno, name, klass)
   end
 
   def self.from_sym(sym, lno, name)
     case sym
     when :Fixnum
-      RubyType.fixnum(lno, name, Fixnum)
+      RubyType.fixnum(lno, name)
 
     when :Float
-      RubyType.float(lno, name, Float)
+      RubyType.float(lno, name)
 
     when :String
-      RubyType.string(lno, name, String)
+      RubyType.string(lno, name)
 
     when :Symbol
-      RubyType.symbol(lno, name, Symbol)
+      RubyType.symbol(lno, name)
 
     when :Array
-      RubyType.array(lno, name, Array)
+      RubyType.array(lno, name)
 
     else
-      RubyType.value(lno, name, Object)
+      obj = nil
+      if sym then
+        obj = const_get(sym)
+      end
+      unless obj
+        obj = Object
+      end
+
+      RubyType.value(lno, name, obj)
     end
   end
 
   def self.typeof(obj, lno = nil, name = nil)
     case obj
-    when Fixnum
-      RubyType.fixnum(lno, name, Fixnum)
+    when ::Fixnum
+      RubyType.fixnum(lno, name)
 
-    when Float
-      RubyType.float(lno, name, Float)
+    when ::Float
+      RubyType.float(lno, name)
 
-    when String
-      RubyType.string(lno, obj, String)
+    when ::String
+      RubyType.string(lno, obj)
 
-    when Symbol
-      RubyType.symbol(lno, obj, Symbol)
+    when ::Symbol
+      RubyType.symbol(lno, obj)
 
-    when Class
+    when ::Array
+      RubyType.array(lno, obj)
+
+    when ::Range
+      fst = RubyType.typeof(obj.first, nil, obj.first)
+      lst = RubyType.typeof(obj.last, nil, obj.last)
+      exc = RubyType.typeof(obj.exclude_end?, nil, obj.exclude_end?)
+      RubyType.range(fst, lst, exc, lno, obj)
+
+    when ::Class
       RubyType.value(lno, obj, obj)
 
-    when Module
-      RubyType.value(lno, obj, obj)
-
-    when Object
+    when ::Module
       RubyType.value(lno, obj, obj)
 
     else
-      raise "Unsupported type #{obj} in #{lno} (#{name})"
+      RubyType.value(lno, obj, obj.class)
     end
   end
 end
@@ -249,14 +299,26 @@ class PrimitiveType
   include LLVM
   include RubyHelpers
 
-  def initialize(type)
+  def initialize(type, klass)
+    if klass.is_a?(Symbol) then
+      @klass = klass
+    elsif klass then
+      @klass = klass.name.to_sym
+    else
+      @klass = :nil
+    end
     @type = type
     @content = nil
+    @constant = nil
   end
+
+  attr_accessor :klass
   attr_accessor :content
+  attr_accessor :constant
 
   def dup_type
-    self.class.new(@type)
+    nt = self.class.new(@type, @klass)
+    nt
   end
 
   TYPE_HANDLER = {
@@ -306,7 +368,7 @@ class PrimitiveType
       },
 
     VALUE =>
-      {:inspect => "VALUE",
+    {:inspect => "VALUE (#{@type ? @type.conflicted_types.map{|t, v| t.klass} : ''})",
 
        :to_value => lambda {|val, b, context|
         val
@@ -352,13 +414,72 @@ class PrimitiveType
 end
 
 class ComplexType
+  def set_klass(klass)
+    if klass.is_a?(::Class) then
+      @klass = klass.name.to_sym
+    elsif klass.is_a?(Symbol) then
+      @klass = klass.to_sym
+    else
+      @klass = :nil
+    end
+    @constant = nil
+  end
+
+  attr_accessor :klass
+  attr_accessor :constant
+
   def dup_type
     self.class.new
+  end
+
+  def to_value(val, b, context)
+    val
+  end
+
+  def from_value(val, b, context)
+    val
+  end
+end
+
+class RangeType<ComplexType
+  include LLVM
+  include RubyHelpers
+
+  def initialize(first, last, excl)
+    set_klass(Range)
+    @first = first
+    @last = last
+    @excl = excl
+    @content = nil
+  end
+  attr_accessor :first
+  attr_accessor :last
+  attr_accessor :excl
+  attr_accessor :content
+
+  def dup_type
+    dup
+  end
+
+  def llvm
+    VALUE
+  end
+
+  def element_type
+    @first
+  end
+
+  def inspect2
+    "Range(#{@first.inspect2})"
   end
 end
 
 class AbstructContainerType<ComplexType
+  include LLVM
+  include RubyHelpers
+
   def initialize(etype)
+    set_klass(Object)
     @element_type = RubyType.new(etype)
     @content = nil
   end
@@ -371,8 +492,16 @@ class AbstructContainerType<ComplexType
     no
   end
 
+  def to_value(val, b, context)
+    val
+  end
+
+  def from_value(val, b, context)
+    val
+  end
+
   def llvm
-    nil
+    VALUE
   end
 
   def inspect2
@@ -385,7 +514,8 @@ class ArrayType<AbstructContainerType
   include RubyHelpers
 
   def initialize(etype)
-    @element_type = RubyType.new(etype, nil, nil, Array)
+    set_klass(Array)
+    @element_type = RubyType.new(etype, nil, nil)
     @ptr = nil
     @element_content = Hash.new
   end
@@ -399,9 +529,31 @@ class ArrayType<AbstructContainerType
     no
   end
 
+  def has_cycle_aux(r, t)
+    if r == t then
+      return true
+    else
+      if r.is_a?(ComplexType) and t.is_a?(ComplexType) then
+        r = r.element_type.type.element_type.type
+        t = t.element_type.type
+        return has_cycle_aux(r, t)
+      else
+        return false
+      end
+    end
+  end
+
+  def has_cycle?
+    has_cycle_aux(@element_type.type, self)
+  end
+
   def inspect2
     if @element_type then
-      "Array of #{@element_type.inspect2}"
+      if has_cycle? then
+        "Array of VALUE"
+      else
+        "Array of #{@element_type.inspect2}"
+      end
     else
       "Array of nil"
     end
@@ -425,6 +577,7 @@ class StringType<AbstructContainerType
   include RubyHelpers
 
   def initialize
+    set_klass(String)
     @element_type = RubyType.new(CHAR, nil, nil, Fixnum)
   end
   attr :element_type
@@ -454,6 +607,38 @@ class StringType<AbstructContainerType
 
   def llvm
     P_CHAR
+  end
+end
+
+class StructType<AbstructContainerType
+  include LLVM
+  include RubyHelpers
+
+  def initialize
+    set_klass(Struct)
+    @element_type = RubyType.new(VALUE, nil, nil, Object)
+  end
+  attr :element_type
+
+  def dup_type
+    no = self.class.new
+    no
+  end
+
+  def inspect2
+    "Struct"
+  end
+
+  def to_value(val, b, context)
+    val
+  end
+
+  def from_value(val, b, context)
+    val
+  end
+
+  def llvm
+    VALUE
   end
 end
 end
