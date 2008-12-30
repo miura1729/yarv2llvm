@@ -124,7 +124,7 @@ module SendUtil
       minfo = MethodDefinition::RubyMethod[mname].values[0]
       return [minfo, lambda {minfo[:func]}]
 
-    elsif candidatenum < MaxSmallPolymotphicNum
+    elsif candidatenum < MaxSmallPolymotphicNum then
       # TODO : Use inline hash function generation
       raise('Not implimented polymorphic methed call yet')
 
