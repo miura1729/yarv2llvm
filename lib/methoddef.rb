@@ -17,8 +17,8 @@ module MethodDefinition
   InlineMethod =  {
     :require => {
       :inline_proc =>
-        lambda {
-          fn = @para[:args][0][0].name
+        lambda {|para|
+          fn = para[:args][0][0].name
           unless File.exist?(fn)
             nfn = fn + ".rb"
             if File.exist?(nfn) then
@@ -36,10 +36,10 @@ module MethodDefinition
           
     :[]= => {
       :inline_proc => 
-        lambda {
-          val = @para[:args][0]
-          idx = @para[:args][1]
-          arr = @para[:receiver]
+        lambda {|para|
+          val = para[:args][0]
+          idx = para[:args][1]
+          arr = para[:receiver]
           RubyType.resolve
           if arr[0].type then
             val[0].add_same_value(arr[0].type.element_type)
@@ -84,9 +84,9 @@ module MethodDefinition
 
     :to_f => {
       :inline_proc => 
-        lambda {
-          recv = @para[:receiver]
-          rettype = RubyType.float(@para[:info][3], 'Return type of to_f')
+        lambda {|para|
+          recv = para[:receiver]
+          rettype = RubyType.float(para[:info][3], 'Return type of to_f')
           @expstack.push [rettype,
             lambda {|b, context|
               context = recv[1].call(b, context)
@@ -103,8 +103,8 @@ module MethodDefinition
 
     :-@ => {
       :inline_proc => 
-        lambda {
-          recv = @para[:receiver]
+        lambda {|para|
+          recv = para[:receiver]
           @expstack.push [recv[0],
             lambda {|b, context|
               context = recv[1].call(b, context)
@@ -123,8 +123,8 @@ module MethodDefinition
 
     :p => {
       :inline_proc =>
-        lambda {
-          pterm = @para[:args][0]
+        lambda {|para|
+          pterm = para[:args][0]
           @expstack.push [pterm[0], 
             lambda {|b, context|
               context = pterm[1].call(b, context)
@@ -138,29 +138,30 @@ module MethodDefinition
 
     :print => {
       :inline_proc =>
-        lambda {
-          info = @para[:info]
+        lambda {|para|
+          info = para[:info]
           rtype = RubyType.value(info[3], "Return type of print")
           fname = 'rb_io_print'
-          gen_call_var_args_and_self('rb_io_print', rtype, STDOUT.immediate)
+          gen_call_var_args_and_self(para, 'rb_io_print', rtype,
+                                     STDOUT.immediate)
         }
      },
 
     :sprintf => {
       :inline_proc =>
-        lambda {
-          info = @para[:info]
+        lambda {|para|
+          info = para[:info]
           rtype = RubyType.value(info[3], "Return type of sprint")
           fname = 'rb_f_sprintf'
-          gen_call_var_args('rb_f_sprintf', rtype)
+          gen_call_var_args(para, 'rb_f_sprintf', rtype)
         }
      },
 
     :size => {
       :inline_proc => 
-        lambda {
-          rec = @para[:receiver]
-          info = @para[:info]
+        lambda {|para|
+          rec = para[:receiver]
+          info = para[:info]
           rettype = RubyType.fixnum(info[3], "Return type of size")
           @expstack.push [rettype, 
              lambda {|b, context|
@@ -180,11 +181,11 @@ module MethodDefinition
                   
     :each => {
       :inline_proc =>
-        lambda {
-          ins = @para[:ins]
-          info = @para[:info]
-          rec = @para[:receiver]
-          local = @para[:local]
+        lambda {|para|
+          ins = para[:ins]
+          info = para[:info]
+          rec = para[:receiver]
+          local = para[:local]
           recval = nil
 
           loop_cnt_current = @loop_cnt_current
@@ -328,9 +329,9 @@ module MethodDefinition
 
     :new => {
        :inline_proc =>
-         lambda {
-           rec = @para[:receiver]
-           args = @para[:args]
+         lambda {|para|
+           rec = para[:receiver]
+           args = para[:args]
            nargs = args.size
            if nargs != 0 then
              if @array_alloca_size == nil or @array_alloca_size < nargs then
@@ -343,7 +344,7 @@ module MethodDefinition
            if @array_alloca_size == nil then
              @array_alloca_size = 1
            end
-           rettype = RubyType.from_sym(rec[0].klass, @para[:info][3], nil)
+           rettype = RubyType.from_sym(rec[0].klass, para[:info][3], nil)
            @expstack.push [rettype, 
              lambda {|b, context|
                cargs = []
@@ -368,8 +369,8 @@ module MethodDefinition
 
     :get_interval_cycle => {
       :inline_proc =>
-        lambda {
-          info = @para[:info]
+        lambda {|para|
+          info = para[:info]
           rettype = RubyType.fixnum(info[3], "Return type of gen_interval_cycle")
           glno = add_global_variable("interval_cycle", 
                                      Type::Int64Ty, 

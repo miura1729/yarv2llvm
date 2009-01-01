@@ -1186,12 +1186,12 @@ class YarvTranslator<YarvVisitor
     end
 
     if funcinfo = MethodDefinition::InlineMethod[mname] then
-      @para = {:info => info, 
+      para = {:info => info, 
                :ins => ins,
                :args => args, 
                :receiver => receiver, 
                :local => local}
-      instance_eval &funcinfo[:inline_proc]
+      instance_exec(para, &funcinfo[:inline_proc])
       return
     end
 

@@ -63,23 +63,25 @@ module LLVMUtil
     b.load(lenptr)
   end
 
-  def gen_call_var_args_and_self(fname, rtype, slf)
+  def gen_call_var_args_and_self(para, fname, rtype, slf)
     ftype = Type.function(VALUE, [Type::Int32Ty, P_VALUE, VALUE])
-    gen_call_var_args_common(fname, rtype, ftype) {|b, context, func, nele, argarea|
+    gen_call_var_args_common(para, fname, rtype, ftype) {
+      |b, context, func, nele, argarea|
       b.call(func, nele.llvm, argarea, slf)
     }
   end
 
-  def gen_call_var_args(fname, rtype)
+  def gen_call_var_args(para, fname, rtype)
     ftype = Type.function(VALUE, [Type::Int32Ty, P_VALUE])
-    gen_call_var_args_common(fname, rtype, ftype) {|b, context, func, nele, argarea|
+    gen_call_var_args_common(para, fname, rtype, ftype) {
+      |b, context, func, nele, argarea|
       b.call(func, nele.llvm, argarea)
     }
   end
 
-  def gen_call_var_args_common(fname, rtype, ftype)
-    args = @para[:args].reverse
-    nele = @para[:args].size
+  def gen_call_var_args_common(para, fname, rtype, ftype)
+    args = para[:args].reverse
+    nele = para[:args].size
     if @array_alloca_size == nil or @array_alloca_size < nele then
       @array_alloca_size = nele
     end
@@ -113,7 +115,25 @@ module SendUtil
   def gen_method_select(recklass, mname)
     minfo = MethodDefinition::RubyMethod[mname][recklass]
     if minfo then
+      # recklass == nil ->  functional method
       return [minfo, lambda { minfo[:func]}]
+    end
+
+    # recklass == nil ->  need dynamic dispatch
+    # inheritance search
+    if recklass then
+      sup = Object.const_get(recklass, true)
+      while sup do
+        minfo = MethodDefinition::RubyMethod[mname][sup.name]
+        if minfo then
+          return [minfo, lambda { minfo[:func]}]
+        end
+        if sup.is_a?(Class) then
+          sup = sup.superclass
+        else
+          break
+        end
+      end
     end
 
     candidatenum = MethodDefinition::RubyMethod[mname].size
