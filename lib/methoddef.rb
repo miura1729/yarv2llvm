@@ -141,8 +141,17 @@ module MethodDefinition
         lambda {|para|
           info = para[:info]
           rtype = RubyType.value(info[3], "Return type of print")
-          fname = 'rb_io_print'
           gen_call_var_args_and_self(para, 'rb_io_print', rtype,
+                                     STDOUT.immediate)
+        }
+     },
+
+    :puts => {
+      :inline_proc =>
+        lambda {|para|
+          info = para[:info]
+          rtype = RubyType.value(info[3], "Return type of print")
+          gen_call_var_args_and_self(para, 'rb_io_puts', rtype,
                                      STDOUT.immediate)
         }
      },
@@ -334,11 +343,11 @@ module MethodDefinition
            args = para[:args]
            nargs = args.size
            if nargs != 0 then
-             if @array_alloca_size == nil or @array_alloca_size < nargs then
-                @array_alloca_size = nargs
+             arraycurlevel = @expstack.size
+             if @array_alloca_size == nil or @array_alloca_size < nargs +  arraycurlevel then
+                @array_alloca_size = nargs + arraycurlevel
              end
            end
-
            # This rb_class_new_instance needs stack area as arguments
            # in spite of with no arguments.
            if @array_alloca_size == nil then
@@ -352,17 +361,18 @@ module MethodDefinition
                recv = context.rc
 
                initarea = context.array_alloca_area
+               initarea2 =  b.gep(initarea, arraycurlevel.llvm)
                args.each_with_index do |ele, n|
                  context = ele[1].call(b, context)
                  rcvalue = ele[0].type.to_value(context.rc, b, context)
-                 sptr = b.gep(initarea, n.llvm)
+                 sptr = b.gep(initarea2, n.llvm)
                  b.store(rcvalue, sptr)
                end
                ftype = Type.function(VALUE, [Type::Int32Ty, P_VALUE, VALUE])
                fname = 'rb_class_new_instance'
                builder = context.builder
                func = builder.external_function(fname, ftype)
-               context.rc = b.call(func, nargs.llvm, initarea, recv)
+               context.rc = b.call(func, nargs.llvm, initarea2, recv)
                context}]
          }
      },

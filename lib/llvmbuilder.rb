@@ -43,7 +43,11 @@ class LLVMBuilder
     nargs = argt.size
     if recklass == nil then
       argt.unshift RubyType.value
+    else
+      slf = argt.pop
+      argt.unshift slf
     end
+
     stype = Type.function(VALUE, [VALUE] * argt.size)
     @stubfunc = @module.get_or_insert_function(sname, stype)
     eb = @stubfunc.create_block
@@ -56,8 +60,9 @@ class LLVMBuilder
       argv.push v
     end
 
-    if recklass == nil then
-      argv.shift
+    slf = argv.shift
+    if recklass then
+      argv.push slf
     end
 
     ret = b.call(orgfunc, *argv)

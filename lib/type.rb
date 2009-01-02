@@ -71,6 +71,8 @@ class RubyType
         @type.element_type.add_same_type(fty.type.element_type)
       end
     end
+    # for debug
+    #    RubyType.resolve
   end
 
   def add_same_value(fty)
@@ -81,6 +83,8 @@ class RubyType
         @type.element_type.add_same_value(fty.type.element_type)
       end
     end
+    # for debug
+    #    RubyType.resolve
   end
   
   def clear_same
@@ -533,7 +537,9 @@ class ArrayType<AbstructContainerType
     if r == t then
       return true
     else
-      if r.is_a?(ComplexType) and t.is_a?(ComplexType) then
+      if r.is_a?(ComplexType) and 
+         t.is_a?(ComplexType) and 
+         r.element_type.type then
         r = r.element_type.type.element_type.type
         t = t.element_type.type
         return has_cycle_aux(r, t)
