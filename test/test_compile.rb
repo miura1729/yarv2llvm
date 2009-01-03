@@ -73,6 +73,17 @@ EOS
    assert_equal(dtest(2.0), (Math.sqrt(2.0) * 2.0 + 1.0) / 3.0)
  end
 
+  def test_argument_order
+    YARV2LLVM::compile(<<-EOS, {:disasm => true, :optimize=>false})
+def targorder(x, y, z)
+  p "foo"
+  p x
+  x - (y - z) + 0
+end
+EOS
+   assert_equal(targorder(10, 8, 2), 4)
+ end
+
   def test_while
     YARV2LLVM::compile(<<-EOS)
 def while_test(n)

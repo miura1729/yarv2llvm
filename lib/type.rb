@@ -43,11 +43,13 @@ class RubyType
   end
 
   def dup_type
-#    no = self.class.new(nil)
-#    add_same_type(no)
-#    no.add_same_type(no)
-#    no
-    self
+    no = clone
+    if @type then
+      no.type = @type.clone
+      no.type.constant = nil
+      no.type.content = nil
+    end
+    no
   end
 
   def inspect2

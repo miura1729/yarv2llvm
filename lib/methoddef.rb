@@ -422,6 +422,14 @@ module MethodDefinition
          :argtype => [Type::DoubleTy],
          :send_self => false,
          :cname => "llvm.cos.f64"},
+     },
+
+    :Float => {
+      :** =>
+        {:rettype => Type::DoubleTy,
+         :argtype => [Type::DoubleTy, Type::DoubleTy],
+         :send_self => true,
+         :cname => "pow"}
     },
 
     :Process => {

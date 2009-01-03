@@ -55,8 +55,13 @@ class LLVMBuilder
     argv = []
     context = Context.new([], self)
 
+    narg = argt.size
     argt.each_with_index do |ar, n|
-      v = ar.type.from_value(@stubfunc.arguments[n], b, context)
+      if n == 0 or name != "initialize" then
+        v = ar.type.from_value(@stubfunc.arguments[n], b, context)
+      else
+        v = ar.type.from_value(@stubfunc.arguments[narg - n], b, context)
+      end
       argv.push v
     end
 
@@ -64,7 +69,6 @@ class LLVMBuilder
     if recklass then
       argv.push slf
     end
-
     ret = b.call(orgfunc, *argv)
 
     x = rett.type.to_value(ret, b, context)
