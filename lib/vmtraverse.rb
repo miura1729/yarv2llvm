@@ -42,8 +42,9 @@ class Context
 end
 
 class YarvVisitor
-  def initialize(iseq)
-    @iseqs = [iseq]
+  def initialize(iseq, preload)
+    @iseqs = preload
+    @iseqs.push iseq
   end
 
   def run
@@ -103,8 +104,8 @@ class YarvTranslator<YarvVisitor
 
   @@builder = LLVMBuilder.new
   @@instance_num = 0
-  def initialize(iseq, bind)
-    super(iseq)
+  def initialize(iseq, bind, preload)
+    super(iseq, preload)
     @@instance_num += 1
 
     # Pack of utilty method for llvm code generation
@@ -1164,10 +1165,9 @@ class YarvTranslator<YarvVisitor
     evt = ins[1]
     TRACE_INFO[curtrace_no] = [evt, info.clone]
     @trace_no += 1
-    if (info[1] == :trace_func and info[0] == :YARV2LLVM) or info[1] == nil then
+    if info[0] == :YARV2LLVM or info[1] == nil then
       return
     end
-
     if minfo = MethodDefinition::RubyMethod[:trace_func][:YARV2LLVM] then
       argt = minfo[:argtype]
       if argt[0].type == nil then
@@ -2058,7 +2058,9 @@ class YarvTranslator<YarvVisitor
       end
       defperklass[nil].call([b, [klassval.llvm]])
     end
-    @generated_code.each do |klass, defperklass|
+    klasses = @generated_code.keys.reverse
+    klasses.each do |klass|
+      defperklass = @generated_code[klass]
       defperklass[nil].call
     end
 
@@ -2096,15 +2098,15 @@ class YarvTranslator<YarvVisitor
   end
 end
 
-def compile_file(fn, opt = {}, bind = TOPLEVEL_BINDING)
+def compile_file(fn, opt = {}, preload = [], bind = TOPLEVEL_BINDING)
   is = RubyVM::InstructionSequence.compile( File.read(fn), fn, 1, 
             {  :peephole_optimization    => true,
                :inline_const_cache       => false,
                :specialized_instruction  => true,}).to_a
-  compcommon(is, opt, bind)
+  compcommon(is, opt, preload, bind)
 end
 
-def compile(str, opt = {}, bind = TOPLEVEL_BINDING)
+def compile(str, opt = {}, preload = [], bind = TOPLEVEL_BINDING)
   line = 1
   file = "<llvm2ruby>"
   if /^(.+?):(\d+)(?::in `(.*)')?/ =~ caller[0] then
@@ -2116,10 +2118,10 @@ def compile(str, opt = {}, bind = TOPLEVEL_BINDING)
             {  :peephole_optimization    => true,
                :inline_const_cache       => false,
                :specialized_instruction  => true,}).to_a
-  compcommon(is, opt, bind)
+  compcommon(is, opt, preload, bind)
 end
 
-def compcommon(is, opt, bind)
+def compcommon(is, opt, preload, bind)
   DEF_OPTION.each do |key, value|
     OPTION[key] = value
   end
@@ -2130,8 +2132,8 @@ def compcommon(is, opt, bind)
   if OPTION[:dump_yarv] then
     p iseq.to_a
   end
-  YarvTranslator.new(iseq, bind).run
-#=begin
+  YarvTranslator.new(iseq, bind, preload).run
+=begin
   MethodDefinition::RubyMethodStub.each do |key, m|
     name = key
     n = 0
@@ -2149,7 +2151,7 @@ def compcommon(is, opt, bind)
     df = "def #{key}(#{args});LLVM::ExecutionEngine.run_function(YARV2LLVM::MethodDefinition::RubyMethodStub['#{key}'][:stub]#{args2});end" 
     eval df, bind
   end
-#=end
+=end
 end
 
 module_function :compile_file

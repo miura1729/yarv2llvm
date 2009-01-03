@@ -229,7 +229,7 @@ module MethodDefinition
                 blk = ins[3]
                 blab = (info[1].to_s + '+blk+' + blk[1].to_s).to_sym
                 recklass = rec ? rec[0].klass : nil
-                minfo = MethodDefinition::RubyMethod[blab][recklass]
+                minfo = MethodDefinition::RubyMethod[blab][info[0]]
                 if minfo == nil then
                   minfo = MethodDefinition::RubyMethod[blab][nil]
                 end
