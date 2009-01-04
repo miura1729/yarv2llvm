@@ -788,14 +788,15 @@ class YarvTranslator<YarvVisitor
     unless kn == "nil" then
       const_path = "#{kn}::#{const_path}"
     end
-    if info[0] then
-      const_path = "#{info[0]}::#{const_path}"
-    end
 
+    val = nil
     if eval("defined? #{const_path}", @binding) then
       val = eval(const_path, @binding)
-    else
-      val = nil
+    elsif info[0] then
+      const_path = "#{info[0]}::#{const_path}"
+      if eval("defined? #{const_path}", @binding) then
+        val = eval(const_path, @binding)
+      end
     end
 
     type = @constant_type_tab[@binding][cname]
@@ -826,8 +827,12 @@ class YarvTranslator<YarvVisitor
 
   def visit_setconstant(code, ins, local, ln, info)
     val = @expstack.pop
+    const_path = ins[1].to_s
+    if info[0] then
+      const_path = "#{info[0]}::#{const_path}"
+    end
     if val[0].type.constant then
-      eval("#{ins[1].to_s} = #{val[0].type.constant}", @binding)
+      eval("#{const_path} = #{val[0].type.constant}", @binding)
     else
       @constant_type_tab[@binding][ins[1]] = val[0]
       oldrescode = @rescode
