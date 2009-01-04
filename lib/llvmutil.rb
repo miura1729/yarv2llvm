@@ -34,6 +34,10 @@ module LLVMUtil
   end
 
   def gen_common_opt_2arg(b, context, s1, s2)
+    if s1[0].type.constant and s2[0].type.constant then
+      return [s1[0].type.constant, s2[0].type.constant, context, true]
+    end
+
     check_same_type_2arg_gencode(b, context, s1, s2)
     context = s1[1].call(b, context)
     s1val = context.rc
@@ -41,7 +45,7 @@ module LLVMUtil
     context = s2[1].call(b, context)
     s2val = context.rc
 
-    [s1val, s2val, context]
+    [[s1val, s2val], context, false]
   end
 
   def make_frame_struct(local)

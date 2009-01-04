@@ -49,6 +49,8 @@ class RubyType
       no.type.constant = nil
       no.type.content = nil
     end
+    add_same_type no
+    no.add_same_type self
     no
   end
 

@@ -341,21 +341,6 @@ class YarvTranslator<YarvVisitor
         vars[:area] = lv
       }
 
-      context.instance_vars_local.each do |key, cnt|
-        if cnt > 1 and OPTION[:cache_instance_variable] then
-          area = b.alloca(P_VALUE, 1)
-          ftype = Type.function(P_VALUE, [VALUE, VALUE])
-          func = context.builder.get_or_insert_function_raw('llvm_ivar_ptr', ftype)
-          ivid = ((key.object_id << 1) / RVALUE_SIZE)
-          slf = b.load(context.local_vars[2][:area])
-          val = b.call(func, slf, ivid.llvm)
-          b.store(val, area)
-          context.instance_vars_local[key] = area
-        else
-          context.instance_vars_local[key] = nil
-        end
-      end
-
       # Copy argument in reg. to allocated area
       unless arg = context.inline_args then
         arg = context.builder.arguments
@@ -376,6 +361,21 @@ class YarvTranslator<YarvVisitor
       if arg[blkpoff] then
         b.store(arg[blkpoff], lvars[0][:area])
         b.store(arg[blkpoff + 1], lvars[1][:area])
+      end
+
+      context.instance_vars_local.each do |key, cnt|
+        if cnt > 1 and OPTION[:cache_instance_variable] then
+          area = b.alloca(P_VALUE, 1)
+          ftype = Type.function(P_VALUE, [VALUE, VALUE])
+          func = context.builder.get_or_insert_function_raw('llvm_ivar_ptr', ftype)
+          ivid = ((key.object_id << 1) / RVALUE_SIZE)
+          slf = b.load(context.local_vars[2][:area])
+          val = b.call(func, slf, ivid.llvm)
+          b.store(val, area)
+          context.instance_vars_local[key] = area
+        else
+          context.instance_vars_local[key] = nil
+        end
       end
 
       context
@@ -1068,7 +1068,7 @@ class YarvTranslator<YarvVisitor
            rtype.type.first.type.constant = valint
 
          else
-           raise "Not support type #{lst[0].type.inspect2} in Range"
+           raise "Not support type #{fst[0].type.inspect2} in Range"
          end
 
          case lst[0].type.llvm
@@ -1519,11 +1519,19 @@ class YarvTranslator<YarvVisitor
     s[1] = @expstack.pop
     s[0] = @expstack.pop
     check_same_type_2arg_static(s[0], s[1])
+    rettype = s[0][0].dup_type
     
-    @expstack.push [s[0][0].dup_type,
+    @expstack.push [rettype,
       lambda {|b, context|
         sval = []
-        sval[0], sval[1], context = gen_common_opt_2arg(b, context, s[0], s[1])
+        sval, context, constp = gen_common_opt_2arg(b, context, s[0], s[1])
+        if constp then
+          rc = sval[0] + sval[1]
+          rettype.type.constant = rc
+          context.rc = rc.llvm
+          return context
+        end
+
         case s[0][0].type.llvm
         when Type::DoubleTy, Type::Int32Ty
           context.rc = b.add(sval[0], sval[1])
@@ -1567,7 +1575,14 @@ class YarvTranslator<YarvVisitor
     @expstack.push [s[0][0].dup_type,
       lambda {|b, context|
         sval = []
-        sval[0], sval[1], context = gen_common_opt_2arg(b, context, s[0], s[1])
+        sval, context, constp = gen_common_opt_2arg(b, context, s[0], s[1])
+        if constp then
+          rc = sval[0] - sval[1]
+          rettype.type.constant = rc
+          context.rc = rc.llvm
+          return context
+        end
+
         case s[0][0].type.llvm
         when Type::DoubleTy, Type::Int32Ty
           context.rc = b.sub(sval[0], sval[1])
@@ -1609,15 +1624,23 @@ class YarvTranslator<YarvVisitor
     
     @expstack.push [s1[0].dup_type,
       lambda {|b, context|
-        s1val, s2val, context = gen_common_opt_2arg(b, context, s1, s2)
+        sval = []
+        sval, context, constp = gen_common_opt_2arg(b, context, s1, s2)
+        if constp then
+          rc = sval[0] * sval[1]
+          rettype.type.constant = rc
+          context.rc = rc.llvm
+          return context
+        end
+
         case s1[0].type.llvm
         when Type::DoubleTy, Type::Int32Ty
-          context.rc = b.mul(s1val, s2val)
+          context.rc = b.mul(sval[0], sval[1])
           
         when VALUE
-          s1int = b.lshr(s1val, 1.llvm)
-          s2int = b.lshr(s2val, 1.llvm)
-          mulint = b.mul(s1val, s2val)
+          s1int = b.lshr(sval[0], 1.llvm)
+          s2int = b.lshr(sval[1], 1.llvm)
+          mulint = b.mul(sval[0], sval[1])
           x = b.shl(mulint, 1.llvm)
           context.rc = b.or(FIXNUM_FLAG, x)
 
@@ -1636,13 +1659,21 @@ class YarvTranslator<YarvVisitor
     
     @expstack.push [s1[0].dup_type,
       lambda {|b, context|
-        s1val, s2val, context = gen_common_opt_2arg(b, context, s1, s2)
+        sval = []
+        sval, context, constp = gen_common_opt_2arg(b, context, s1, s2)
+        if constp then
+          rc = sval[0] / sval[1]
+          rettype.type.constant = rc
+          context.rc = rc.llvm
+          return context
+        end
+
         case s1[0].type.llvm
         when Type::DoubleTy
-          context.rc = b.fdiv(s1val, s2val)
+          context.rc = b.fdiv(sval[0], sval[1])
 
         when Type::Int32Ty
-          context.rc = b.sdiv(s1val, s2val)
+          context.rc = b.sdiv(sval[0], sval[1])
 
         else
           raise "Unsupported type #{s1[0].inspect2}"
@@ -1665,19 +1696,27 @@ class YarvTranslator<YarvVisitor
 
     @expstack.push [rettype,
       lambda {|b, context|
-        s1val, s2val, context = gen_common_opt_2arg(b, context, s1, s2)
+        sval = []
+        sval, context, constp = gen_common_opt_2arg(b, context, s1, s2)
+        if constp then
+          rc = sval[0] % sval[1]
+          rettype.type.constant = rc
+          context.rc = rc.llvm
+          return context
+        end
+
         # It is right only s1 and s2 is possitive.
         # It must generate more complex code when s1 and s2 are negative.
         case s1[0].type.llvm
         when Type::DoubleTy
-          context.rc = b.frem(s1val, s2val)
+          context.rc = b.frem(sval[0], sval[1])
 
         when Type::Int32Ty
-          context.rc = b.srem(s1val, s2val)
+          context.rc = b.srem(sval[0], sval[1])
 
         when P_CHAR
-          s1value = s1[0].type.to_value(s1val, b, context)
-          s2value = s2[0].type.to_value(s2val, b, context)
+          s1value = s1[0].type.to_value(sval[0], b, context)
+          s2value = s2[0].type.to_value(sval[1], b, context)
           ftype = Type.function(VALUE, [VALUE, VALUE])
           func = context.builder.external_function('rb_str_format_m', ftype)
           context.rc = b.call(func, s1value, s2value)
@@ -1697,16 +1736,28 @@ class YarvTranslator<YarvVisitor
     
     @expstack.push [nil, 
       lambda {|b, context|
-        s1val, s2val, context = gen_common_opt_2arg(b, context, s1, s2)
+        sval = []
+        sval, context, constp = gen_common_opt_2arg(b, context, s1, s2)
+        if constp then
+          rc = (sval[0] == sval[1])
+          rettype.type.constant = rc
+          if rc then
+            context.rc = b.bit_cast(1.llvm, Type::Int1Ty)
+          else
+            context.rc = b.bit_cast(0.llvm, Type::Int1Ty)
+          end
+          return context
+        end
+
         case s1[0].type.llvm
         when Type::DoubleTy
-          context.rc = b.fcmp_ueq(s1val, s2val)
+          context.rc = b.fcmp_ueq(sval[0], sval[1])
 
         when Type::Int32Ty
-          context.rc = b.icmp_eq(s1val, s2val)
+          context.rc = b.icmp_eq(sval[0], sval[1])
 
         when VALUE
-          context.rc = b.icmp_eq(s1val, s2val)
+          context.rc = b.icmp_eq(sval[0], sval[1])
         end
         context
       }
@@ -1720,16 +1771,28 @@ class YarvTranslator<YarvVisitor
     
     @expstack.push [nil, 
       lambda {|b, context|
-        s1val, s2val, context = gen_common_opt_2arg(b, context, s1, s2)
+        sval = []
+        sval, context, constp = gen_common_opt_2arg(b, context, s1, s2)
+        if constp then
+          rc = (sval[0] != sval[1])
+          rettype.type.constant = rc
+          if rc then
+            context.rc = b.bit_cast(1.llvm, Type::Int1Ty)
+          else
+            context.rc = b.bit_cast(0.llvm, Type::Int1Ty)
+          end
+          return context
+        end
+
         case s1[0].type.llvm
           when Type::DoubleTy
-          context.rc = b.fcmp_une(s1val, s2val)
+          context.rc = b.fcmp_une(sval[0], sval[1])
 
           when Type::Int32Ty
-          context.rc = b.icmp_ne(s1val, s2val)
+          context.rc = b.icmp_ne(sval[0], sval[1])
 
           when VALUE
-          context.rc = b.icmp_ne(s1val, s2val)
+          context.rc = b.icmp_ne(sval[0], sval[1])
         end
         context
       }
@@ -1743,13 +1806,25 @@ class YarvTranslator<YarvVisitor
     
     @expstack.push [nil, 
       lambda {|b, context|
-        s1val, s2val, context = gen_common_opt_2arg(b, context, s1, s2)
+        sval = []
+        sval, context, constp = gen_common_opt_2arg(b, context, s1, s2)
+        if constp then
+          rc = (sval[0] < sval[1])
+          rettype.type.constant = rc
+          if rc then
+            context.rc = b.bit_cast(1.llvm, Type::Int1Ty)
+          else
+            context.rc = b.bit_cast(0.llvm, Type::Int1Ty)
+          end
+          return context
+        end
+
         case s1[0].type.llvm
           when Type::DoubleTy
-          context.rc = b.fcmp_ult(s1val, s2val)
+          context.rc = b.fcmp_ult(sval[0], sval[1])
 
           when Type::Int32Ty
-          context.rc = b.icmp_slt(s1val, s2val)
+          context.rc = b.icmp_slt(sval[0], sval[1])
         end
         context
       }
@@ -1763,13 +1838,25 @@ class YarvTranslator<YarvVisitor
     
     @expstack.push [nil, 
       lambda {|b, context|
-        s1val, s2val, context = gen_common_opt_2arg(b, context, s1, s2)
+        sval = []
+        sval, context, constp = gen_common_opt_2arg(b, context, s1, s2)
+        if constp then
+          rc = (sval[0] <= sval[1])
+          rettype.type.constant = rc
+          if rc then
+            context.rc = b.bit_cast(1.llvm, Type::Int1Ty)
+          else
+            context.rc = b.bit_cast(0.llvm, Type::Int1Ty)
+          end
+          return context
+        end
+
         case s1[0].type.llvm
           when Type::DoubleTy
-          context.rc = b.fcmp_ule(s1val, s2val)
+          context.rc = b.fcmp_ule(sval[0], sval[1])
 
           when Type::Int32Ty
-          context.rc = b.icmp_sle(s1val, s2val)
+          context.rc = b.icmp_sle(sval[0], sval[1])
         end
         context
       }
@@ -1783,13 +1870,25 @@ class YarvTranslator<YarvVisitor
     
     @expstack.push [nil, 
       lambda {|b, context|
-        s1val, s2val, context = gen_common_opt_2arg(b, context, s1, s2)
+        sval = []
+        sval, context, constp = gen_common_opt_2arg(b, context, s1, s2)
+        if constp then
+          rc = (sval[0] > sval[1])
+          rettype.type.constant = rc
+          if rc then
+            context.rc = b.bit_cast(1.llvm, Type::Int1Ty)
+          else
+            context.rc = b.bit_cast(0.llvm, Type::Int1Ty)
+          end
+          return context
+        end
+
         case s1[0].type.llvm
           when Type::DoubleTy
-          context.rc = b.fcmp_ugt(s1val, s2val)
+          context.rc = b.fcmp_ugt(sval[0], sval[1])
 
           when Type::Int32Ty
-          context.rc = b.icmp_sgt(s1val, s2val)
+          context.rc = b.icmp_sgt(sval[0], sval[1])
         end
         context
       }
@@ -1803,13 +1902,25 @@ class YarvTranslator<YarvVisitor
     
     @expstack.push [nil, 
       lambda {|b, context|
-        s1val, s2val, context = gen_common_opt_2arg(b, context, s1, s2)
+        sval = []
+        sval, context, constp = gen_common_opt_2arg(b, context, s1, s2)
+        if constp then
+          rc = (sval[0] >= sval[1])
+          rettype.type.constant = rc
+          if rc then
+            context.rc = b.bit_cast(1.llvm, Type::Int1Ty)
+          else
+            context.rc = b.bit_cast(0.llvm, Type::Int1Ty)
+          end
+          return context
+        end
+
         case s1[0].type.llvm
           when Type::DoubleTy
-          context.rc = b.fcmp_uge(s1val, s2val)
+          context.rc = b.fcmp_uge(sval[0], sval[1])
 
           when Type::Int32Ty
-          context.rc = b.icmp_sge(s1val, s2val)
+          context.rc = b.icmp_sge(sval[0], sval[1])
         end
         context
       }

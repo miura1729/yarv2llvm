@@ -17,6 +17,37 @@ if __FILE__ == $0 then
     y2lopt[:optimize] = f
   end
 
+  opt.on('-r FILE', 
+         'Execute FILE by Ruby1.9 before compile main program') do |f|
+    rf = File.read(f)
+    prog = eval(rf)
+    is = RubyVM::InstructionSequence.compile( prog, f, 1, 
+            {  :peephole_optimization    => true,
+               :inline_const_cache       => false,
+               :specialized_instruction  => true,}).to_a
+    preload.push VMLib::InstSeqTree.new(nil, is)
+  end
+
+  opt.on('--[no-]strict-type-inference', 
+         'When occur type conflict, compile stop.') do |f|
+    y2lopt[:strict_type_inderence] = f
+  end
+
+  opt.on('--[no-]inline-block', 
+         'Inline block when compile "each" method.') do |f|
+    y2lopt[:inline_block] = f
+  end
+
+  opt.on('--[no-]array-range-check', 
+         'Raise exception when refer out of range of array or hash') do |f|
+    y2lopt[:array_range_check] = f
+  end
+
+  opt.on('--[no-]cache-instance-variable', 
+         'Cache instance varibale table (It is dangerous)') do |f|
+    y2lopt[:cache_instance_variable] = f
+  end
+
   opt.on('--[no-]disasm', 
          'Disassemble generated llvm code') do |f|
     y2lopt[:disasm] = f
@@ -35,17 +66,6 @@ if __FILE__ == $0 then
   opt.on('--[no-]func-signature', 
          'Display type inferenced inforamtion about function and local variable') do |f|
     y2lopt[:disasm] = f
-  end
-
-  opt.on('-r FILE', 
-         'Execute FILE by Ruby1.9 before compile main program') do |f|
-    rf = File.read(f)
-    prog = eval(rf)
-    is = RubyVM::InstructionSequence.compile( prog, f, 1, 
-            {  :peephole_optimization    => true,
-               :inline_const_cache       => false,
-               :specialized_instruction  => true,}).to_a
-    preload.push VMLib::InstSeqTree.new(nil, is)
   end
   
   opt.parse!(ARGV)
