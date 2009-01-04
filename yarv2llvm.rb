@@ -55,7 +55,7 @@ if __FILE__ == $0 then
 
   opt.on('--[no-]dump-yarv', 
          'Dump generated yarv code') do |f|
-    y2lopt[:disasm] = f
+    y2lopt[:dump_yarv] = f
   end
 
   opt.on('--write-bc[=File]', 

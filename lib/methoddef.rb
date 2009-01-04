@@ -96,6 +96,8 @@ module MethodDefinition
                 context.rc = val
               when Type::Int32Ty
                 context.rc = b.si_to_fp(val, Type::DoubleTy)
+              else
+                raise "Unsupported type #{recv[0].inspect2}"
               end
               context}]
        },
@@ -196,6 +198,9 @@ module MethodDefinition
           rec = para[:receiver]
           local = para[:local]
           recval = nil
+          blk = ins[3]
+          blab = (info[1].to_s + '+blk+' + blk[1].to_s).to_sym
+          recklass = rec ? rec[0].klass : nil
 
           loop_cnt_current = @loop_cnt_current
           @loop_cnt_current += 1
@@ -203,8 +208,34 @@ module MethodDefinition
             @loop_cnt_alloca_size = @loop_cnt_current
           end
 
+          minfo = MethodDefinition::RubyMethod[blab][info[0]]
+          if minfo == nil then
+            minfo = MethodDefinition::RubyMethod[blab][nil]
+          end
+          if minfo == nil then
+            atype = RubyType.new(nil)
+            rtype = RubyType.new(nil)
+            minfo = {
+              :defined => false,
+              :argtype => [atype, RubyType.new(nil), RubyType.new(nil), RubyType.new(nil)],
+              :rettype => rtype
+            }
+            MethodDefinition::RubyMethod[blab][info[0]] = minfo
+          else
+            atype = minfo[:argtype][0]
+            rtype = minfo[:rettype]
+          end
+          if rec[0].type.is_a?(ComplexType) then
+            rec[0].type.element_type.add_same_type atype
+            atype.add_same_type rec[0].type.element_type
+          end
+
           gen_loop = 
               lambda {|b, context, lst, led, body|
+                rec[0].type.element_type.add_same_type atype
+                atype.add_same_type rec[0].type.element_type
+                RubyType.resolve
+
                 bcond = context.builder.create_block
                 bbody = context.builder.create_block
                 bexit = context.builder.create_block
@@ -226,13 +257,6 @@ module MethodDefinition
                 bodyrc = body.call(b, context)
                 
                 # invoke block
-                blk = ins[3]
-                blab = (info[1].to_s + '+blk+' + blk[1].to_s).to_sym
-                recklass = rec ? rec[0].klass : nil
-                minfo = MethodDefinition::RubyMethod[blab][info[0]]
-                if minfo == nil then
-                  minfo = MethodDefinition::RubyMethod[blab][nil]
-                end
                 func = minfo[:func]
                 if func == nil then
                   argtype0 = minfo[:argtype][0]

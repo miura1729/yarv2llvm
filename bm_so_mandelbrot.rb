@@ -5,7 +5,8 @@
 #  modified by Jeremy Echols
 #  modified by Detlef Reichl
 
-size = ARGV[0].to_i
+#size = ARGV[0].to_i
+size = 100
 
 puts "P4\n#{size} #{size}"
 
