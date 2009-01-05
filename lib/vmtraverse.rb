@@ -1260,20 +1260,6 @@ class YarvTranslator<YarvVisitor
       return
     end
 
-    if funcinfo = MethodDefinition::SystemMethod[mname] then
-      return
-    end
-
-    if funcinfo = MethodDefinition::InlineMethod[mname] then
-      para = {:info => info, 
-               :ins => ins,
-               :args => args, 
-               :receiver => receiver, 
-               :local => local}
-      instance_exec(para, &funcinfo[:inline_proc])
-      return
-    end
-
     funcinfo = nil
     if MethodDefinition::CMethod[recklass] then
       funcinfo = MethodDefinition::CMethod[recklass][mname]
@@ -1320,6 +1306,21 @@ class YarvTranslator<YarvVisitor
         ]
         return
       end
+    end
+
+    if funcinfo = MethodDefinition::SystemMethod[mname] then
+      return
+    end
+
+    if funcinfo = MethodDefinition::InlineMethod[mname] then
+      para = {:info => info, 
+               :ins => ins,
+               :code => code,
+               :args => args, 
+               :receiver => receiver, 
+               :local => local}
+      instance_exec(para, &funcinfo[:inline_proc])
+      return
     end
 
     # Undefined method, it may be forward call.

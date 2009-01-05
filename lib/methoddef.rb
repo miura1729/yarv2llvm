@@ -189,123 +189,39 @@ module MethodDefinition
              }]
         }
     },
-                  
+
+    :times => {
+      :inline_proc =>
+        lambda {|para|
+          rec = para[:receiver]
+          rc = nil
+          rcval = lambda { rc }
+          loop_cnt_current = @loop_cnt_current
+          loopproc = gen_loop_proc(para)
+          @expstack.push [rec[0],
+             lambda {|b, context|
+               lst = lambda {|b, context| 0.llvm}
+               led = lambda {|b, context|
+                 context = rec[1].call(b, context)
+                 rc = context.rc
+               }
+               body = lambda {|b, context|
+                 lcntp = context.loop_cnt_alloca_area[loop_cnt_current]
+                 rc = b.load(lcntp)
+               }
+               loopproc.call(b, context, lst, led, body, rcval)
+             }]
+      }
+    },
+
     :each => {
       :inline_proc =>
         lambda {|para|
-          ins = para[:ins]
-          info = para[:info]
           rec = para[:receiver]
-          local = para[:local]
-          recval = nil
-          blk = ins[3]
-          blab = (info[1].to_s + '+blk+' + blk[1].to_s).to_sym
-          recklass = rec ? rec[0].klass : nil
-
+          rc = nil
+          rcval = lambda { rc }
           loop_cnt_current = @loop_cnt_current
-          @loop_cnt_current += 1
-          if @loop_cnt_alloca_size < @loop_cnt_current then
-            @loop_cnt_alloca_size = @loop_cnt_current
-          end
-
-          minfo = MethodDefinition::RubyMethod[blab][info[0]]
-          if minfo == nil then
-            minfo = MethodDefinition::RubyMethod[blab][nil]
-          end
-          if minfo == nil then
-            atype = RubyType.new(nil)
-            rtype = RubyType.new(nil)
-            minfo = {
-              :defined => false,
-              :argtype => [atype, RubyType.new(nil), RubyType.new(nil), RubyType.new(nil)],
-              :rettype => rtype
-            }
-            MethodDefinition::RubyMethod[blab][info[0]] = minfo
-          else
-            atype = minfo[:argtype][0]
-            rtype = minfo[:rettype]
-          end
-          if rec[0].type.is_a?(ComplexType) then
-            rec[0].type.element_type.add_same_type atype
-            atype.add_same_type rec[0].type.element_type
-          end
-
-          gen_loop = 
-              lambda {|b, context, lst, led, body|
-                rec[0].type.element_type.add_same_type atype
-                atype.add_same_type rec[0].type.element_type
-                RubyType.resolve
-
-                bcond = context.builder.create_block
-                bbody = context.builder.create_block
-                bexit = context.builder.create_block
-                lcntp = context.loop_cnt_alloca_area[loop_cnt_current]
-                lstval = lst.call(b, context)
-                ledval = led.call(b, context)
-                b.store(lstval, lcntp)
-                b.br(bcond)
-                
-                # loop branch
-                b.set_insert_point(bcond)
-                clcnt = b.load(lcntp)
-                cnd = b.icmp_slt(clcnt, ledval)
-                b.cond_br(cnd, bbody, bexit)
-                
-                b.set_insert_point(bbody)
-                
-                # do type specicated
-                bodyrc = body.call(b, context)
-                
-                # invoke block
-                func = minfo[:func]
-                if func == nil then
-                  argtype0 = minfo[:argtype][0]
-                  recele = rec[0].type.element_type
-                  argtype0.add_same_type recele
-                  recele.add_same_type argtype0
-                  RubyType.resolve
-                  
-                  argtype = minfo[:argtype].map {|ele|
-                    if ele.type == nil
-                      VALUE
-                    else
-                      ele.type.llvm
-                    end
-                  }
-                  rett = minfo[:rettype]
-                  rettllvm = rett.type
-                  if rettllvm == nil then
-                    rettllvm = VALUE
-                  else
-                    rettllvm = rettllvm.llvm
-                  end
-                  ftype = Type.function(rettllvm, argtype)
-                  func = context.builder.get_or_insert_function(recklass, blab.to_s, ftype)
-                end
-                fm = context.current_frame
-                frame = b.bit_cast(fm, P_CHAR)
-                slf = b.load(local[2][:area])
-                blgenfnc = @generated_code[blab]
-                if OPTION[:inline_block] and blgenfnc then
-                  args = [b, [bodyrc, slf, frame, 0.llvm]]
-                  blgenfnc.call(args)
-                  @generated_code.delete(blab)
-                else
-                  b.call(func, bodyrc, slf, frame, 0.llvm)
-                end
-                
-                # update blocks, because make blocks
-                fmlab = context.curln
-                context.blocks[fmlab] = bexit
-                
-                nclcnt = b.add(clcnt, 1.llvm)
-                b.store(nclcnt, lcntp)
-                b.br(bcond)
-                b.set_insert_point(bexit)
-                context.rc = recval
-                context
-              }
-
+          loopproc = gen_loop_proc(para)
           @expstack.push [rec[0],
              lambda {|b, context|
                 case (rec[0].klass)
@@ -313,45 +229,45 @@ module MethodDefinition
                   lst = lambda {|b, context| 0.llvm}
                   led = lambda {|b, context|
                     context = rec[1].call(b, context)
-                    recval = context.rc
-                    gen_array_size(b, context, recval)
+                    rc = context.rc
+                    gen_array_size(b, context, rc)
                   }
                   body = lambda {|b, context|
                     lcntp = context.loop_cnt_alloca_area[loop_cnt_current]
                     idxp = b.load(lcntp)
                     ftype = Type.function(VALUE, [VALUE, Type::Int32Ty])
                     func = context.builder.external_function('rb_ary_entry', ftype)
-                    av = b.call(func, recval, idxp)
+                    av = b.call(func, rc, idxp)
                     arrelet = rec[0].type.element_type.type
-                    rc = arrelet.from_value(av, b, context)
+                    arrelet.from_value(av, b, context)
                   }
-                gen_loop.call(b, context, lst, led, body)
+                  loopproc.call(b, context, lst, led, body, rcval)
 
                 when :Range
                   lst = lambda {|b, context|
                     context = rec[1].call(b, context)
-                    recval = context.rc
+                    rc = context.rc
                     fstt = rec[0].type.first
                     if fstt.type.constant then
                       fstt.type.constant
                     else
-                      fstt.name.llvm
+                      rc
                     end
                   }
                   led = lambda {|b, context|
                     lstt = rec[0].type.last
                     if lstt.type.constant then
-                      lstt.type.constant
+                      rc = lstt.type.constant
                     else
-                      lstt.name.llvm
+                      rc = lstt.name.llvm
                     end
                   }
                   body = lambda {|b, context|
                     lcntp = context.loop_cnt_alloca_area[loop_cnt_current]
-                    rc = b.load(lcntp)
+                    b.load(lcntp)
                   }
-                     
-                  gen_loop.call(b, context, lst, led, body)
+
+                  loopproc.call(b, context, lst, led, body, rcval)
                   
                 else
                   raise "Do not supported #{rec[0].inspect}"

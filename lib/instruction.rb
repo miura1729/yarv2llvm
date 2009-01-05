@@ -1,3 +1,4 @@
+# -*- coding: cp932 -*-
 #
 #  instruction.rb - structured bytecode library
 #
