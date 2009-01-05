@@ -60,7 +60,7 @@ if __FILE__ == $0 then
 
   opt.on('--write-bc[=File]', 
          'Dump generated llvm bitcode to file(default is yarv.bc)') do |f|
-    y2lopt[:disasm] = f
+    y2lopt[:write_bc] = f
   end
 
   opt.on('--[no-]func-signature', 

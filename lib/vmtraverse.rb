@@ -947,11 +947,19 @@ class YarvTranslator<YarvVisitor
   def visit_putobject(code, ins, local, ln, info)
     p1 = ins[1]
     type = RubyType.typeof(p1, info[3], p1)
+    orgtype = type.type
     type.type.constant = p1
     @expstack.push [type, 
       lambda {|b, context| 
         pppp p1
-        context.rc = p1.llvm 
+        case type.type.llvm
+        when Type::Int1Ty
+          context.rc = type.type.from_value(p1.llvm, b, context)
+        when VALUE
+          context.rc = orgtype.to_value(p1.llvm, b, context)
+        else
+          context.rc = p1.llvm 
+        end
         context.org = p1
         context
       }]
@@ -1434,7 +1442,7 @@ class YarvTranslator<YarvVisitor
   end
 
   def visit_branchif(code, ins, local, ln, info)
-    s1 = @expstack.pop
+    cond = @expstack.pop
     oldrescode = @rescode
     lab = ins[1]
     valexp = nil
@@ -1458,7 +1466,7 @@ class YarvTranslator<YarvVisitor
         bval = [valexp[0], valexp[1].call(b, context).rc]
         context.block_value[iflab] = bval
       end
-      b.cond_br(s1[1].call(b, context).rc, tblock, eblock)
+      b.cond_br(cond[1].call(b, context).rc, tblock, eblock)
       RubyType.clear_content
       b.set_insert_point(eblock)
 
@@ -1474,7 +1482,7 @@ class YarvTranslator<YarvVisitor
   end
 
   def visit_branchunless(code, ins, local, ln, info)
-    s1 = @expstack.pop
+    cond = @expstack.pop
     oldrescode = @rescode
     lab = ins[1]
     valexp = nil
@@ -1498,7 +1506,7 @@ class YarvTranslator<YarvVisitor
         bval = [valexp[0], context.rc]
         context.block_value[iflab] = bval
       end
-      b.cond_br(s1[1].call(b, context).rc, eblock, tblock)
+      b.cond_br(cond[1].call(b, context).rc, eblock, tblock)
       RubyType.clear_content
       b.set_insert_point(eblock)
 

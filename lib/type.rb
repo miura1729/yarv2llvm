@@ -200,6 +200,10 @@ class RubyType
     RubyType.new(Type::Int32Ty, lno, name, klass)
   end
 
+  def self.boolean(lno = nil, name = nil, klass = TrueClass)
+    RubyType.new(Type::Int1Ty, lno, name, klass)
+  end
+
   def self.float(lno = nil, name = nil, klass = Float)
     RubyType.new(Type::DoubleTy, lno, name, klass)
   end
@@ -270,6 +274,9 @@ class RubyType
 
   def self.typeof(obj, lno = nil, name = nil)
     case obj
+    when ::TrueClass, ::FalseClass
+      RubyType.boolean(lno, name)
+
     when ::Fixnum
       RubyType.fixnum(lno, name)
 
@@ -355,6 +362,20 @@ class PrimitiveType
        :from_value => lambda {|val, b, context|
          val32 = b.zext(val, Type::Int32Ty)
          x = b.lshr(val32, 1.llvm)
+       },
+      },
+
+    Type::Int1Ty =>
+      {:inspect => "Boolean",
+
+       :to_value => lambda {|val, b, context|
+         val32 = b.zext(val, Type::Int32Ty)
+         b.shl(val32, 2.llvm)
+       },
+
+       :from_value => lambda {|val, b, context|
+         x = b.and(val, (~4).llvm)
+         b.icmp_ne(x, 0.llvm)
        },
       },
 

@@ -6,6 +6,17 @@
 #  modified by Detlef Reichl
 
 #size = ARGV[0].to_i
+class Fixnum
+  def times
+    j = 0
+    while j < self
+      yield
+      j = j + 1
+    end
+    0
+  end
+end
+
 size = 100
 
 puts "P4\n#{size} #{size}"
