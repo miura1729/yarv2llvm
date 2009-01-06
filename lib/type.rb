@@ -262,7 +262,7 @@ class RubyType
     else
       obj = nil
       if sym then
-        obj = const_get(sym)
+        obj = Object.const_get(sym, true)
       end
       unless obj
         obj = Object

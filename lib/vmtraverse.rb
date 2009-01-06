@@ -50,18 +50,13 @@ class YarvVisitor
   def run
     curlinno = 0
     @iseqs.each do |iseq|
-      iseq.traverse_code([nil, nil, nil, nil]) do |code, info|
+      action = lambda {|code, info|
         info[3] = "#{code.header['filename']}:#{curlinno}"
-        ccde = code
-
+         
         if code.header['type'] == :block then
-          info[1] = (info[1].to_s + '+blk+' + ccde.info[2].to_s).to_sym
+          info[1] = (info[1].to_s + '+blk+' + code.info[2].to_s).to_sym
         end
-
-        while ccde.header['type'] == :block
-          ccde = ccde.parent
-        end
-                
+        
         local = []
         visit_block_start(code, nil, local, nil, info)
         curln = nil
@@ -86,9 +81,11 @@ class YarvVisitor
           end
           visit_local_block_end(code, ln, local, curln, info)
         end
-
+        
         visit_block_end(code, nil, local, nil, info)
-      end
+      }
+
+      iseq.traverse_code([nil, nil, nil, nil], action)
     end
   end
 
@@ -273,7 +270,7 @@ class YarvTranslator<YarvVisitor
           MethodDefinition::RubyMethod[info[1]][info[0]] = minfo
         end
       end
-      if minfo == nil then
+      if !minfo.is_a?(Hash) then
         argt = []
         1.upto(numarg) do |n|
           argt[n - 1] = local[-n][:type]
@@ -966,7 +963,9 @@ class YarvTranslator<YarvVisitor
   end
 
   # putspecialobject
-  # putiseq
+
+  def visit_putiseq(code, ins, local, ln, info)
+  end
 
   def visit_putstring(code, ins, local, ln, info)
     p1 = ins[1]
@@ -1215,6 +1214,12 @@ class YarvTranslator<YarvVisitor
   end
 
   def visit_defineclass(code, ins, local, ln, info)
+    action = lambda {|code, info|
+      if MethodDefinition::RubyMethod[info[1]][info[0]] == nil then
+        MethodDefinition::RubyMethod[info[1]][info[0]] = true
+      end
+    }
+    code.traverse_code(info.clone, action)
     case ins[3]
     when 0
       eval("class #{ins[1]};end", @binding)
@@ -1308,19 +1313,22 @@ class YarvTranslator<YarvVisitor
       end
     end
 
-    if funcinfo = MethodDefinition::SystemMethod[mname] then
-      return
-    end
+    if MethodDefinition::RubyMethod[mname][recklass] == nil and
+       MethodDefinition::RubyMethod[mname][nil] == nil then
+      if funcinfo = MethodDefinition::SystemMethod[mname] then
+        return
+      end
 
-    if funcinfo = MethodDefinition::InlineMethod[mname] then
-      para = {:info => info, 
-               :ins => ins,
-               :code => code,
-               :args => args, 
-               :receiver => receiver, 
-               :local => local}
-      instance_exec(para, &funcinfo[:inline_proc])
-      return
+      if funcinfo = MethodDefinition::InlineMethod[mname] then
+        para = {:info => info, 
+                :ins => ins,
+                :code => code,
+                :args => args, 
+                :receiver => receiver, 
+                :local => local}
+        instance_exec(para, &funcinfo[:inline_proc])
+        return
+      end
     end
 
     # Undefined method, it may be forward call.

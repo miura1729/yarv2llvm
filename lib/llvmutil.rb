@@ -259,7 +259,7 @@ module SendUtil
   MaxSmallPolymotphicNum = 4
   def gen_method_select(recklass, mname)
     minfo = MethodDefinition::RubyMethod[mname][recklass]
-    if minfo then
+    if minfo.is_a?(Hash) then
       # recklass == nil ->  functional method
       return [minfo, lambda { minfo[:func]}]
     end
@@ -270,7 +270,7 @@ module SendUtil
       sup = Object.const_get(recklass, true)
       while sup do
         minfo = MethodDefinition::RubyMethod[mname][sup.name]
-        if minfo then
+        if minfo.is_a?(Hash) then
           return [minfo, lambda { minfo[:func]}]
         end
         if sup.is_a?(Class) then
@@ -287,7 +287,11 @@ module SendUtil
 
     elsif candidatenum == 1 then
       minfo = MethodDefinition::RubyMethod[mname].values[0]
-      return [minfo, lambda {minfo[:func]}]
+      if minfo.is_a?(Hash) then
+        return [minfo, lambda {minfo[:func]}]
+      else
+        return [nil, lambda {nil}]
+      end
 
     elsif candidatenum < MaxSmallPolymotphicNum then
       # TODO : Use inline hash function generation

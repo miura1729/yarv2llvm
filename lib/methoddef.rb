@@ -7,15 +7,29 @@ module MethodDefinition
 
   # Use ruby internal and ignor in yarv2llvm.
   SystemMethod = {
-    :"core#define_method" => 
-      {:args => 1},
-    :"core#define_singleton_method" => 
-      {:args => 1}
+#    :"core#define_method" => 
+#      {:args => 1},
+#    :"core#define_singleton_method" => 
+#      {:args => 1}
   }
   
   # method inline or need special process
   InlineMethod =  {
-    :require => {
+  :"core#define_method" => {
+      :inline_proc => 
+      lambda {|para|
+        # TODO redefine process
+      }
+    },
+
+  :"core#define_singleton_method" => {
+      :inline_proc => 
+      lambda {|para|
+        # TODO redefine process
+      }
+    },
+
+  :require => {
       :inline_proc =>
         lambda {|para|
           fn = para[:args][0][0].name

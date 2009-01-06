@@ -195,21 +195,22 @@ module VMLib
       res
     end
 
-    def traverse_code(info, &action)
+    def traverse_code(info, action)
       action.call(self, info)
 
       @klasses.each do |name, carray|
+        linfo = [name, nil, nil, nil]
         carray.each do |cont|
-          cont.traverse_code([name, nil, nil, nil], &action)
+          cont.traverse_code(linfo, action)
         end
       end
 
       @methodes.each do |name, cont|
-        cont.traverse_code([info[0], name, nil, nil], &action)
+        cont.traverse_code([info[0], name, nil, nil], action)
       end
 
       @blockes.each do |sno, cont|
-        cont.traverse_code([info[0], info[1], sno, nil], &action)
+        cont.traverse_code([info[0], info[1], sno, nil], action)
       end
     end
 
