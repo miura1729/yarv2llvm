@@ -48,9 +48,9 @@ module LLVMUtil
     [[s1val, s2val], context, false]
   end
 
-  def make_frame_struct(local)
+  def make_frame_struct(local_vars)
     member = []
-    local.each do |ele|
+    local_vars.each do |ele|
       if ele[:type].type then
         member.push ele[:type].type.llvm
       else
@@ -116,7 +116,7 @@ module LLVMUtil
     rec = para[:receiver]
     code = para[:code]
     ins = para[:ins]
-    local = para[:local]
+    local_vars = para[:local]
     blk = ins[3]
     blab = (info[1].to_s + '+blk+' + blk[1].to_s).to_sym
     recklass = rec ? rec[0].klass : nil
@@ -224,7 +224,7 @@ module LLVMUtil
       end
       fm = context.current_frame
       frame = b.bit_cast(fm, P_CHAR)
-      slf = b.load(local[2][:area])
+      slf = b.load(local_vars[2][:area])
       blgenfnc = @generated_code[blab]
       if OPTION[:inline_block] and blgenfnc then
         args = [b, [bodyrc, slf, frame, 0.llvm]]
@@ -351,7 +351,7 @@ module SendUtil
     context
   end
 
-  def gen_arg_eval(args, receiver, ins, local, info, minfo)
+  def gen_arg_eval(args, receiver, ins, local_vars, info, minfo)
     blk = ins[3]
     
     para = []
@@ -369,13 +369,13 @@ module SendUtil
     if receiver then
       v = receiver
     else
-      v = [local[2][:type], 
+      v = [local_vars[2][:type], 
         lambda {|b, context|
           context.rc = b.load(context.local_vars[2][:area])
           context}]
     end
     if receiver then
-      para.push [local[2][:type], lambda {|b, context|
+      para.push [local_vars[2][:type], lambda {|b, context|
           context = v[1].call(b, context)
           if v[0].type then
             rc = v[0].type.to_value(context.rc, b, context)
@@ -385,17 +385,17 @@ module SendUtil
         }]
     end
     if blk[0] then
-      para.push [local[0][:type], lambda {|b, context|
+      para.push [local_vars[0][:type], lambda {|b, context|
           #            gen_get_framaddress(@frame_struct[code], b, context)
           fm = context.current_frame
           context.rc = b.bit_cast(fm, P_CHAR)
           context
         }]
       
-      para.push [local[1][:type], lambda {|b, context|
+      para.push [local_vars[1][:type], lambda {|b, context|
           # Send with block may break local frame, so must clear local 
           # value cache
-          local.each do |le|
+          local_vars.each do |le|
             if le[:type].type then
               le[:type].type.content = nil
             end
