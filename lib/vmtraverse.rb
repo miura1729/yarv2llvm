@@ -1322,7 +1322,12 @@ class YarvTranslator<YarvVisitor
         return
       end
 
-      if funcinfo = MethodDefinition::InlineMethod[mname] then
+      unless MethodDefinition::InlineMethod[recklass] and
+          funcinfo = MethodDefinition::InlineMethod[recklass][mname] then
+        MethodDefinition::InlineMethod[nil] and
+          funcinfo = MethodDefinition::InlineMethod[nil][mname]
+      end
+      if funcinfo and 
         para = {:info => info, 
                 :ins => ins,
                 :code => code,

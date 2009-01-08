@@ -14,38 +14,38 @@ module MethodDefinition
   }
   
   # method inline or need special process
-  InlineMethod =  {
-  :"core#define_method" => {
+  InlineMethod_nil =  {
+    :"core#define_method" => {
       :inline_proc => 
       lambda {|para|
         # TODO redefine process
       }
     },
 
-  :"core#define_singleton_method" => {
+    :"core#define_singleton_method" => {
       :inline_proc => 
-      lambda {|para|
-        # TODO redefine process
-      }
-    },
-
-  :require => {
-      :inline_proc =>
         lambda {|para|
-          fn = para[:args][0][0].name
-          unless File.exist?(fn)
-            nfn = fn + ".rb"
-            if File.exist?(nfn) then
-              fn = nfn
-            end
+          # TODO redefine process
+        }
+    },
+
+    :require => {
+      :inline_proc =>
+      lambda {|para|
+        fn = para[:args][0][0].name
+        unless File.exist?(fn)
+          nfn = fn + ".rb"
+          if File.exist?(nfn) then
+            fn = nfn
           end
-          is = RubyVM::InstructionSequence.compile( File.read(fn), fn, 1, 
-                    {  :peephole_optimization    => true,
-                       :inline_const_cache       => false,
-                       :specialized_instruction  => true,}).to_a
-          iseq = VMLib::InstSeqTree.new(nil, is)
-          @iseqs.push iseq
-       }
+        end
+        is = RubyVM::InstructionSequence.compile( File.read(fn), fn, 1, 
+              {  :peephole_optimization    => true,
+                 :inline_const_cache       => false,
+                 :specialized_instruction  => true,}).to_a
+        iseq = VMLib::InstSeqTree.new(nil, is)
+        @iseqs.push iseq
+      }
     },
           
     :[]= => {
@@ -298,7 +298,8 @@ module MethodDefinition
            nargs = args.size
            if nargs != 0 then
              arraycurlevel = @expstack.size
-             if @array_alloca_size == nil or @array_alloca_size < nargs +  arraycurlevel then
+             if  @array_alloca_size == nil or 
+                 @array_alloca_size < nargs +  arraycurlevel then
                 @array_alloca_size = nargs + arraycurlevel
              end
            end
@@ -354,9 +355,57 @@ module MethodDefinition
               context.rc = rc
               context
             }]
-          }
-        }
+      }
+    }
   }
+
+  InlineMethod_Thread = {
+    :new => {
+      :inline_proc => lambda {|para|
+        info = para[:info]
+        ins = para[:ins]
+        blk = ins[3]
+        local_vars = para[:local]
+        nargs = 3
+        arraycurlevel = @expstack.size
+        if  @array_alloca_size == nil or 
+            @array_alloca_size < nargs +  arraycurlevel then
+          @array_alloca_size = nargs + arraycurlevel
+        end
+
+        rettype = RubyType.value(para[:info][3], "Return type of Thread.new")
+        @expstack.push [rettype, 
+          lambda {|b, context|
+             initarea = context.array_alloca_area
+             initarea2 =  b.gep(initarea, arraycurlevel.llvm)
+             slfarea = b.gep(initarea2, 0.llvm)
+             slfval = b.load(local_vars[2][:area])
+             b.store(slfval, slfarea)
+             framearea = b.gep(initarea2, 1.llvm)
+             frameval = b.load(local_vars[0][:area])
+             frameval = b.ptr_to_int(frameval, VALUE)
+             b.store(frameval, framearea)
+             blkarea = b.gep(initarea2, 2.llvm)
+             b.store(0.llvm, blkarea)
+             context = gen_get_block_ptr(info[0], info, blk, b, context)
+             blkptr = context.rc
+
+             ftype = Type.function(VALUE, [VALUE, P_VALUE])
+             fname = 'rb_thread_create'
+             func = context.builder.external_function(fname, ftype)
+             context.rc = b.call(func, blkptr, initarea2)
+
+             context}]
+      }
+    },
+  }
+        
+
+  InlineMethod = {
+    nil => InlineMethod_nil,
+    :Thread => InlineMethod_Thread,
+  }
+
   
   # can be maped to C function
   CMethod = {

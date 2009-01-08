@@ -420,7 +420,28 @@ end
 EOS
    assert_equal(tprocesstimes, nil)
 end
+
 =begin
+
+  def test_thread
+    YARV2LLVM::compile(<<-EOS)
+def tthread
+  Thread.new {
+    10.times do |i|
+      p i
+    end
+  }
+  print "END"
+  10.times do |i|
+    puts sprintf("foo%d", i)
+  end
+  nil
+end
+EOS
+
+   assert_equal(tthread, nil)
+end
+
 # I can't pass this test yet.
 
   def test_complex_type
