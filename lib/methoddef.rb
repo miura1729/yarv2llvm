@@ -332,6 +332,37 @@ module MethodDefinition
          }
      },
 
+    :include => {
+      :inline_proc =>
+        lambda {|para|
+          rec = para[:receiver]
+          dstklass = rec[0].klass
+          src = para[:args][0]
+          srcklass = src[0].klass
+          MethodDefinition::RubyMethod.each do |method, klasstab|
+            if klasstab[dstklass] == nil and klasstab[srcklass] then
+              klasstab[dstklass] = klasstab[srcklass]
+            end
+          end
+
+          if srccont = MethodDefinition::InlineMethod[srcklass] then
+            if dstcont = MethodDefinition::InlineMethod[dstklass] then
+              dstcont.merge!(srccont)
+            else
+              MethodDefinition::InlineMethod[dstklass] = srccont.clone
+            end
+          end
+
+          if srccont = MethodDefinition::CMethod[srcklass] then
+            if dstcont = MethodDefinition::CMethod[dstklass] then
+              dstcont.merge!(srccont)
+            else
+              MethodDefinition::CMethod[dstklass] = srccont.clone
+            end
+          end
+      }
+    },
+
     :get_interval_cycle => {
       :inline_proc =>
         lambda {|para|
