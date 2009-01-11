@@ -21,6 +21,8 @@ class Context
     @instance_var_tab = nil
     @instance_vars_local = nil
     @inline_args = nil
+
+    @user_defined = {}
   end
 
   attr_accessor :local_vars
@@ -39,6 +41,7 @@ class Context
   attr_accessor :inline_args
   attr :builder
   attr :frame_struct
+  attr :user_defined
 end
 
 class YarvVisitor
@@ -365,14 +368,12 @@ class YarvTranslator<YarvVisitor
 
       context.instance_vars_local.each do |key, cnt|
         if cnt > 1 and OPTION[:cache_instance_variable] then
-          area = b.alloca(P_VALUE, 1)
           ftype = Type.function(P_VALUE, [VALUE, VALUE])
           func = context.builder.get_or_insert_function_raw('llvm_ivar_ptr', ftype)
           ivid = ((key.object_id << 1) / RVALUE_SIZE)
           slf = b.load(context.local_vars[2][:area])
-          val = b.call(func, slf, ivid.llvm)
-          b.store(val, area)
-          context.instance_vars_local[key] = area
+          vptr = b.call(func, slf, ivid.llvm)
+          context.instance_vars_local[key] = vptr
         else
           context.instance_vars_local[key] = nil
         end
@@ -713,9 +714,8 @@ class YarvTranslator<YarvVisitor
     end
     @expstack.push [type,
       lambda {|b, context|
-        if area = context.instance_vars_local[ivname] then
-          parea = b.load(area)
-          val = b.load(parea)
+        if vptr = context.instance_vars_local[ivname] then
+          val = b.load(vptr)
           context.rc = type.type.from_value(val, b, context)
         else
           ftype = Type.function(VALUE, [VALUE, VALUE])
@@ -756,10 +756,9 @@ class YarvTranslator<YarvVisitor
       dsttype.type = dsttype.type.dup_type
       dsttype.type.content = srcval
 
-      if area = context.instance_vars_local[ivname] then
-        context.rc = srcval
-        parea = b.load(area)
-        b.store(srcval2, parea)
+      context.rc = srcval
+      if vptr = context.instance_vars_local[ivname] then
+        b.store(srcval2, vptr)
 
       else
         ftype = Type.function(VALUE, [VALUE, VALUE, VALUE])
@@ -767,7 +766,6 @@ class YarvTranslator<YarvVisitor
         ivid = ((ivname.object_id << 1) / RVALUE_SIZE)
         slf = b.load(context.local_vars[2][:area])
       
-        context.rc = srcval
         b.call(func, slf, ivid.llvm, srcval2)
       end
       context.org = dsttype.name
@@ -1322,11 +1320,12 @@ class YarvTranslator<YarvVisitor
         return
       end
 
-      unless MethodDefinition::InlineMethod[recklass] and
-          funcinfo = MethodDefinition::InlineMethod[recklass][mname] then
-        MethodDefinition::InlineMethod[nil] and
-          funcinfo = MethodDefinition::InlineMethod[nil][mname]
-      end
+      (MethodDefinition::InlineMethod[recklass] and
+        funcinfo = MethodDefinition::InlineMethod[recklass][mname]) or
+      (MethodDefinition::InlineMethod[info[0]] and
+        funcinfo = MethodDefinition::InlineMethod[info[0]][mname]) or
+      (MethodDefinition::InlineMethod[nil] and
+        funcinfo = MethodDefinition::InlineMethod[nil][mname])
       if funcinfo and 
         para = {:info => info, 
                 :ins => ins,

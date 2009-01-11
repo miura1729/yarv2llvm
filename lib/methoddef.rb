@@ -1,6 +1,7 @@
 require 'llvm'
-# Define method type and name information
+# Define method type and name information compatible with CRuby
 include LLVM
+
 module YARV2LLVM
 module MethodDefinition
   include LLVMUtil
@@ -335,8 +336,7 @@ module MethodDefinition
     :include => {
       :inline_proc =>
         lambda {|para|
-          rec = para[:receiver]
-          dstklass = rec[0].klass
+          dstklass = para[:info][0]
           src = para[:args][0]
           srcklass = src[0].klass
           MethodDefinition::RubyMethod.each do |method, klasstab|
@@ -362,32 +362,6 @@ module MethodDefinition
           end
       }
     },
-
-    :get_interval_cycle => {
-      :inline_proc =>
-        lambda {|para|
-          info = para[:info]
-          rettype = RubyType.fixnum(info[3], "Return type of gen_interval_cycle")
-          glno = add_global_variable("interval_cycle", 
-                                     Type::Int64Ty, 
-                                     0.llvm(Type::Int64Ty))
-          @expstack.push [rettype,
-            lambda {|b, context|
-              prevvalp = context.builder.global_variable
-              prevvalp = b.struct_gep(prevvalp, glno)
-              prevval = b.load(prevvalp)
-              ftype = Type.function(Type::Int64Ty, [])
-              fname = 'llvm.readcyclecounter'
-              func = context.builder.external_function(fname, ftype)
-              curval = b.call(func)
-              diffval = b.sub(curval, prevval)
-              rc = b.trunc(diffval, Type::Int32Ty)
-              b.store(curval, prevvalp)
-              context.rc = rc
-              context
-            }]
-      }
-    }
   }
 
   InlineMethod_Thread = {
@@ -413,7 +387,9 @@ module MethodDefinition
              slfval = b.load(local_vars[2][:area])
              b.store(slfval, slfarea)
              framearea = b.gep(initarea2, 1.llvm)
-             frameval = b.load(local_vars[0][:area])
+#             frameval = b.load(local_vars[0][:area])
+             frameval = context.current_frame
+#             frameval = local_vars[0][:area]
              frameval = b.ptr_to_int(frameval, VALUE)
              b.store(frameval, framearea)
              blkarea = b.gep(initarea2, 2.llvm)

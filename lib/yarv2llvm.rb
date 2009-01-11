@@ -7,6 +7,7 @@ require 'lib/instruction.rb'
 require 'lib/type.rb'
 require 'lib/llvmbuilder.rb'
 require 'lib/methoddef.rb'
+require 'lib/methoddef_ex.rb'
 require 'lib/intruby.rb'
 require 'lib/vmtraverse.rb'
 

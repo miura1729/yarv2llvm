@@ -6,7 +6,8 @@
 module LLVM::RubyInternals
   EMBEDER_FLAG = (1 << 13)
   ROBJECT_EMBED_LEN_MAX = 3
-  ROBJECT = Type::struct([RBASIC, LONG, P_VALUE, P_CHAR])
+  ROBJECT = Type::struct([RBASIC, LONG, P_VALUE, P_VALUE])
+  RCLASS = Type::struct([RBASIC, P_VALUE, P_VALUE, P_VALUE])
 end
 
 module YARV2LLVM
@@ -31,34 +32,44 @@ module IntRuby
     isemb = b.icmp_ne(isemb, 0.llvm)
     b.cond_br(isemb, embed, nonembed)
 
+    #  Embedded format
     b.set_insert_point(embed)
-#    elen = ROBJECT_EMBED_LEN_MAX.llvm
     eptr = b.struct_gep(slfop, 1)
     eptr = b.bit_cast(eptr, P_VALUE)
+
+    rbasic = b.struct_gep(slfop, 0)
+    klassptr = b.struct_gep(rbasic, 1)
+    klass = b.load(klassptr)
+    klass = b.int_to_ptr(klass, Type.pointer(RCLASS))
+    ivitp = b.struct_gep(klass, 3)
+    eiv_index_tbl = b.load(ivitp)
     
     b.br(comm)
 
+    #  Not embedded format
     b.set_insert_point(nonembed)
-#    lenp = b.struct_gep(slfop, 1)
-#    nlen = b.load(lenp)
     ivpp = b.struct_gep(slfop, 2)
     nptr = b.load(ivpp)
     nptr = b.bit_cast(nptr, P_VALUE)
+
+    ivitp = b.struct_gep(slfop, 3)
+    niv_index_tbl = b.load(ivitp)
+
     b.br(comm)
 
     b.set_insert_point(comm)
-#    len = b.phi(LONG)
-#    len.add_incoming(elen, embed)
-#    len.add_incoming(nlen, nonembed)
     ptr = b.phi(P_VALUE)
     ptr.add_incoming(eptr, embed)
     ptr.add_incoming(nptr, nonembed)
-    ivitp = b.struct_gep(slfop, 3)
-    iv_index_tbl = b.load(ivitp)
+
+    iv_index_tbl = b.phi(P_VALUE)
+    iv_index_tbl.add_incoming(eiv_index_tbl, embed)
+    iv_index_tbl.add_incoming(niv_index_tbl, nonembed)
+
 
     indexp = b.alloca(VALUE, 1)
 
-    ftype = Type.function(VALUE, [P_CHAR, VALUE, P_VALUE])
+    ftype = Type.function(VALUE, [P_VALUE, VALUE, P_VALUE])
     func = builder.external_function('st_lookup', ftype)
     b.call(func, iv_index_tbl, args[1], indexp)
     
