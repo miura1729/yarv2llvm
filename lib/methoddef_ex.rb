@@ -55,9 +55,20 @@ module MethodDefinition
           context.user_defined[:transaction] ||= {}
           trcontext = context.user_defined[:transaction]
 
+          orgvtab = {}
+          orgvtabinit = {}
+          trcontext[:original_instance_vars_local] = orgvtab
+          trcontext[:original_instance_vars_init] = orgvtabinit
+
+          vtab = context.instance_vars_local
+          vtab2 = vtab.clone
+          vtab.each do |name, area|
+            vtab[name] = b.alloca(VALUE, 1)
+            orgvtabinit[name] = b.alloca(VALUE, 1)
+          end
+
           lbody = context.builder.create_block
           trcontext[:body] = lbody
-          
           b.br(lbody)
           
           fmlab = context.curln
@@ -65,20 +76,13 @@ module MethodDefinition
           
           b.set_insert_point(lbody)
           
-          vtab = context.instance_vars_local
-          orgvtab = {}
-          orgvtabcopy = {}
-          trcontext[:original_instance_vars_local] = orgvtab
-          trcontext[:original_instance_vars_copy] = orgvtabcopy
-          vtab.each do |name, area|
+          vtab2.each do |name, area|
             orgvtab[name] = area
             oval = b.load(area)
-            vtab[name] = b.alloca(VALUE, 1)
-            orgvtabcopy[name] = b.alloca(VALUE, 1)
             b.store(oval, vtab[name])
-            b.store(oval, orgvtabcopy[name])
+            b.store(oval, orgvtabinit[name])
           end
-          trcontext[:original_instance_vars_area] = vtab.clone
+          trcontext[:original_instance_vars_area] = vtab
           
           context
         }
@@ -99,13 +103,13 @@ module MethodDefinition
 
           vtab = context.instance_vars_local
           orgvtab = trcontext[:original_instance_vars_local]
-          vtabcpy = trcontext[:original_instance_vars_copy]
+          vtabinit = trcontext[:original_instance_vars_init]
           vtabarea = trcontext[:original_instance_vars_area]
 
           if vtab.size == 1 then
             # Can commit lock-free
             orgarea = orgvtab.to_a[0][1]
-            orgvalue = b.load(vtabcpy.to_a[0][1])
+            orgvalue = b.load(vtabinit.to_a[0][1])
             newvalue = b.load(vtabarea.to_a[0][1])
 
             ftype = Type.function(VALUE, [P_VALUE, VALUE, VALUE])
