@@ -380,7 +380,7 @@ module MethodDefinition
           @array_alloca_size = nargs + arraycurlevel
         end
 
-        rettype = RubyType.value(info[3], "Return type of Thread.new")
+        rettype = RubyType.value(info[3], "Return type of Thread.new", Thread)
         @expstack.push [rettype, 
           lambda {|b, context|
              initarea = context.array_alloca_area
@@ -410,6 +410,23 @@ module MethodDefinition
              context.rc = b.call(func, stfubc, initarea2)
 
              context}]
+      }
+    },
+
+    :pass => {
+      :inline_proc => lambda {|para|
+        info = para[:info]
+        rettype = RubyType.value(info[3], "nil")
+        @expstack.push [rettype, 
+          lambda {|b, context|
+            ftype = Type.function(Type::VoidTy, [])
+            fname = 'rb_thread_schedule'
+            builder = context.builder
+            func = builder.external_function(fname, ftype)
+            b.call(func)
+            context.rc = 4.llvm
+            context
+        }]
       }
     },
   }

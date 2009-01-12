@@ -29,17 +29,24 @@ end
 b = Bank.new
 a = 0
 
-Thread.new do
+t = Thread.new do
   100.times do 
     puts sprintf "DEPOSIT START: %d", b.balance
     b.deposit(1)
     puts sprintf "DEPOSIT END: %d", b.balance
-    a = 1
   end
+  a = 1
 end
 
 100.times do 
-  puts sprintf "DRAW START: %d", b.balance
-  b.draw(1)
+    puts sprintf "DRAW START: %d", b.balance
+    b.draw(1)
   puts sprintf "DRAW END: %d", b.balance
 end
+
+while a == 0
+  Thread.pass
+end
+
+puts sprintf "END: %d", b.balance
+p a
