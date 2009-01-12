@@ -37,6 +37,53 @@ class LLVMBuilder
     ns
   end
 
+  def make_callbackstub(recklass, name, rett, argt, orgfunc)
+    pppp "Make callback stub #{name}"
+    sname = "__callstub_" + to_label(recklass.to_s, name)
+    argt.unshift RubyType.value  # block ptr
+    argt.unshift RubyType.value  # frame
+    if recklass == nil then
+      argt.unshift RubyType.value
+    else
+      slf = argt.pop
+      argt.unshift slf
+    end
+    nargs = argt.size
+
+    stype = Type.function(VALUE, [VALUE])
+    stubfunc = @module.get_or_insert_function(sname, stype)
+    eb = stubfunc.create_block
+    b = eb.builder
+    context = Context.new([], self)
+
+    base = stubfunc.arguments[0]
+    base = b.int_to_ptr(base, P_VALUE)
+    argv = []
+    argt.each_with_index do |ar, n|
+      vp = b.gep(base, n.llvm)
+      val = b.load(vp)
+      v = ar.type.from_value(val, b, context)
+      argv.push v
+    end
+
+    fptype = Type.pointer(Type.function(VALUE, [VALUE] * nargs))
+    orgfunc = b.int_to_ptr(orgfunc, fptype)
+    ret = b.call(orgfunc, *argv)
+
+    x = rett.type.to_value(ret, b, context)
+    b.return(x)
+
+    MethodDefinition::RubyMethodCallbackStub[name] = {
+      :sname => sname,
+      :stub => stubfunc,
+      :argt => argt,
+      :type => stype,
+      :receiver => recklass,
+      :outputp => false}
+    pppp "Make stub #{name} end"
+    stubfunc
+  end
+
   def make_stub(recklass, name, rett, argt, orgfunc)
     pppp "Make stub #{name}"
     sname = "__stub_" + to_label(recklass.to_s, name)

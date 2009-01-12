@@ -297,6 +297,7 @@ module MethodDefinition
            rec = para[:receiver]
            args = para[:args]
            nargs = args.size
+           arraycurlevel = 0
            if nargs != 0 then
              arraycurlevel = @expstack.size
              if  @array_alloca_size == nil or 
@@ -304,6 +305,7 @@ module MethodDefinition
                 @array_alloca_size = nargs + arraycurlevel
              end
            end
+
            # This rb_class_new_instance needs stack area as arguments
            # in spite of with no arguments.
            if @array_alloca_size == nil then
@@ -378,7 +380,7 @@ module MethodDefinition
           @array_alloca_size = nargs + arraycurlevel
         end
 
-        rettype = RubyType.value(para[:info][3], "Return type of Thread.new")
+        rettype = RubyType.value(info[3], "Return type of Thread.new")
         @expstack.push [rettype, 
           lambda {|b, context|
              initarea = context.array_alloca_area
@@ -399,8 +401,13 @@ module MethodDefinition
 
              ftype = Type.function(VALUE, [VALUE, P_VALUE])
              fname = 'rb_thread_create'
-             func = context.builder.external_function(fname, ftype)
-             context.rc = b.call(func, blkptr, initarea2)
+             builder = context.builder
+             func = builder.external_function(fname, ftype)
+             blab = (info[1].to_s + '+blk+' + blk[1].to_s).to_sym
+             stfubc = builder.make_callbackstub(
+                       info[0], blab.to_s, rettype, para[:args], blkptr)
+             stfubc = b.ptr_to_int(stfubc, VALUE)
+             context.rc = b.call(func, stfubc, initarea2)
 
              context}]
       }
@@ -456,6 +463,8 @@ module MethodDefinition
 
   # stub for RubyCMethod. arg/return type is always VALUE
   RubyMethodStub = {}
+
+  RubyMethodCallbackStub = {}
 end
 end
   

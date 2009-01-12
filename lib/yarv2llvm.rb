@@ -25,7 +25,7 @@ DEF_OPTION = {
 
   :array_range_check => true,
 
-  :cache_instance_variable => false,
+  :cache_instance_variable => true,
   :strict_type_inference => false,
 
   :inline_block => false,
