@@ -575,11 +575,14 @@ class YarvTranslator<YarvVisitor
     }
 
     if valexp then
-      n = 0
+      n = 1
       v2 = nil
       commer_label = @jump_from[ln]
-      while n < commer_label.size - 1 do
-        if v2 = @expstack[@expstack.size - n - 1] then
+
+      # value of block is stored in @expstack
+      clsize = commer_label.size 
+      while n < clsize do
+        if v2 = @expstack.pop then
           valexp[0].add_same_value(v2[0])
           v2[0].add_same_value(valexp[0])
         end
@@ -595,6 +598,7 @@ class YarvTranslator<YarvVisitor
           if commer_label[0] == nil then
             commer_label.shift
           end
+          
           if context.block_value[commer_label[0]] then
             rc = b.phi(context.block_value[commer_label[0]][0].type.llvm)
             commer_label.uniq.reverse.each do |lab|
@@ -608,7 +612,6 @@ class YarvTranslator<YarvVisitor
         context
       }
 
-      @expstack.pop
       @expstack.push [valexp[0],
                       lambda {|b, context|
                         if rc then
@@ -783,7 +786,7 @@ class YarvTranslator<YarvVisitor
     cname = ins[1]
     const_path = cname.to_s
     kn = klass[0].name
-    unless kn == "nil" then
+    unless kn == "nil" or kn == nil then
       const_path = "#{kn}::#{const_path}"
     end
 
@@ -1522,6 +1525,7 @@ class YarvTranslator<YarvVisitor
         bval = [valexp[0], context.rc]
         context.block_value[iflab] = bval
       end
+
       b.cond_br(cond[1].call(b, context).rc, eblock, tblock)
       RubyType.clear_content
       b.set_insert_point(eblock)
