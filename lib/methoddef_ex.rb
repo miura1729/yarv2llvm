@@ -160,6 +160,36 @@ module MethodDefinition
           context
         }
       }
+    },
+
+    :do_retry => {
+      :inline_proc => lambda {|para|
+        oldrescode = @rescode
+        @rescode = lambda {|b, context|
+          context = oldrescode.call(b, context)
+
+          trcontext = context.user_defined[:transaction]
+          if trcontext == nil then
+            raise "abort must use with begin_transaction"
+          end
+          vtab = context.instance_vars_local
+          orgvtab = trcontext[:original_instance_vars_local]
+        
+          vtab.each do |name, area|
+            vtab[name] = orgvtab[name]
+          end
+
+          lexit = context.builder.create_block
+          lretry = trcontext[:body]
+          fmlab = context.curln
+          context.blocks[fmlab] = lexit
+
+          b.br(lretry)
+
+          b.set_insert_point(lexit)
+          context
+        }
+      }
     }
   }
 

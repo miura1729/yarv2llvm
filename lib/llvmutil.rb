@@ -258,10 +258,17 @@ module SendUtil
 
   MaxSmallPolymotphicNum = 4
   def gen_method_select(recklass, mname)
-    minfo = MethodDefinition::RubyMethod[mname][recklass]
-    if minfo.is_a?(Hash) then
+    mtab = MethodDefinition::RubyMethod[mname].clone
+
+    mtab.delete_if {|klass, info| 
+      !info.is_a?(Hash)
+    }
+
+    minfo = mtab[recklass]
+#    if minfo.is_a?(Hash) then
+    if minfo.is_a?(Hash) and minfo[:func] then
       # recklass == nil ->  functional method
-      return [minfo, lambda { minfo[:func]}]
+      return [minfo, minfo[:func]]
     end
 
     # recklass == nil ->  need dynamic dispatch
@@ -269,9 +276,9 @@ module SendUtil
     if recklass then
       sup = Object.const_get(recklass, true)
       while sup do
-        minfo = MethodDefinition::RubyMethod[mname][sup.name]
+        minfo = mtab[sup.name]
         if minfo.is_a?(Hash) then
-          return [minfo, lambda { minfo[:func]}]
+          return [minfo, minfo[:func]]
         end
         if sup.is_a?(Class) then
           sup = sup.superclass
@@ -281,21 +288,32 @@ module SendUtil
       end
     end
 
-    candidatenum = MethodDefinition::RubyMethod[mname].size
+#=begin    
+    candidatenum = mtab.size
+    if candidatenum > 1 then
+      candidatenum = 0
+      mtab.each {|klass, info| 
+        if info[:func] then
+          candidatenum += 1
+        end
+      }
+    end
+#=end
+
     if candidatenum == 0 then
-      return [nil, lambda {nil}]
+      return [nil, nil]
 
     elsif candidatenum == 1 then
-      minfo = MethodDefinition::RubyMethod[mname].values[0]
+      minfo = mtab.values[0]
       if minfo.is_a?(Hash) then
-        return [minfo, lambda {minfo[:func]}]
+        return [minfo, minfo[:func]]
       else
-        return [nil, lambda {nil}]
+        return [nil, nil]
       end
 
     elsif candidatenum < MaxSmallPolymotphicNum then
       # TODO : Use inline hash function generation
-      raise('Not implimented polymorphic methed call yet')
+      raise("Not implimented polymorphic methed call yet '#{mname}'")
 
     else
       # TODO : Use cukko-hasing and inline hash function generation

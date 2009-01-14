@@ -312,6 +312,27 @@ module MethodDefinition
              @array_alloca_size = 1
            end
            rettype = RubyType.from_sym(rec[0].klass, para[:info][3], nil)
+#=begin
+           recklass = rec[0].klass
+           minfo = MethodDefinition::RubyMethod[:initialize][recklass] 
+           unless minfo.is_a?(Hash)
+             minfo = {}
+             MethodDefinition::RubyMethod[:initialize][recklass] = minfo
+             minfo[:argtype] = []
+             (args.size + 1).times {|i|
+               minfo[:argtype][i] = RubyType.new(nil)
+             }
+             minfo[:rettype] = RubyType.new(nil)
+             minfo[:defined] = false
+           end
+
+           args.each_with_index do |ele, i|
+             minfo[:argtype][i].add_same_type ele[0]
+             ele[0].add_same_type minfo[:argtype][i]
+           end
+           minfo[:argtype][-1].add_same_type rec[0]
+           rec[0].add_same_type minfo[:argtype][-1]
+#=end
            @expstack.push [rettype, 
              lambda {|b, context|
                cargs = []
@@ -389,9 +410,7 @@ module MethodDefinition
              slfval = b.load(local_vars[2][:area])
              b.store(slfval, slfarea)
              framearea = b.gep(initarea2, 1.llvm)
-#             frameval = b.load(local_vars[0][:area])
              frameval = context.current_frame
-#             frameval = local_vars[0][:area]
              frameval = b.ptr_to_int(frameval, VALUE)
              b.store(frameval, framearea)
              blkarea = b.gep(initarea2, 2.llvm)

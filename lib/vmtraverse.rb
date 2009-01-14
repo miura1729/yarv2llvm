@@ -756,6 +756,7 @@ class YarvTranslator<YarvVisitor
       srcval = context.rc
       srcval2 = srctype.type.to_value(srcval, b, context)
 
+      RubyType.resolve
       dsttype.type = dsttype.type.dup_type
       dsttype.type.content = srcval
 
@@ -1223,10 +1224,16 @@ class YarvTranslator<YarvVisitor
         MethodDefinition::RubyMethod[info[1]][info[0]] = true
       end
     }
+    sup = @expstack.pop
+    supklass = sup ? sup[0].klass : nil
     code.traverse_code(info.clone, action)
     case ins[3]
     when 0
-      eval("class #{ins[1]};end", @binding)
+      if sup then
+        eval("class #{ins[1]}<#{supklass};end", @binding)
+      else
+        eval("class #{ins[1]};end", @binding)
+      end
     when 2
       eval("module #{ins[1]};end", @binding)
     end
@@ -1259,9 +1266,10 @@ class YarvTranslator<YarvVisitor
       para = gen_arg_eval(args, receiver, ins, local_vars, info, minfo)
       @expstack.push [minfo[:rettype],
         lambda {|b, context|
-          funcptr = func.call
-          if funcptr then
-            gen_call(funcptr, para ,b, context)
+          recklass = receiver ? receiver[0].klass : nil
+          minfo, func = gen_method_select(recklass, mname)
+          if func then
+            gen_call(func, para ,b, context)
           else
             raise "Undefined method \"#{mname}\""
           end
@@ -1350,10 +1358,10 @@ class YarvTranslator<YarvVisitor
     rett = RubyType.new(nil, info[3], "Return type of #{mname}")
     @expstack.push [rett,
       lambda {|b, context|
+        recklass = receiver ? receiver[0].klass : nil
         minfo, func = gen_method_select(recklass, mname)
-        funcptr = func.call
-        if funcptr then
-          gen_call(funcptr, para, b, context)
+        if func then
+          gen_call(func, para, b, context)
         else
           raise "Undefined method \"#{mname}\""
         end
@@ -1962,6 +1970,17 @@ class YarvTranslator<YarvVisitor
 
 
   # otp_ltlt
+  def visit_opt_ltlt(code, ins, local_vars, ln, info)
+    p2 = @expstack.pop
+#    p1 = @expstack.pop
+=begin
+    if p1[0].type.is_a?(ArrayType) then
+      p p1[0].inspect2
+    elsif p1[0].type.llvm == Type::Int32Ty then
+      p p1[0].inspect2
+    end
+=end
+  end
 
   def visit_opt_aref(code, ins, local_vars, ln, info)
     idx = @expstack.pop
@@ -2043,7 +2062,7 @@ class YarvTranslator<YarvVisitor
           context
         else
           # Todo: Hash table?
-#          raise "Not impremented #{arr[0].inspect2} in #{info[3]}"
+          raise "Not impremented #{arr[0].inspect2} in #{info[3]}"
           context
         end
       }

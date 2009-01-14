@@ -320,7 +320,7 @@ class PrimitiveType
     elsif klass then
       @klass = klass.name.to_sym
     else
-      @klass = :nil
+      @klass = nil
     end
     @type = type
     @content = nil
@@ -449,7 +449,7 @@ class ComplexType
     elsif klass.is_a?(Symbol) then
       @klass = klass.to_sym
     else
-      @klass = :nil
+      @klass = nil
     end
     @constant = nil
   end

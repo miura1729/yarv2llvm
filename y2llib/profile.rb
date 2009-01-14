@@ -15,7 +15,9 @@ END {
   
   res = Hash.new(0)
   YARV2LLVM::TRACE_INFO.each_with_index do |n, i|
-    res[n[1][3]] += YARV2LLVM::PROFILER_STATICS[i]
+    if i != 0 then
+      res[n[1][3]] += YARV2LLVM::PROFILER_STATICS[i]
+    end
   end
   
   src_content.each do |fn, cont|
@@ -34,11 +36,6 @@ END {
 module YARV2LLVM
   def trace_func(event, no)
     if event == 1 or event == 8 then # Line or funcdef
-      if $fst == 1 then
-        $fst = 0
-        $prev_no = 0
-        get_interval_cycle
-      end
       interval = get_interval_cycle.to_f
       PROFILER_STATICS[$prev_no] += interval
       $prev_no = no
@@ -49,12 +46,13 @@ module YARV2LLVM
     end
   end
 
-  $fst = 1
   i = 0
   TRACE_INFO.each do |n|
     PROFILER_STATICS[i] = 0.0
     i = i + 1
   end
+  $prev_no = 0
+  get_interval_cycle
 end
 
 EOS
