@@ -51,6 +51,21 @@ class Object
     YARV2LLVM::EXPORTED_OBJECT[self] = true
     immediate
   end
+
+  # from ActiveSupport
+  def subclasses_of(*superclasses)
+    subclasses = []
+    ObjectSpace.each_object(Class) do |k|
+      next if # Exclude this class if
+        (k.ancestors & superclasses).empty? || # It's not a subclass of our supers
+        superclasses.include?(k) || # It *is* one of the supers
+        /^[A-Z]/ !~ k.to_s ||
+        eval("! defined?(::#{k})") || # It's not defined.
+        eval("::#{k}").object_id != k.object_id
+      subclasses << k
+    end
+    subclasses
+  end
 end
 
 class Float

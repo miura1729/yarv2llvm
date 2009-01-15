@@ -367,7 +367,7 @@ class YarvTranslator<YarvVisitor
       end
 
       context.instance_vars_local.each do |key, cnt|
-        if cnt > 1 and OPTION[:cache_instance_variable] then
+        if cnt > 0 and OPTION[:cache_instance_variable] then
           ftype = Type.function(P_VALUE, [VALUE, VALUE])
           func = context.builder.get_or_insert_function_raw('llvm_ivar_ptr', ftype)
           ivid = ((key.object_id << 1) / RVALUE_SIZE)
@@ -554,10 +554,10 @@ class YarvTranslator<YarvVisitor
     @is_live = nil
     if live and @expstack.size > 0 then
       valexp = @expstack.pop
+      @jump_from[ln] ||= []
+      @jump_from[ln].push @prev_label
     end
 
-    @jump_from[ln] ||= []
-    @jump_from[ln].push @prev_label
     @rescode = lambda {|b, context|
       context = oldrescode.call(b, context)
       blk = get_or_create_block(ln, b, context)
@@ -1121,6 +1121,7 @@ class YarvTranslator<YarvVisitor
         end
         context.rc = exp[1].call(b, context)
       end
+
       context
     }
   end
@@ -1263,7 +1264,7 @@ class YarvTranslator<YarvVisitor
     if minfo then
       pppp "RubyMethod called #{mname.inspect}"
 
-      para = gen_arg_eval(args, receiver, ins, local_vars, info, minfo)
+      para = gen_arg_eval(args, receiver, ins, local_vars, info, minfo, mname)
       @expstack.push [minfo[:rettype],
         lambda {|b, context|
           recklass = receiver ? receiver[0].klass : nil
@@ -1304,11 +1305,11 @@ class YarvTranslator<YarvVisitor
         func = @builder.external_function(cname, ftype)
 
         if send_self then
-          para = gen_arg_eval(args, receiver, ins, local_vars, info, nil)
+          para = gen_arg_eval(args, receiver, ins, local_vars, info, nil, mname)
           slf = para.pop
           para.unshift slf
         else
-          para = gen_arg_eval(args, nil, ins, local_vars, info, nil)
+          para = gen_arg_eval(args, nil, ins, local_vars, info, nil, mname)
         end
 
         args.each_with_index do |pe, n|
@@ -1353,7 +1354,7 @@ class YarvTranslator<YarvVisitor
     pppp "RubyMethod forward called #{mname.inspect}"
 
     # minfo doesn't exist yet
-    para = gen_arg_eval(args, receiver, ins, local_vars, info, nil)
+    para = gen_arg_eval(args, receiver, ins, local_vars, info, nil, mname)
 
     rett = RubyType.new(nil, info[3], "Return type of #{mname}")
     @expstack.push [rett,
@@ -1826,13 +1827,13 @@ class YarvTranslator<YarvVisitor
         end
 
         case s1[0].type.llvm
-          when Type::DoubleTy
+        when Type::DoubleTy
           context.rc = b.fcmp_une(sval[0], sval[1])
 
-          when Type::Int32Ty
+        when Type::Int32Ty
           context.rc = b.icmp_ne(sval[0], sval[1])
 
-          when VALUE
+        when VALUE
           context.rc = b.icmp_ne(sval[0], sval[1])
         end
         context
@@ -1861,11 +1862,14 @@ class YarvTranslator<YarvVisitor
         end
 
         case s1[0].type.llvm
-          when Type::DoubleTy
+        when Type::DoubleTy
           context.rc = b.fcmp_ult(sval[0], sval[1])
 
-          when Type::Int32Ty
+        when Type::Int32Ty
           context.rc = b.icmp_slt(sval[0], sval[1])
+          
+        else
+          raise "Unsupported type #{s1[0].inspect2}"
         end
         context
       }
@@ -1893,11 +1897,14 @@ class YarvTranslator<YarvVisitor
         end
 
         case s1[0].type.llvm
-          when Type::DoubleTy
+        when Type::DoubleTy
           context.rc = b.fcmp_ule(sval[0], sval[1])
 
-          when Type::Int32Ty
+        when Type::Int32Ty
           context.rc = b.icmp_sle(sval[0], sval[1])
+
+        else
+          raise "Unsupported type #{s1[0].inspect2}"
         end
         context
       }
@@ -1925,11 +1932,14 @@ class YarvTranslator<YarvVisitor
         end
 
         case s1[0].type.llvm
-          when Type::DoubleTy
+        when Type::DoubleTy
           context.rc = b.fcmp_ugt(sval[0], sval[1])
 
-          when Type::Int32Ty
+        when Type::Int32Ty
           context.rc = b.icmp_sgt(sval[0], sval[1])
+
+        else
+          raise "Unsupported type #{s1[0].inspect2}"
         end
         context
       }
@@ -1957,11 +1967,14 @@ class YarvTranslator<YarvVisitor
         end
 
         case s1[0].type.llvm
-          when Type::DoubleTy
+        when Type::DoubleTy
           context.rc = b.fcmp_uge(sval[0], sval[1])
 
-          when Type::Int32Ty
+        when Type::Int32Ty
           context.rc = b.icmp_sge(sval[0], sval[1])
+
+        else
+          raise "Unsupported type #{s1[0].inspect2}"
         end
         context
       }

@@ -288,7 +288,6 @@ module SendUtil
       end
     end
 
-#=begin    
     candidatenum = mtab.size
     if candidatenum > 1 then
       candidatenum = 0
@@ -298,7 +297,6 @@ module SendUtil
         end
       }
     end
-#=end
 
     if candidatenum == 0 then
       return [nil, nil]
@@ -369,7 +367,34 @@ module SendUtil
     context
   end
 
-  def gen_arg_eval(args, receiver, ins, local_vars, info, minfo)
+  def with_selfp(receiver, recklass, mname)
+    if receiver then
+      return receiver
+    end
+
+    if recklass then
+      if MethodDefinition::RubyMethod[mname][recklass] then
+        return true
+      end
+      obj = Object.const_get(recklass, true)
+      subclasses_of(obj).each do |sub|
+        if MethodDefinition::RubyMethod[mname][sub.name.to_sym] then
+          return true
+        end
+      end
+      sup = obj.superclass
+      while sup.is_a?(Class) do
+        if MethodDefinition::RubyMethod[mname][sup.name.to_sym] then
+          return true
+        end
+        sup = sup.superclass
+      end
+    end
+
+    nil
+  end
+
+  def gen_arg_eval(args, receiver, ins, local_vars, info, minfo, mname)
     blk = ins[3]
     
     para = []
@@ -392,7 +417,7 @@ module SendUtil
           context.rc = b.load(context.local_vars[2][:area])
           context}]
     end
-    if receiver then
+    if with_selfp(receiver, info[0], mname) then
       para.push [local_vars[2][:type], lambda {|b, context|
           context = v[1].call(b, context)
           if v[0].type then

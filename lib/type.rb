@@ -294,8 +294,11 @@ class RubyType
 
     when ::Range
       fst = RubyType.typeof(obj.first, nil, obj.first)
+      fst.type.constant = obj.first.llvm
       lst = RubyType.typeof(obj.last, nil, obj.last)
+      lst.type.constant = obj.last.llvm
       exc = RubyType.typeof(obj.exclude_end?, nil, obj.exclude_end?)
+      exc.type.constant = obj.exclude_end?.llvm
       RubyType.range(fst, lst, exc, lno, obj)
 
     when ::Class

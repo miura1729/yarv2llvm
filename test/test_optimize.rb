@@ -72,10 +72,11 @@ EOS
   end
 
   def test_each_inline
-    YARV2LLVM::compile(<<-EOS, {:disasm => true, :dump_yarv => false, :optimize=> false, :array_range_check => false})
+    YARV2LLVM::compile(<<-EOS, {:disasm => false, :dump_yarv => false, :optimize=> false, :array_range_check => false})
 def eachinline
   t = 0
   (1..10).each do |n|
+    p n
     t += n
   end
 
