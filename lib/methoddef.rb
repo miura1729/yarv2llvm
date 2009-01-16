@@ -264,7 +264,7 @@ module MethodDefinition
                     rc = context.rc
                     fstt = rec[0].type.first
                     if fstt.type.constant then
-                      fstt.type.constant
+                      rc = fstt.type.constant
                     else
                       rc
                     end
@@ -311,7 +311,7 @@ module MethodDefinition
            if @array_alloca_size == nil then
              @array_alloca_size = 1
            end
-           rettype = RubyType.from_sym(rec[0].klass, para[:info][3], nil)
+           rettype = RubyType.from_sym(rec[0].klass, para[:info][3], rec[0].klass)
 #=begin
            recklass = rec[0].klass
            minfo = MethodDefinition::RubyMethod[:initialize][recklass] 
@@ -326,13 +326,14 @@ module MethodDefinition
              minfo[:defined] = false
            end
 
-           args.each_with_index do |ele, i|
+           args.reverse.each_with_index do |ele, i|
              minfo[:argtype][i].add_same_type ele[0]
              ele[0].add_same_type minfo[:argtype][i]
            end
-           minfo[:argtype][-1].add_same_type rec[0]
+#           minfo[:argtype][-1].add_same_type rec[0]
            rec[0].add_same_type minfo[:argtype][-1]
 #=end
+
            @expstack.push [rettype, 
              lambda {|b, context|
                cargs = []

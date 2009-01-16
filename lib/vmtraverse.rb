@@ -284,7 +284,7 @@ class YarvTranslator<YarvVisitor
         #        argt.push local_vars[2][:type]
         # self
         if info[0] or code.header['type'] != :method then
-          argt.push RubyType.value
+          argt.push RubyType.value(info[3])
         end
         if code.header['type'] == :block or @have_yield then
           argt.push local_vars[0][:type]
@@ -367,7 +367,12 @@ class YarvTranslator<YarvVisitor
       end
 
       context.instance_vars_local.each do |key, cnt|
-        if cnt > 0 and OPTION[:cache_instance_variable] then
+        # Instance variable cache is illigal for undefined instance variable.
+        # Method "initialize" appear undefined instance variable, so in 
+        # "initailze" instance variable cache is off.
+        if cnt > 0 and 
+           OPTION[:cache_instance_variable] and 
+           info[1] != :initialize then
           ftype = Type.function(P_VALUE, [VALUE, VALUE])
           func = context.builder.get_or_insert_function_raw('llvm_ivar_ptr', ftype)
           ivid = ((key.object_id << 1) / RVALUE_SIZE)
@@ -396,7 +401,7 @@ class YarvTranslator<YarvVisitor
     # Self
     # argtype.push local_vars[2][:type]
     if info[0] or code.header['type'] != :method then
-      argtype.push RubyType.value
+      argtype.push RubyType.value(info[3])
     end
     
     if code.header['type'] == :block or @have_yield then
@@ -410,7 +415,7 @@ class YarvTranslator<YarvVisitor
     if @expstack.last then
       retexp = @expstack.pop
     else
-      retexp = [RubyType.value, lambda {|b, context|
+      retexp = [RubyType.value(info[3]), lambda {|b, context|
                   context.rc = 4.llvm
                   context
                 }]
@@ -436,7 +441,7 @@ class YarvTranslator<YarvVisitor
       inlineargs = iargs
       if OPTION[:func_signature] then
         # write function prototype
-        print "#{info[1]} :("
+        print "#{info[0]}##{info[1]} :("
         print argtype.map {|e|
           e.inspect2
         }.join(', ')
@@ -499,7 +504,7 @@ class YarvTranslator<YarvVisitor
           is_mkstub = false
         end
       else
-        retexp[0] = RubyType.value
+        retexp[0] = RubyType.value(info[3])
         argtype = []
         is_mkstub = false
       end
@@ -518,7 +523,7 @@ class YarvTranslator<YarvVisitor
       context.array_alloca_size = array_alloca_size
       context.loop_cnt_alloca_size = loop_cnt_alloca_size
       context.instance_vars_local = instance_vars_local
-      context.block_value[nil] = [RubyType.value, 4.llvm]
+      context.block_value[nil] = [RubyType.value(info[3]), 4.llvm]
       context.builder.select_func(b)
 
       if inlineargs then
@@ -602,8 +607,14 @@ class YarvTranslator<YarvVisitor
           if context.block_value[commer_label[0]] then
             rc = b.phi(context.block_value[commer_label[0]][0].type.llvm)
             commer_label.uniq.reverse.each do |lab|
-              rc.add_incoming(context.block_value[lab][1], 
-                              context.blocks[lab])
+              if context.block_value[lab] == nil then
+                p lab
+                p context.blocks[lab]
+                p info
+              else
+                rc.add_incoming(context.block_value[lab][1], 
+                                context.blocks[lab])
+              end
             end
           end
           
@@ -719,7 +730,12 @@ class YarvTranslator<YarvVisitor
       lambda {|b, context|
         if vptr = context.instance_vars_local[ivname] then
           val = b.load(vptr)
-          context.rc = type.type.from_value(val, b, context)
+          if type.type then
+            context.rc = type.type.from_value(val, b, context)
+          else
+            print "Unkonwn type of instance variable in #{info[3]}\n"
+            context.rc = val
+          end
         else
           ftype = Type.function(VALUE, [VALUE, VALUE])
           func = context.builder.external_function('rb_ivar_get', ftype)
@@ -1448,12 +1464,14 @@ class YarvTranslator<YarvVisitor
     @is_live = false
     @jump_from[lab] ||= []
     @jump_from[lab].push ln
+    if valexp then
+    end
     @rescode = lambda {|b, context|
       oldrescode.call(b, context)
       jblock = get_or_create_block(lab, b, context)
+      fmlab = context.curln
       if valexp then
         bval = [valexp[0], valexp[1].call(b, context).rc]
-        fmlab = context.curln
         context.block_value[fmlab] = bval
       end
       b.br(jblock)
@@ -1481,7 +1499,9 @@ class YarvTranslator<YarvVisitor
 #    @is_live = false
     iflab = nil
     @jump_from[lab] ||= []
-    @jump_from[lab].push (ln.to_s + "_1").to_sym
+    if valexp then
+      @jump_from[lab].push (ln.to_s + "_1").to_sym
+    end
     @rescode = lambda {|b, context|
       oldrescode.call(b, context)
       tblock = get_or_create_block(lab, b, context)
@@ -1521,7 +1541,9 @@ class YarvTranslator<YarvVisitor
 #    @is_live = false
     iflab = nil
     @jump_from[lab] ||= []
-    @jump_from[lab].push (ln.to_s + "_1").to_sym
+    if valexp then
+      @jump_from[lab].push (ln.to_s + "_1").to_sym
+    end
     @rescode = lambda {|b, context|
       oldrescode.call(b, context)
       eblock = context.builder.create_block

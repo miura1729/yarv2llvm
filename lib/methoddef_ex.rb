@@ -128,7 +128,7 @@ module MethodDefinition
             b.set_insert_point(lexit)
           else
             # Lock base commit
-            raise "Not implement yet"
+            raise "Not implement yet in #{info[3]}"
           end
           
           vtab.each do |name, area|

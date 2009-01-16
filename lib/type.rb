@@ -400,7 +400,8 @@ class PrimitiveType
       },
 
     VALUE =>
-    {:inspect => "VALUE (#{@type ? @type.conflicted_types.map{|t, v| t.klass} : ''})",
+#    {:inspect => "VALUE (#{@type ? @type.conflicted_types.map{|t, v| t.klass} : ''})",
+    {:inspect => "VALUE",
 
        :to_value => lambda {|val, b, context|
         val
@@ -434,7 +435,7 @@ class PrimitiveType
 
   def inspect2
     if rc = TYPE_HANDLER[@type] then
-      rc[:inspect]
+      "#{rc[:inspect]} (#{@klass})"
     else
       self.inspect
     end

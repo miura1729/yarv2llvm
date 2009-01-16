@@ -1,0 +1,4 @@
+2009-01-16    <miura>
+
+* もし、get_or_insert_functionでエラーが出たら@jump_fromの設定をチェックすること。valexpがnilのとき@jump_fromを設定しないようにしてあるが、これではまずいかもしれない。
+

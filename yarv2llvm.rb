@@ -65,7 +65,7 @@ if __FILE__ == $0 then
 
   opt.on('--[no-]func-signature', 
          'Display type inferenced inforamtion about function and local variable') do |f|
-    y2lopt[:disasm] = f
+    y2lopt[:func_signature] = f
   end
   
   opt.parse!(ARGV)

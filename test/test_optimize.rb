@@ -4,7 +4,7 @@
 require 'test/unit'
 require 'yarv2llvm'
 class CompileTests < Test::Unit::TestCase
-#=begin
+
   def test_int1
     YARV2LLVM::compile(<<-EOS, {:disasm => true, :dump_yarv => false, :optimize=> false})
 def int1
@@ -55,7 +55,6 @@ end
 EOS
    assert_equal(array2, 12)
   end
-#=end
 
   def test_array3
     YARV2LLVM::compile(<<-EOS, {:disasm => true, :dump_yarv => false, :optimize=> false, :array_range_check => false})
