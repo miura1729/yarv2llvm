@@ -499,9 +499,9 @@ module MethodDefinition
   RubyMethod =Hash.new {|hash, key| hash[key] = {}}
 
   # stub for RubyCMethod. arg/return type is always VALUE
-  RubyMethodStub = {}
+  RubyMethodStub = Hash.new {|hash, key| hash[key] = {}}
 
-  RubyMethodCallbackStub = {}
+  RubyMethodCallbackStub = Hash.new {|hash, key| hash[key] = {}}
 end
 end
   

@@ -73,7 +73,7 @@ class LLVMBuilder
     x = rett.type.to_value(ret, b, context)
     b.return(x)
 
-    MethodDefinition::RubyMethodCallbackStub[name] = {
+    MethodDefinition::RubyMethodCallbackStub[name][recklass] = {
       :sname => sname,
       :stub => stubfunc,
       :argt => argt,
@@ -121,7 +121,7 @@ class LLVMBuilder
     x = rett.type.to_value(ret, b, context)
     b.return(x)
 
-    MethodDefinition::RubyMethodStub[name] = {
+    MethodDefinition::RubyMethodStub[name][recklass] = {
       :sname => sname,
       :stub => @stubfunc,
       :argt => argt,
@@ -204,10 +204,12 @@ class LLVMBuilder
     File.popen("/usr/local/bin/opt -O3 -f #{bitout.path}") {|fp|
       @module = LLVM::Module.read_bitcode(fp.read)
     }
-    MethodDefinition::RubyMethodStub.each do |nm, val|
-      if nm then
-        nn = val[:sname]
-        val[:stub] = @module.get_or_insert_function(nn, val[:type])
+    MethodDefinition::RubyMethodStub.each do |nm, klasstab|
+      klasstab.each do |rec, val|
+        if nm then
+          nn = val[:sname]
+          val[:stub] = @module.get_or_insert_function(nn, val[:type])
+        end
       end
     end
   end

@@ -324,7 +324,13 @@ module SendUtil
     arg.each do |pe|
       args.push pe[1].call(b, context).rc
     end
-    context.rc = b.call(func, *args)
+    begin
+      context.rc = b.call(func, *args)
+    rescue
+      p func
+      p args
+      raise
+    end
     context
   end
 

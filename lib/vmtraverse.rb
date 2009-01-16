@@ -215,14 +215,15 @@ class YarvTranslator<YarvVisitor
     if OPTION[:optimize] then
       @builder.optimize
     end
+
+    deffunc = gen_define_ruby(@builder)
+
     if OPTION[:disasm] then
       @builder.disassemble
     end
     if OPTION[:write_bc] then
       @builder.write_bc(OPTION[:write_bc])
     end
-
-    deffunc = gen_define_ruby(@builder)
 
     LLVM::ExecutionEngine.run_function(deffunc)
     LLVM::ExecutionEngine.run_function(initfunc)
@@ -607,11 +608,7 @@ class YarvTranslator<YarvVisitor
           if context.block_value[commer_label[0]] then
             rc = b.phi(context.block_value[commer_label[0]][0].type.llvm)
             commer_label.uniq.reverse.each do |lab|
-              if context.block_value[lab] == nil then
-                p lab
-                p context.blocks[lab]
-                p info
-              else
+              if context.block_value[lab] then
                 rc.add_incoming(context.block_value[lab][1], 
                                 context.blocks[lab])
               end
@@ -1377,6 +1374,16 @@ class YarvTranslator<YarvVisitor
       lambda {|b, context|
         recklass = receiver ? receiver[0].klass : nil
         minfo, func = gen_method_select(recklass, mname)
+
+        nargt = minfo[:argtype]
+        nargt.each_with_index do |ele, n|
+          para[n][0].add_same_type ele
+          ele.add_same_type ele
+        end
+        rett.add_same_type minfo[:rettype]
+        minfo[:rettype].add_same_type rett
+        RubyType.resolve
+
         if func then
           gen_call(func, para, b, context)
         else
@@ -2276,17 +2283,20 @@ class YarvTranslator<YarvVisitor
     funcm = builder.external_function('rb_define_method', ftype)
     ftype = Type.function(Type::VoidTy, [P_CHAR, VALUE, Type::Int32Ty])
     funcg = builder.external_function('rb_define_global_function', ftype)
-    MethodDefinition::RubyMethodStub.each do |name, m|
-      unless m[:outputp]
-        nameptr = name.llvm(b)
-        stubval = b.ptr_to_int(m[:stub], VALUE)
-        if rec = m[:receiver] then
-          recptr = Object.const_get(rec)
-          b.call(funcm, recptr.llvm, nameptr, stubval, (m[:argt].size - 1).llvm)
-        else
-          b.call(funcg, nameptr, stubval, (m[:argt].size - 1).llvm)
+    MethodDefinition::RubyMethodStub.each do |name, klasstab|
+      klasstab.each do |rec, m|
+        unless m[:outputp]
+          nameptr = name.llvm(b)
+          stubval = b.ptr_to_int(m[:stub], VALUE)
+          if rec then
+            recptr = Object.const_get(rec)
+            b.call(funcm, recptr.llvm, nameptr, stubval, 
+                   (m[:argt].size - 1).llvm)
+          else
+            b.call(funcg, nameptr, stubval, (m[:argt].size - 1).llvm)
+          end
+          m[:outputp] = true
         end
-        m[:outputp] = true
       end
     end
 #=end

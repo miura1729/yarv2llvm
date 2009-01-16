@@ -14,7 +14,6 @@ class Elf
     @name = no
     Thread.new {
       while true
-        gates = []
         gates = group.join
         gates[0].pass
         work1
@@ -119,14 +118,6 @@ class Group
 end
 
 class Santa
-  def choose(choices)
-    if group = choices[0].await then
-      return run("deliver toys", group)
-    elsif group = choices[1].await then
-      return run("meet in my study", group)
-    end
-  end
-
   def initialize(group1, group2)
     while true
       puts "----------"
@@ -139,21 +130,31 @@ class Santa
     group.gates[0].operate
     group.gates[1].operate
   end
+
+  def choose(choices)
+    if (group = choices[0].await) != nil then
+      return run("deliver toys", group)
+    elsif (group = choices[1].await) != nil then
+      return run("meet in my study", group)
+    end
+  end
 end
 
-def main
+p "start"
 elfg = Group.new(3)
+p "elfg ok"
 (1..10).each do |n|
   Elf.new(n, elfg)
 end
-
+p "elf ok"
+=begin
+  
 reing = Group.new(9)
 (1..9).each do |n|
   Reindeer.new(n, reing)
 end
-
+p "reing ok"
+  
 Santa.new(elfg, reing)
 
-end
-
-main
+=end
