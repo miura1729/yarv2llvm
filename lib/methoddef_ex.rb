@@ -60,7 +60,7 @@ module MethodDefinition
           trcontext[:original_instance_vars_local] = orgvtab
           trcontext[:original_instance_vars_init] = orgvtabinit
 
-          vtab = context.instance_vars_local
+          vtab = context.instance_vars_local_area
           vtab2 = vtab.clone
           vtab.each do |name, area|
             vtab[name] = b.alloca(VALUE, 1)
@@ -101,7 +101,7 @@ module MethodDefinition
             raise "commit must use with begin_transaction"
           end
 
-          vtab = context.instance_vars_local
+          vtab = context.instance_vars_local_area
           orgvtab = trcontext[:original_instance_vars_local]
           vtabinit = trcontext[:original_instance_vars_init]
           vtabarea = trcontext[:original_instance_vars_area]
@@ -150,7 +150,7 @@ module MethodDefinition
           if trcontext == nil then
             raise "abort must use with begin_transaction"
           end
-          vtab = context.instance_vars_local
+          vtab = context.instance_vars_local_area
           orgvtab = trcontext[:original_instance_vars_local]
         
           vtab.each do |name, area|
@@ -172,7 +172,7 @@ module MethodDefinition
           if trcontext == nil then
             raise "abort must use with begin_transaction"
           end
-          vtab = context.instance_vars_local
+          vtab = context.instance_vars_local_area
           orgvtab = trcontext[:original_instance_vars_local]
         
           vtab.each do |name, area|

@@ -20,6 +20,7 @@ class Context
     @loop_cnt_alloca_size = nil
     @instance_var_tab = nil
     @instance_vars_local = nil
+    @instance_vars_local_area = nil
     @inline_args = nil
 
     @user_defined = {}
@@ -38,6 +39,7 @@ class Context
   attr_accessor :loop_cnt_alloca_size
   attr_accessor :instance_var_tab
   attr_accessor :instance_vars_local
+  attr_accessor :instance_vars_local_area
   attr_accessor :inline_args
   attr :builder
   attr :frame_struct
@@ -379,9 +381,9 @@ class YarvTranslator<YarvVisitor
           ivid = ((key.object_id << 1) / RVALUE_SIZE)
           slf = b.load(context.local_vars[2][:area])
           vptr = b.call(func, slf, ivid.llvm)
-          context.instance_vars_local[key] = vptr
+          context.instance_vars_local_area[key] = vptr
         else
-          context.instance_vars_local[key] = nil
+          context.instance_vars_local_area[key] = nil
         end
       end
 
@@ -524,6 +526,7 @@ class YarvTranslator<YarvVisitor
       context.array_alloca_size = array_alloca_size
       context.loop_cnt_alloca_size = loop_cnt_alloca_size
       context.instance_vars_local = instance_vars_local
+      context.instance_vars_local_area = {}
       context.block_value[nil] = [RubyType.value(info[3]), 4.llvm]
       context.builder.select_func(b)
 
@@ -725,7 +728,7 @@ class YarvTranslator<YarvVisitor
     end
     @expstack.push [type,
       lambda {|b, context|
-        if vptr = context.instance_vars_local[ivname] then
+        if vptr = context.instance_vars_local_area[ivname] then
           val = b.load(vptr)
           if type.type then
             context.rc = type.type.from_value(val, b, context)
@@ -774,7 +777,7 @@ class YarvTranslator<YarvVisitor
       dsttype.type.content = srcval
 
       context.rc = srcval
-      if vptr = context.instance_vars_local[ivname] then
+      if vptr = context.instance_vars_local_area[ivname] then
         b.store(srcval2, vptr)
 
       else
@@ -1273,7 +1276,7 @@ class YarvTranslator<YarvVisitor
     RubyType.resolve
     recklass = receiver ? receiver[0].klass : nil
 
-    minfo, func = gen_method_select(recklass, mname)
+    minfo, func = gen_method_select(recklass, info[0], mname)
     if minfo then
       pppp "RubyMethod called #{mname.inspect}"
 
@@ -1281,7 +1284,7 @@ class YarvTranslator<YarvVisitor
       @expstack.push [minfo[:rettype],
         lambda {|b, context|
           recklass = receiver ? receiver[0].klass : nil
-          minfo, func = gen_method_select(recklass, mname)
+          minfo, func = gen_method_select(recklass, info[0], mname)
           if func then
             gen_call(func, para ,b, context)
           else
@@ -1339,18 +1342,13 @@ class YarvTranslator<YarvVisitor
       end
     end
 
-    if MethodDefinition::RubyMethod[mname][recklass] == nil and
-       MethodDefinition::RubyMethod[mname][nil] == nil then
+#    if MethodDefinition::RubyMethod[mname][recklass] == nil then
+#        MethodDefinition::RubyMethod[mname][nil] == nil then
       if funcinfo = MethodDefinition::SystemMethod[mname] then
         return
       end
 
-      (MethodDefinition::InlineMethod[recklass] and
-        funcinfo = MethodDefinition::InlineMethod[recklass][mname]) or
-      (MethodDefinition::InlineMethod[info[0]] and
-        funcinfo = MethodDefinition::InlineMethod[info[0]][mname]) or
-      (MethodDefinition::InlineMethod[nil] and
-        funcinfo = MethodDefinition::InlineMethod[nil][mname])
+      funcinfo = get_inline_function(recklass, info[0], mname)
       if funcinfo and 
         para = {:info => info, 
                 :ins => ins,
@@ -1361,7 +1359,7 @@ class YarvTranslator<YarvVisitor
         instance_exec(para, &funcinfo[:inline_proc])
         return
       end
-    end
+#    end
 
     # Undefined method, it may be forward call.
     pppp "RubyMethod forward called #{mname.inspect}"
@@ -1373,7 +1371,11 @@ class YarvTranslator<YarvVisitor
     @expstack.push [rett,
       lambda {|b, context|
         recklass = receiver ? receiver[0].klass : nil
-        minfo, func = gen_method_select(recklass, mname)
+        minfo, func = gen_method_select(recklass, info[0], mname)
+        if minfo == nil then
+          # Retry for generate dynamic dispatch.
+          minfo, func = gen_method_select(recklass, nil, mname)
+        end
 
         nargt = minfo[:argtype]
         nargt.each_with_index do |ele, n|
@@ -1387,6 +1389,7 @@ class YarvTranslator<YarvVisitor
         if func then
           gen_call(func, para, b, context)
         else
+          p recklass
           raise "Undefined method \"#{mname}\""
         end
       }]

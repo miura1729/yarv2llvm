@@ -257,7 +257,7 @@ module SendUtil
   include RubyHelpers
 
   MaxSmallPolymotphicNum = 4
-  def gen_method_select(recklass, mname)
+  def gen_method_select(recklass, lexklass, mname)
     mtab = MethodDefinition::RubyMethod[mname].clone
 
     mtab.delete_if {|klass, info| 
@@ -265,18 +265,30 @@ module SendUtil
     }
 
     minfo = mtab[recklass]
-#    if minfo.is_a?(Hash) then
     if minfo.is_a?(Hash) and minfo[:func] then
       # recklass == nil ->  functional method
       return [minfo, minfo[:func]]
     end
 
-    # recklass == nil ->  need dynamic dispatch
     # inheritance search
     if recklass then
       sup = Object.const_get(recklass, true)
       while sup do
-        minfo = mtab[sup.name]
+        minfo = mtab[sup.name.to_sym]
+        if minfo.is_a?(Hash) then
+          return [minfo, minfo[:func]]
+        end
+        if sup.is_a?(Class) then
+          sup = sup.superclass
+        else
+          break
+        end
+      end
+    elsif lexklass then
+      # Search lexcal class
+      sup = Object.const_get(lexklass, true)
+      while sup do
+        minfo = mtab[sup.name.to_sym]
         if minfo.is_a?(Hash) then
           return [minfo, minfo[:func]]
         end
@@ -297,7 +309,13 @@ module SendUtil
         end
       }
     end
-
+#=begin    
+    funcinfo = get_inline_function(recklass, lexklass, mname)
+    if funcinfo then
+     return [nil, nil]
+    end
+#=end
+ 
     if candidatenum == 0 then
       return [nil, nil]
 
@@ -317,6 +335,20 @@ module SendUtil
       # TODO : Use cukko-hasing and inline hash function generation
       raise('Not implimented polymorphic methed call yet')
     end
+  end
+
+  def get_inline_function(recklass, lexklass, mname)
+    funcinfo = nil
+    if recklass and MethodDefinition::InlineMethod[recklass] then
+      funcinfo = MethodDefinition::InlineMethod[recklass][mname]
+    elsif MethodDefinition::InlineMethod[lexklass] then
+      funcinfo = MethodDefinition::InlineMethod[lexklass][mname]
+    end
+    if funcinfo == nil then
+      funcinfo = MethodDefinition::InlineMethod[nil][mname]
+    end
+    
+    funcinfo
   end
 
   def gen_call(func, arg, b, context)

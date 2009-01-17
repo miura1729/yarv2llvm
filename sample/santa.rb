@@ -7,19 +7,25 @@ def random_delay
   n.times do 
     Thread.pass
   end
+  nil
 end
 
 class Elf
   def initialize(no, group)
     @name = no
+    @group = group
+  end
+
+  def run
     Thread.new {
       while true
-        gates = group.join
+        gates = @group.join
         gates[0].pass
         work1
         gates[1].pass
       end
     }
+    p "foo"
   end
 
   def work1
@@ -32,9 +38,13 @@ end
 class Reindeer
   def initialize(no, group)
     @name = no
+    @group = group
+  end
+  
+  def runre
     Thread.new {
       while true
-        gates = group.join
+        gates = @group.join
         gates[0].pass
         work
         gates[1].pass
@@ -61,6 +71,7 @@ class Gate
     begin_transaction
       @n_left = @n_left - 1
       if @n_left < 0 then
+        Thread.pass
         do_retry
       end
     commit
@@ -74,6 +85,7 @@ class Gate
     init
     begin_transaction
       if @n_left != 0 then
+        Thread.pass
         do_retry
       end
     commit
@@ -92,6 +104,7 @@ class Group
   def new_gates(n)
     @g1 = Gate.new(n)
     @g2 = Gate.new(n)
+    @n_left = n
     [@g1, @g2]
   end
 
@@ -103,6 +116,7 @@ class Group
     begin_transaction
       @n_left = @n_left - 1
       if @n_left < 0 then
+        Thread.pass
         do_retry
       end
     commit
@@ -144,17 +158,18 @@ p "start"
 elfg = Group.new(3)
 p "elfg ok"
 (1..10).each do |n|
-  Elf.new(n, elfg)
+  e = Elf.new(n, elfg)
+  p e
+  e.run
 end
 p "elf ok"
-=begin
   
 reing = Group.new(9)
 (1..9).each do |n|
-  Reindeer.new(n, reing)
+  r = Reindeer.new(n, reing)
+  r.runre
 end
 p "reing ok"
   
 Santa.new(elfg, reing)
 
-=end
