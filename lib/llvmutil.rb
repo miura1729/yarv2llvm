@@ -246,7 +246,8 @@ module LLVMUtil
       b.store(nclcnt, lcntp)
       b.br(bcond)
       b.set_insert_point(bexit)
-      context.rc = recval.call
+      context = recval.call(b, context)
+#      context.rc = 4.llvm
       context
     }
   end

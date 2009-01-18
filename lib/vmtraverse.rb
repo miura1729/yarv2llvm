@@ -1097,7 +1097,7 @@ class YarvTranslator<YarvVisitor
 
          when VALUE
            val = fst[1].call(b, context).rc
-           valint = b.lshr(val, 1.llvm)
+           valint = b.ashr(val, 1.llvm)
            rtype.type.first.type.constant = valint
 
          else
@@ -1112,7 +1112,7 @@ class YarvTranslator<YarvVisitor
 
          when VALUE
            val = lst[1].call(b, context).rc
-           valint = b.lshr(val, 1.llvm)
+           valint = b.ashr(val, 1.llvm)
            valint = b.add(valint, 1.llvm) if flg == 0
            rtype.type.last.type.constant = valint
 
@@ -1394,7 +1394,11 @@ class YarvTranslator<YarvVisitor
         end
       }]
 
-    MethodDefinition::RubyMethod[mname][recklass]= {
+    dst = MethodDefinition::RubyMethod[mname]
+    klass = [recklass, info[0], nil].find {|k|
+      dst[k]
+    }
+    dst[klass] = {
       :defined => false,
       :argtype => para.map {|ele| ele[0]},
       :rettype => rett
@@ -1712,8 +1716,8 @@ class YarvTranslator<YarvVisitor
           context.rc = b.mul(sval[0], sval[1])
           
         when VALUE
-          s1int = b.lshr(sval[0], 1.llvm)
-          s2int = b.lshr(sval[1], 1.llvm)
+          s1int = b.ashr(sval[0], 1.llvm)
+          s2int = b.ashr(sval[1], 1.llvm)
           mulint = b.mul(sval[0], sval[1])
           x = b.shl(mulint, 1.llvm)
           context.rc = b.or(FIXNUM_FLAG, x)

@@ -7,7 +7,6 @@ def random_delay
   n.times do 
     Thread.pass
   end
-  nil
 end
 
 class Elf
@@ -21,17 +20,17 @@ class Elf
       while true
         gates = @group.join
         gates[0].pass
-        work1
+        p gates[0]
+        work
         gates[1].pass
       end
     }
-    p "foo"
+    Thread.pass
   end
 
-  def work1
+  def work
     puts sprintf("Meeting %d\n", @name)
     random_delay
-    nil
   end
 end
 
@@ -41,7 +40,7 @@ class Reindeer
     @group = group
   end
   
-  def runre
+  def run
     Thread.new {
       while true
         gates = @group.join
@@ -50,12 +49,12 @@ class Reindeer
         gates[1].pass
       end
     }
+    Thread.pass
   end
 
   def work
     puts sprintf("Delivering toy %d\n", @name)
     random_delay
-    nil
   end
 end
 
@@ -132,7 +131,7 @@ class Group
 end
 
 class Santa
-  def initialize(group1, group2)
+  def exec(group1, group2)
     while true
       puts "----------"
       choose([group1, group2])
@@ -141,7 +140,9 @@ class Santa
 
   def run(task, group)
     puts sprintf("Ho Ho Ho let's task %s ", task)
+    p "foo"
     group.gates[0].operate
+    p "foo"
     group.gates[1].operate
   end
 
@@ -159,17 +160,17 @@ elfg = Group.new(3)
 p "elfg ok"
 (1..10).each do |n|
   e = Elf.new(n, elfg)
-  p e
   e.run
 end
 p "elf ok"
   
 reing = Group.new(9)
+p "reig ok"
 (1..9).each do |n|
   r = Reindeer.new(n, reing)
-  r.runre
+  r.run
 end
 p "reing ok"
   
-Santa.new(elfg, reing)
+Santa.new.exec(elfg, reing)
 

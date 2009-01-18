@@ -349,7 +349,7 @@ class PrimitiveType
        },
 
        :from_value => lambda {|val, b, context|
-         x = b.lshr(val, 1.llvm)
+         x = b.ashr(val, 1.llvm)
        },
       },
 

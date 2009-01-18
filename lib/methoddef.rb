@@ -210,9 +210,9 @@ module MethodDefinition
         lambda {|para|
           rec = para[:receiver]
           rc = nil
-          rcval = lambda { rc }
           loop_cnt_current = @loop_cnt_current
           loopproc = gen_loop_proc(para)
+          rcval = lambda {|b, context| rec[1].call(b, context) }
           @expstack.push [rec[0],
              lambda {|b, context|
                lst = lambda {|b, context| 0.llvm}
@@ -224,7 +224,7 @@ module MethodDefinition
                  lcntp = context.loop_cnt_alloca_area[loop_cnt_current]
                  rc = b.load(lcntp)
                }
-               loopproc.call(b, context, lst, led, body, rcval)
+               context = loopproc.call(b, context, lst, led, body, rcval)
              }]
       }
     },
@@ -234,9 +234,9 @@ module MethodDefinition
         lambda {|para|
           rec = para[:receiver]
           rc = nil
-          rcval = lambda { rc }
           loop_cnt_current = @loop_cnt_current
           loopproc = gen_loop_proc(para)
+          rcval = lambda {|b, context| rec[1].call(b, context) }
           @expstack.push [rec[0],
              lambda {|b, context|
                 case (rec[0].klass)
@@ -256,7 +256,8 @@ module MethodDefinition
                     arrelet = rec[0].type.element_type.type
                     arrelet.from_value(av, b, context)
                   }
-                  loopproc.call(b, context, lst, led, body, rcval)
+                  context = loopproc.call(b, context, lst, led, body, rcval)
+                  context
 
                 when :Range
                   lst = lambda {|b, context|
@@ -264,7 +265,7 @@ module MethodDefinition
                     rc = context.rc
                     fstt = rec[0].type.first
                     if fstt.type.constant then
-                      rc = fstt.type.constant
+                      fstt.type.constant
                     else
                       rc
                     end
@@ -272,9 +273,9 @@ module MethodDefinition
                   led = lambda {|b, context|
                     lstt = rec[0].type.last
                     if lstt.type.constant then
-                      rc = lstt.type.constant
+                      lstt.type.constant
                     else
-                      rc = lstt.name.llvm
+                      lstt.name.llvm
                     end
                   }
                   body = lambda {|b, context|
@@ -282,7 +283,8 @@ module MethodDefinition
                     b.load(lcntp)
                   }
 
-                  loopproc.call(b, context, lst, led, body, rcval)
+                  context = loopproc.call(b, context, lst, led, body, rcval)
+                  context
                   
                 else
                   raise "Do not supported #{rec[0].inspect}"
