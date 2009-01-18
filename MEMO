@@ -2,3 +2,5 @@
 
 * もし、get_or_insert_functionでエラーが出たら@jump_fromの設定をチェックすること。valexpがnilのとき@jump_fromを設定しないようにしてあるが、これではまずいかもしれない。
 
+* optimizeのみが出来なくなったらPHI関連を疑うこと
+

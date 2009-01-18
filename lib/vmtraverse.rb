@@ -561,10 +561,10 @@ class YarvTranslator<YarvVisitor
     end
 
     @is_live = nil
+    @jump_from[ln] ||= []
+    @jump_from[ln].push @prev_label
     if live and @expstack.size > 0 then
       valexp = @expstack.pop
-      @jump_from[ln] ||= []
-      @jump_from[ln].push @prev_label
     end
 
     @rescode = lambda {|b, context|
@@ -609,12 +609,24 @@ class YarvTranslator<YarvVisitor
           end
           
           if context.block_value[commer_label[0]] then
+            commer_label.uniq.reverse.each do |lab|
+              bval = context.block_value[lab]
+              topele = context.block_value[commer_label[0]]
+              if bval then
+                bval[0].add_same_type topele[0]
+                topele[0].add_same_type bval[0]
+              else
+                newtype = RubyType.value(info[3], "block value for #{lab}")
+                context.block_value[lab][0] = newtype
+                context.block_value[lab][1] = 4.llvm
+                newtype.add_same_type topele[0]
+              end
+            end
+            RubyType.resolve
             rc = b.phi(context.block_value[commer_label[0]][0].type.llvm)
             commer_label.uniq.reverse.each do |lab|
-              if context.block_value[lab] then
-                rc.add_incoming(context.block_value[lab][1], 
-                                context.blocks[lab])
-              end
+              rc.add_incoming(context.block_value[lab][1], 
+                              context.blocks[lab])
             end
           end
           
@@ -1478,8 +1490,6 @@ class YarvTranslator<YarvVisitor
     @is_live = false
     @jump_from[lab] ||= []
     @jump_from[lab].push ln
-    if valexp then
-    end
     @rescode = lambda {|b, context|
       oldrescode.call(b, context)
       jblock = get_or_create_block(lab, b, context)
@@ -1513,9 +1523,7 @@ class YarvTranslator<YarvVisitor
 #    @is_live = false
     iflab = nil
     @jump_from[lab] ||= []
-    if valexp then
-      @jump_from[lab].push (ln.to_s + "_1").to_sym
-    end
+    @jump_from[lab].push (ln.to_s + "_1").to_sym
     @rescode = lambda {|b, context|
       oldrescode.call(b, context)
       tblock = get_or_create_block(lab, b, context)
@@ -1555,9 +1563,7 @@ class YarvTranslator<YarvVisitor
 #    @is_live = false
     iflab = nil
     @jump_from[lab] ||= []
-    if valexp then
-      @jump_from[lab].push (ln.to_s + "_1").to_sym
-    end
+    @jump_from[lab].push (ln.to_s + "_1").to_sym
     @rescode = lambda {|b, context|
       oldrescode.call(b, context)
       eblock = context.builder.create_block
@@ -1835,7 +1841,9 @@ class YarvTranslator<YarvVisitor
           context.rc = b.icmp_eq(sval[0], sval[1])
 
         when VALUE
-          context.rc = b.icmp_eq(sval[0], sval[1])
+          vv1 = s1[0].type.to_value(sval[1], b, context)
+          vv2 = s2[0].type.to_value(sval[0], b, context)
+          context.rc = b.icmp_eq(vv1, vv2)
         end
         context
       }
@@ -1870,7 +1878,9 @@ class YarvTranslator<YarvVisitor
           context.rc = b.icmp_ne(sval[0], sval[1])
 
         when VALUE
-          context.rc = b.icmp_ne(sval[0], sval[1])
+          vv1 = s1[0].type.to_value(sval[1], b, context)
+          vv2 = s2[0].type.to_value(sval[0], b, context)
+          context.rc = b.icmp_ne(vv1, vv2)
         end
         context
       }

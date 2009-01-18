@@ -3,7 +3,7 @@
 
 def random_delay
   seed = YARV2LLVM::get_interval_cycle
-  n = seed % 103
+  n = seed % 5
   n.times do 
     Thread.pass
   end
@@ -20,9 +20,9 @@ class Elf
       while true
         gates = @group.join
         gates[0].pass
-        p gates[0]
         work
         gates[1].pass
+        random_delay
       end
     }
     Thread.pass
@@ -30,7 +30,6 @@ class Elf
 
   def work
     puts sprintf("Meeting %d\n", @name)
-    random_delay
   end
 end
 
@@ -47,6 +46,8 @@ class Reindeer
         gates[0].pass
         work
         gates[1].pass
+        Thread.pass
+        random_delay
       end
     }
     Thread.pass
@@ -54,7 +55,6 @@ class Reindeer
 
   def work
     puts sprintf("Delivering toy %d\n", @name)
-    random_delay
   end
 end
 
@@ -97,14 +97,8 @@ class Group
   def initialize(n)
     @g1 = Gate.new(n)
     @g2 = Gate.new(n)
+    @n = n
     @n_left = n
-  end
-
-  def new_gates(n)
-    @g1 = Gate.new(n)
-    @g2 = Gate.new(n)
-    @n_left = n
-    [@g1, @g2]
   end
 
   def gates
@@ -123,10 +117,12 @@ class Group
   end
 
   def await
-    if @n_left != 0 then
+    if @n_left > 0 then
       return nil
+    else
+      @n_left = @n
+      return gates
     end
-    new_gates(@n_left)
   end
 end
 
@@ -138,19 +134,19 @@ class Santa
     end
   end
 
-  def run(task, group)
+  def run(task, gates)
     puts sprintf("Ho Ho Ho let's task %s ", task)
-    p "foo"
-    group.gates[0].operate
-    p "foo"
-    group.gates[1].operate
+    gates[0].operate
+    gates[1].operate
   end
 
   def choose(choices)
-    if (group = choices[0].await) != nil then
-      return run("deliver toys", group)
-    elsif (group = choices[1].await) != nil then
-      return run("meet in my study", group)
+    if (gates = choices[0].await) != nil then
+      run("deliver toys", gates)
+      return nil
+    elsif (gates = choices[1].await) != nil then
+      run("meet in my study", gates)
+      return nil
     end
   end
 end
@@ -158,7 +154,7 @@ end
 p "start"
 elfg = Group.new(3)
 p "elfg ok"
-(1..10).each do |n|
+(1..11).each do |n|
   e = Elf.new(n, elfg)
   e.run
 end
@@ -166,11 +162,11 @@ p "elf ok"
   
 reing = Group.new(9)
 p "reig ok"
-(1..9).each do |n|
+(1..10).each do |n|
   r = Reindeer.new(n, reing)
   r.run
 end
 p "reing ok"
   
-Santa.new.exec(elfg, reing)
+Santa.new.exec(reing, elfg)
 

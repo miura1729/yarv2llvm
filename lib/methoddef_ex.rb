@@ -172,12 +172,6 @@ module MethodDefinition
           if trcontext == nil then
             raise "abort must use with begin_transaction"
           end
-          vtab = context.instance_vars_local_area
-          orgvtab = trcontext[:original_instance_vars_local]
-        
-          vtab.each do |name, area|
-            vtab[name] = orgvtab[name]
-          end
 
           lexit = context.builder.create_block
           lretry = trcontext[:body]
