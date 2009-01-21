@@ -119,10 +119,10 @@ class Group
   def await
     if @n_left > 0 then
       return nil
-    else
-      @n_left = @n
-      return gates
     end
+
+    @n_left = @n
+    return gates
   end
 end
 

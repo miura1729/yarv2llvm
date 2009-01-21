@@ -22,6 +22,7 @@ class Context
     @instance_vars_local = nil
     @instance_vars_local_area = nil
     @inline_args = nil
+    @is_live = true
 
     @user_defined = {}
   end
@@ -41,6 +42,7 @@ class Context
   attr_accessor :instance_vars_local
   attr_accessor :instance_vars_local_area
   attr_accessor :inline_args
+  attr_accessor :is_live
   attr :builder
   attr :frame_struct
   attr :user_defined
@@ -561,6 +563,7 @@ class YarvTranslator<YarvVisitor
     @is_live = nil
     @jump_from[ln] ||= []
     @jump_from[ln].push @prev_label
+    valexp = nil
     if live and @expstack.size > 0 then
       valexp = @expstack.pop
     end
@@ -568,13 +571,16 @@ class YarvTranslator<YarvVisitor
     @rescode = lambda {|b, context|
       context = oldrescode.call(b, context)
       blk = get_or_create_block(ln, b, context)
-      if live then
+
+      if live and context.is_live then
         if valexp then
           bval = [valexp[0], valexp[1].call(b, context).rc]
           context.block_value[context.curln] = bval
         end
         b.br(blk)
       end
+      context.is_live = true
+
       context.curln = ln
       RubyType.clear_content
       b.set_insert_point(blk)
@@ -1500,6 +1506,7 @@ class YarvTranslator<YarvVisitor
         context = retexp[1].call(b, context)
       else
         context = retexp[1].call(b, context)
+        context.is_live = false
         rc = context.rc
         if rc then
           b.return(rc)
