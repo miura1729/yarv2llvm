@@ -220,11 +220,11 @@ class YarvTranslator<YarvVisitor
 
     deffunc = gen_define_ruby(@builder)
 
-    if OPTION[:disasm] then
-      @builder.disassemble
-    end
     if OPTION[:write_bc] then
       @builder.write_bc(OPTION[:write_bc])
+    end
+    if OPTION[:disasm] then
+      @builder.disassemble
     end
 
     LLVM::ExecutionEngine.run_function(deffunc)
@@ -415,6 +415,7 @@ class YarvTranslator<YarvVisitor
       argtype.push local_vars[1][:type]
     end
 
+=begin
     if @expstack.last then
       retexp = @expstack.pop
     else
@@ -424,18 +425,28 @@ class YarvTranslator<YarvVisitor
                 }]
     end
 
-    rescode = @rescode
     if info[1] then
       rett2 = MethodDefinition::RubyMethod[info[1]][info[0]][:rettype]
       rett2.add_same_value retexp[0]
       retexp[0].add_same_type rett2
       RubyType.resolve
     end
-      
+=end
+
+    rescode = @rescode
     have_yield = @have_yield
     array_alloca_size = @array_alloca_size
     loop_cnt_alloca_size = @loop_cnt_alloca_size
     instance_vars_local = @instance_vars_local
+
+    rett2 = nil
+    if info[1] then
+      rett2 = MethodDefinition::RubyMethod[info[1]][info[0]][:rettype]
+    end
+
+    if rett2 == nil # or rett2.type == nil then
+      rett2 = RubyType.value(info[3], "nil")
+    end
 
     b = nil
     inlineargs = nil
@@ -448,7 +459,7 @@ class YarvTranslator<YarvVisitor
         print argtype.map {|e|
           e.inspect2
         }.join(', ')
-        print ") -> #{retexp[0].inspect2}\n"
+        print ") -> #{rett2.inspect2}\n"
         print "-- local variable --\n"
         print local_vars.map {|e|
           if e then
@@ -495,11 +506,6 @@ class YarvTranslator<YarvVisitor
 
         end
 
-        if retexp[0].type == nil then
-#          raise "Return type is ambious #{info[1]} in #{info[3]}"
-          retexp[0].type = PrimitiveType.new(VALUE, nil)
-        end
-
         is_mkstub = true
         if code.header['type'] == :block or 
            have_yield or 
@@ -507,7 +513,6 @@ class YarvTranslator<YarvVisitor
           is_mkstub = false
         end
       else
-        retexp[0] = RubyType.value(info[3])
         argtype = []
         is_mkstub = false
       end
@@ -516,7 +521,7 @@ class YarvTranslator<YarvVisitor
         b = inlineargs[0]
       else
         b = @builder.define_function(info[0], info[1].to_s, 
-                                     retexp[0], argtype, is_mkstub)
+                                     rett2, argtype, is_mkstub)
       end
     }
 
@@ -532,21 +537,14 @@ class YarvTranslator<YarvVisitor
 
       if inlineargs then
         context.inline_args = inlineargs[1]
-        context = rescode.call(b, context)
-        rc = retexp[1].call(b, context).rc
       else
         context.inline_args = nil
-        context = rescode.call(b, context)
-        rc = retexp[1].call(b, context).rc
-        if rc then
-          b.return(rc)
-        else
-          b.return(4.llvm)  # nil
-        end
       end
-
-      pppp "ret type #{retexp[0].type}"
+      pppp "ret type #{rett2.type}"
       pppp "end"
+
+      context = rescode.call(b, context)
+      context.rc
     }
 
 #    @expstack = []
@@ -1473,7 +1471,47 @@ class YarvTranslator<YarvVisitor
       }]
   end
 
-  # leave
+  def visit_leave(code, ins, local_vars, ln, info)
+    retexp = nil
+    retexp = @expstack.pop
+    if retexp == nil then
+      rett2 = RubyType.value(info[3])
+      retexp = [rett2, lambda {|b, context|
+                  context.rc = 4.llvm
+                  context
+                }]
+    end
+    if info[1] then
+      rett2 = MethodDefinition::RubyMethod[info[1]][info[0]][:rettype]
+      rett2.add_same_value retexp[0]
+      retexp[0].add_same_type rett2
+      RubyType.resolve
+    end
+
+    oldrescode = @rescode
+    @rescode = lambda {|b, context|
+      if retexp[0].type == nil then
+        #          raise "Return type is ambious #{info[1]} in #{info[3]}"
+        retexp[0].type = PrimitiveType.new(VALUE, nil)
+      end
+
+      context = oldrescode.call(b, context)
+      if context.inline_args then
+        context = retexp[1].call(b, context)
+      else
+        context = retexp[1].call(b, context)
+        rc = context.rc
+        if rc then
+          b.return(rc)
+        else
+          b.return(4.llvm)  # nil
+        end
+      end
+
+      context
+    }
+  end
+
   # finish
 
   # throw
