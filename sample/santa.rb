@@ -9,12 +9,7 @@ def random_delay
   end
 end
 
-class Elf
-  def initialize(no, group)
-    @name = no
-    @group = group
-  end
-
+class Worker
   def run
     Thread.new {
       while true
@@ -26,6 +21,13 @@ class Elf
       end
     }
     Thread.pass
+  end
+end
+
+class Elf<Worker
+  def initialize(no, group)
+    @name = no
+    @group = group
   end
 
   def work
@@ -33,26 +35,12 @@ class Elf
   end
 end
 
-class Reindeer
+class Reindeer<Worker
   def initialize(no, group)
     @name = no
     @group = group
   end
   
-  def run
-    Thread.new {
-      while true
-        gates = @group.join
-        gates[0].pass
-        work
-        gates[1].pass
-        Thread.pass
-        random_delay
-      end
-    }
-    Thread.pass
-  end
-
   def work
     puts sprintf("Delivering toy %d\n", @name)
   end

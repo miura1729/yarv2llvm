@@ -312,11 +312,6 @@ class YarvTranslator<YarvVisitor
           local_vars[-n][:type].add_same_type argt[n - 1]
         end
 
-        if info[0] or code.header['type'] != :method then
-#          argt[numarg].add_same_value local_vars[2][:type]
-#          local_vars[2][:type].add_same_type argt[numarg]
-        end
-        
         minfo[:defined] = true
       end
     end
@@ -416,24 +411,6 @@ class YarvTranslator<YarvVisitor
       # Block pointer
       argtype.push local_vars[1][:type]
     end
-
-=begin
-    if @expstack.last then
-      retexp = @expstack.pop
-    else
-      retexp = [RubyType.value(info[3]), lambda {|b, context|
-                  context.rc = 4.llvm
-                  context
-                }]
-    end
-
-    if info[1] then
-      rett2 = MethodDefinition::RubyMethod[info[1]][info[0]][:rettype]
-      rett2.add_same_value retexp[0]
-      retexp[0].add_same_type rett2
-      RubyType.resolve
-    end
-=end
 
     rescode = @rescode
     have_yield = @have_yield
@@ -612,22 +589,23 @@ class YarvTranslator<YarvVisitor
             commer_label.shift
           end
           
+          phitype = RubyType.new(nil)
           if context.block_value[commer_label[0]] then
             commer_label.uniq.reverse.each do |lab|
               bval = context.block_value[lab]
               topele = context.block_value[commer_label[0]]
               if bval then
-                bval[0].add_same_type topele[0]
-                topele[0].add_same_type bval[0]
+                bval[0].add_same_type phitype
+                topele[0].add_same_type phitype
               else
                 newtype = RubyType.value(info[3], "block value for #{lab}")
                 context.block_value[lab][0] = newtype
                 context.block_value[lab][1] = 4.llvm
-                newtype.add_same_type topele[0]
+                newtype.add_same_type phitype
               end
             end
             RubyType.resolve
-            rc = b.phi(context.block_value[commer_label[0]][0].type.llvm)
+            rc = b.phi(phitype.type.llvm)
             commer_label.uniq.reverse.each do |lab|
               rc.add_incoming(context.block_value[lab][1], 
                               context.blocks[lab])
@@ -991,8 +969,10 @@ class YarvTranslator<YarvVisitor
           context.rc = type.type.from_value(p1.llvm, b, context)
         when VALUE
           context.rc = orgtype.to_value(p1.llvm, b, context)
+        when P_CHAR
+          context.rc = p1.llvm(b)
         else
-          context.rc = p1.llvm 
+          context.rc = p1.llvm
         end
         context.org = p1
         context
@@ -1014,8 +994,47 @@ class YarvTranslator<YarvVisitor
       }]
   end
 
-  # concatstrings
-  # tostring
+  def visit_concatstrings(code, ins, local_vars, ln, info)
+    nele = ins[1]
+    rett = RubyType.value(info[3], "return type tostring", String)
+    eles = []
+    nele.times do
+      eles.push @expstack.pop
+    end
+    eles.reverse!
+    @expstack.push [rett, lambda {|b, context|
+      ftype = Type.function(VALUE, [P_CHAR, Type::Int32Ty])
+      funcnewstr = context.builder.external_function('rb_str_new', ftype)
+      istr = b.int_to_ptr(0.llvm, P_CHAR)
+      rs = b.call(funcnewstr, istr, 0.llvm)
+      ftype = Type.function(VALUE, [VALUE, VALUE])
+      funcapp = context.builder.external_function('rb_str_append', ftype)
+      eles.each do |ele|
+        context = ele[1].call(b, context)
+        ev = ele[0].type.to_value(context.rc, b, context)
+        b.call(funcapp, rs, ev)
+      end
+      context.rc = rs
+      context
+    }]
+  end
+
+  def visit_tostring(code, ins, local_vars, ln, info)
+    v = @expstack.pop
+    rett = RubyType.value(info[3], "return type tostring", String)
+    @expstack.push [rett, lambda {|b, context|
+      context = v[1].call(b, context)
+      obj = context.rc
+      objval = v[0].type.to_value(obj, b, context)
+      ftype = Type.function(VALUE, [VALUE])
+      fname = "rb_obj_as_string"
+      func = context.builder.external_function(fname, ftype)
+      rc = b.call(func, objval) 
+      context.rc = rc
+      context
+    }]
+  end
+
   # toregexp
 
   def visit_newarray(code, ins, local_vars, ln, info)
@@ -1099,6 +1118,7 @@ class YarvTranslator<YarvVisitor
   # splatarray
   # checkincludearray
   # newhash
+
   def visit_newrange(code, ins, local_vars, ln, info)
     lst = @expstack.pop
     fst = @expstack.pop
@@ -1481,12 +1501,13 @@ class YarvTranslator<YarvVisitor
     retexp = nil
     retexp = @expstack.pop
     if retexp == nil then
-      rett2 = RubyType.value(info[3])
+      rett2 = RubyType.value(info[3], "Return type of #{info[1]}")
       retexp = [rett2, lambda {|b, context|
                   context.rc = 4.llvm
                   context
                 }]
     end
+
     if info[1] then
       rett2 = MethodDefinition::RubyMethod[info[1]][info[0]][:rettype]
       rett2.add_same_value retexp[0]

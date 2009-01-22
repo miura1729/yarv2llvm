@@ -421,6 +421,21 @@ EOS
    assert_equal(tprocesstimes, nil)
 end
 
+  def test_embedded_string
+    YARV2LLVM::compile(<<-'EOS', {:dump_yarv=>true})
+def tembeddedstring
+  n = 1
+  b = 1.0
+  c = "bar"
+  "Embedded string is #{n}, #{b} and #{c}"
+end
+EOS
+  n = 1
+  b = 1.0
+  c = "bar"
+  assert_equal(tembeddedstring, "Embedded string is #{n}, #{b} and #{c}")
+end
+
 =begin
 
   def test_thread
