@@ -591,12 +591,12 @@ class YarvTranslator<YarvVisitor
           
           phitype = RubyType.new(nil)
           if context.block_value[commer_label[0]] then
+            topele = context.block_value[commer_label[0]]
+            topele[0].add_same_type phitype
             commer_label.uniq.reverse.each do |lab|
               bval = context.block_value[lab]
-              topele = context.block_value[commer_label[0]]
               if bval then
                 bval[0].add_same_type phitype
-                topele[0].add_same_type phitype
               else
                 newtype = RubyType.value(info[3], "block value for #{lab}")
                 context.block_value[lab][0] = newtype
@@ -1884,7 +1884,7 @@ class YarvTranslator<YarvVisitor
     s1 = @expstack.pop
     check_same_type_2arg_static(s1, s2)
     
-    @expstack.push [nil, 
+    @expstack.push [RubyType.new(nil), 
       lambda {|b, context|
         sval = []
         sval, context, constp = gen_common_opt_2arg(b, context, s1, s2)
@@ -1921,7 +1921,7 @@ class YarvTranslator<YarvVisitor
     s1 = @expstack.pop
     check_same_type_2arg_static(s1, s2)
     
-    @expstack.push [nil, 
+    @expstack.push [RubyType.new(nil), 
       lambda {|b, context|
         sval = []
         sval, context, constp = gen_common_opt_2arg(b, context, s1, s2)
@@ -1958,7 +1958,7 @@ class YarvTranslator<YarvVisitor
     s1 = @expstack.pop
     check_same_type_2arg_static(s1, s2)
     
-    @expstack.push [nil, 
+    @expstack.push [RubyType.new(nil), 
       lambda {|b, context|
         sval = []
         sval, context, constp = gen_common_opt_2arg(b, context, s1, s2)
@@ -1993,7 +1993,7 @@ class YarvTranslator<YarvVisitor
     s1 = @expstack.pop
     check_same_type_2arg_static(s1, s2)
     
-    @expstack.push [nil, 
+    @expstack.push [RubyType.new(nil), 
       lambda {|b, context|
         sval = []
         sval, context, constp = gen_common_opt_2arg(b, context, s1, s2)
@@ -2028,7 +2028,7 @@ class YarvTranslator<YarvVisitor
     s1 = @expstack.pop
     check_same_type_2arg_static(s1, s2)
     
-    @expstack.push [nil, 
+    @expstack.push [RubyType.new(nil), 
       lambda {|b, context|
         sval = []
         sval, context, constp = gen_common_opt_2arg(b, context, s1, s2)
@@ -2063,7 +2063,7 @@ class YarvTranslator<YarvVisitor
     s1 = @expstack.pop
     check_same_type_2arg_static(s1, s2)
     
-    @expstack.push [nil, 
+    @expstack.push [RubyType.new(nil), 
       lambda {|b, context|
         sval = []
         sval, context, constp = gen_common_opt_2arg(b, context, s1, s2)
