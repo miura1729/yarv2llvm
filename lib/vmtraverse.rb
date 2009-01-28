@@ -589,10 +589,8 @@ class YarvTranslator<YarvVisitor
             commer_label.shift
           end
           
-          phitype = RubyType.new(nil)
           if context.block_value[commer_label[0]] then
-            topele = context.block_value[commer_label[0]]
-            topele[0].add_same_type phitype
+            phitype = RubyType.new(nil)
             commer_label.uniq.reverse.each do |lab|
               bval = context.block_value[lab]
               if bval then
@@ -1510,22 +1508,23 @@ class YarvTranslator<YarvVisitor
 
     if info[1] then
       rett2 = MethodDefinition::RubyMethod[info[1]][info[0]][:rettype]
-      rett2.add_same_value retexp[0]
+      rett2.add_same_type retexp[0]
       retexp[0].add_same_type rett2
       RubyType.resolve
     end
 
     oldrescode = @rescode
     @rescode = lambda {|b, context|
-      if retexp[0].type == nil then
-        #          raise "Return type is ambious #{info[1]} in #{info[3]}"
-        retexp[0].type = PrimitiveType.new(VALUE, nil)
-      end
 
       context = oldrescode.call(b, context)
       if context.inline_args then
         context = retexp[1].call(b, context)
       else
+        if rett2.type == nil then
+          # raise "Return type is ambious #{info[1]} in #{info[3]}"
+          rett2.type = PrimitiveType.new(VALUE, nil)
+        end
+
         context = retexp[1].call(b, context)
         context.is_live = false
         rc = context.rc
@@ -1602,7 +1601,11 @@ class YarvTranslator<YarvVisitor
         bval = [valexp[0], valexp[1].call(b, context).rc]
         context.block_value[iflab] = bval
       end
-      b.cond_br(cond[1].call(b, context).rc, tblock, eblock)
+      condval = cond[1].call(b, context).rc
+      if cond[0].type.llvm == VALUE then
+        condval = cond[0].type.from_value(condval, b, context)
+      end
+      b.cond_br(condval, tblock, eblock)
       RubyType.clear_content
       b.set_insert_point(eblock)
 
@@ -1643,7 +1646,11 @@ class YarvTranslator<YarvVisitor
         context.block_value[iflab] = bval
       end
 
-      b.cond_br(cond[1].call(b, context).rc, eblock, tblock)
+      condval = cond[1].call(b, context).rc
+      if cond[0].type.llvm == VALUE then
+        condval = cond[0].type.from_value(condval, b, context)
+      end
+      b.cond_br(condval, eblock, tblock)
       RubyType.clear_content
       b.set_insert_point(eblock)
 
@@ -2094,17 +2101,40 @@ class YarvTranslator<YarvVisitor
   end
 
 
-  # otp_ltlt
   def visit_opt_ltlt(code, ins, local_vars, ln, info)
-    p2 = @expstack.pop
-#    p1 = @expstack.pop
-=begin
-    if p1[0].type.is_a?(ArrayType) then
-      p p1[0].inspect2
-    elsif p1[0].type.llvm == Type::Int32Ty then
-      p p1[0].inspect2
+    s2 = @expstack.pop
+    s1 = @expstack.pop
+    rettype = s1[0].dup_type
+    if s1[0].type.klass != Array then
+      check_same_type_2arg_static(s1, s2)
     end
-=end
+
+    @expstack.push [rettype,
+      lambda {|b, context|
+        sval = []
+        sval, context, constp = gen_common_opt_2arg(b, context, s1, s2)
+        if constp then
+          rc = sval[0] << sval[1]
+          rettype.type.constant = rc
+          context.rc = rc.llvm
+          return context
+        end
+
+        # It is right only s1 and s2 is possitive.
+        # It must generate more complex code when s1 and s2 are negative.
+        case s1[0].type.klass
+        when :Fixnum
+          context.rc = b.shl(sval[0], sval[1])
+
+        when :Array
+          raise "Unsupported type #{s1[0].inspect2}"
+
+        else
+          raise "Unsupported type #{s1[0].inspect2}"
+        end
+
+        context
+      }]
   end
 
   def visit_opt_aref(code, ins, local_vars, ln, info)

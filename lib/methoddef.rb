@@ -138,6 +138,26 @@ module MethodDefinition
        },
     },
 
+    :| => {
+      :inline_proc => 
+        lambda {|para|
+          gen_binary_operator(para, 
+            lambda {|v1, v2, b, context|
+              b.or(v1, v2)
+            })
+        },
+    },
+
+    :& => {
+      :inline_proc => 
+        lambda {|para|
+          gen_binary_operator(para, 
+            lambda {|v1, v2, b, context|
+              b.and(v1, v2)
+            })
+        },
+    },
+
     :p => {
       :inline_proc =>
         lambda {|para|

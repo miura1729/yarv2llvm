@@ -41,7 +41,8 @@ for y in 0..count_size
       zizi = zi*zi
       if zrzr+zizi > LIMIT_SQUARED
         escape = true
-        break
+        nil
+#        break
       end
     end
 
@@ -51,14 +52,16 @@ for y in 0..count_size
     # Code is very similar for these cases, but using separate blocks
     # ensures we skip the shifting when it's unnecessary, which is most cases.
     if (bit_num == 8)
-      print byte_acc.chr
+      print byte_acc # .chr
       byte_acc = 0
       bit_num = 0
+      nil
     elsif (x == count_size)
       byte_acc <<= (8 - bit_num)
-      print byte_acc.chr
+      print byte_acc # .chr
       byte_acc = 0
       bit_num = 0
+      nil
     end
   end
 end

@@ -110,6 +110,27 @@ module LLVMUtil
     @global_malloc_area_tab.size - 1
   end
 
+  def gen_binary_operator(para, core)
+    arg1 = para[:receiver]
+    arg2 = para[:args][0]
+    arg1[0].add_same_type arg2[0]
+    arg2[0].add_same_type arg1[0]
+    @expstack.push [arg1[0],
+      lambda {|b, context|
+        context = arg1[1].call(b, context)
+        val1 = context.rc
+        context = arg2[1].call(b, context)
+        val2 = context.rc
+              
+        case arg1[0].type.llvm
+        when Type::Int32Ty
+          context.rc = core.call(val1, val2, b, context)
+        else
+          raise "Unsupported type #{val[0].inspect2} in |"
+        end
+        context}]
+  end
+
   def gen_loop_proc(para)
     ins = para[:ins]
     info = para[:info]
