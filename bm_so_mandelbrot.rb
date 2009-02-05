@@ -41,9 +41,9 @@ for y in 0..count_size
       zizi = zi*zi
       if zrzr+zizi > LIMIT_SQUARED
         escape = true
-        nil
-#        break
+        break
       end
+#      nil
     end
 
     byte_acc = (byte_acc << 1) | (escape ? 0b0 : 0b1)
@@ -55,13 +55,12 @@ for y in 0..count_size
       print byte_acc # .chr
       byte_acc = 0
       bit_num = 0
-      nil
     elsif (x == count_size)
       byte_acc <<= (8 - bit_num)
       print byte_acc # .chr
       byte_acc = 0
       bit_num = 0
-      nil
     end
+ #   nil
   end
 end

@@ -213,14 +213,11 @@ class RubyType
   end
 
   def self.array(lno = nil, name = nil)
-    etype = nil
-    if name then
-      etype = RubyType.typeof(name[0], lno, name[0])
-    else
-      etype = RubyType.new(nil)
-    end
     na = ArrayType.new(nil)
+
+    etype = RubyType.new(nil)
     na.element_type = etype
+
     RubyType.new(na, lno, name, Array)
   end
 
@@ -568,7 +565,7 @@ class ArrayType<AbstructContainerType
     else
       if r.is_a?(ComplexType) and 
          t.is_a?(ComplexType) and 
-         r.element_type.type then
+         r.element_type.type.is_a?(ComplexType) then
         r = r.element_type.type.element_type.type
         t = t.element_type.type
         return has_cycle_aux(r, t)

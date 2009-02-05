@@ -341,14 +341,18 @@ module MethodDefinition
              minfo = {}
              MethodDefinition::RubyMethod[:initialize][recklass] = minfo
              minfo[:argtype] = []
-             (args.size + 1).times {|i|
-               minfo[:argtype][i] = RubyType.new(nil)
-             }
+#             (args.size + 1).times {|i|
+#               minfo[:argtype][i] = RubyType.new(nil)
+#             }
+             minfo[:argtype][args.size] = RubyType.new(nil)
              minfo[:rettype] = RubyType.new(nil)
              minfo[:defined] = false
            end
 
            args.reverse.each_with_index do |ele, i|
+             if minfo[:argtype][i] == nil then
+               minfo[:argtype][i] = RubyType.new(nil)
+             end
              minfo[:argtype][i].add_same_type ele[0]
              ele[0].add_same_type minfo[:argtype][i]
            end

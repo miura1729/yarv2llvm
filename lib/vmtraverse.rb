@@ -589,7 +589,8 @@ class YarvTranslator<YarvVisitor
             commer_label.shift
           end
           
-          if context.block_value[commer_label[0]] then
+          if commer_label.size > 0 and 
+             context.block_value[commer_label[0]] then
             phitype = RubyType.new(nil)
             commer_label.uniq.reverse.each do |lab|
               bval = context.block_value[lab]
@@ -1508,7 +1509,7 @@ class YarvTranslator<YarvVisitor
 
     if info[1] then
       rett2 = MethodDefinition::RubyMethod[info[1]][info[0]][:rettype]
-      rett2.add_same_type retexp[0]
+#      rett2.add_same_type retexp[0]
       retexp[0].add_same_type rett2
       RubyType.resolve
     end
