@@ -216,15 +216,16 @@ class YarvTranslator<YarvVisitor
       end
     end
 
+    if OPTION[:write_bc] then
+      @builder.write_bc(OPTION[:write_bc])
+    end
+
     if OPTION[:optimize] then
       @builder.optimize
     end
 
     deffunc = gen_define_ruby(@builder)
 
-    if OPTION[:write_bc] then
-      @builder.write_bc(OPTION[:write_bc])
-    end
     if OPTION[:disasm] then
       @builder.disassemble
     end
@@ -598,6 +599,7 @@ class YarvTranslator<YarvVisitor
                 bval[0].add_same_type phitype
               else
                 newtype = RubyType.value(info[3], "block value for #{lab}")
+                context.block_value[lab] = []
                 context.block_value[lab][0] = newtype
                 context.block_value[lab][1] = 4.llvm
                 newtype.add_same_type phitype
@@ -606,8 +608,10 @@ class YarvTranslator<YarvVisitor
             RubyType.resolve
             rc = b.phi(phitype.type.llvm)
             commer_label.uniq.reverse.each do |lab|
-              rc.add_incoming(context.block_value[lab][1], 
-                              context.blocks[lab])
+              if context.blocks[lab] then
+                rc.add_incoming(context.block_value[lab][1], 
+                                context.blocks[lab])
+              end
             end
           end
           
@@ -1323,7 +1327,7 @@ class YarvTranslator<YarvVisitor
           if func then
             gen_call(func, para ,b, context)
           else
-            raise "Undefined method \"#{mname}\""
+            raise "Undefined method \"#{mname}\" in #{info[3]}"
           end
         }]
       return
@@ -1425,7 +1429,7 @@ class YarvTranslator<YarvVisitor
           gen_call(func, para, b, context)
         else
           p recklass
-          raise "Undefined method \"#{mname}\""
+          raise "Undefined method \"#{mname}\" in #{info[3]}"
         end
       }]
 
@@ -2106,7 +2110,7 @@ class YarvTranslator<YarvVisitor
     s2 = @expstack.pop
     s1 = @expstack.pop
     rettype = s1[0].dup_type
-    if s1[0].type.klass != Array then
+    if s1[0].type and s1[0].type.klass != Array then
       check_same_type_2arg_static(s1, s2)
     end
 

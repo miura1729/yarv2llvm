@@ -370,7 +370,7 @@ class PrimitiveType
 
        :to_value => lambda {|val, b, context|
          val32 = b.zext(val, Type::Int32Ty)
-         b.shl(val32, 2.llvm)
+         b.shl(val32, 1.llvm)
        },
 
        :from_value => lambda {|val, b, context|

@@ -118,6 +118,27 @@ module MethodDefinition
        },
     },
 
+    :to_i => {
+      :inline_proc => 
+        lambda {|para|
+          recv = para[:receiver]
+          rettype = RubyType.fixnum(para[:info][3], 'Return type of to_i')
+          @expstack.push [rettype,
+            lambda {|b, context|
+              context = recv[1].call(b, context)
+              val = context.rc
+              case recv[0].type.llvm
+              when Type::DoubleTy
+                context.rc = b.fp_to_si(val, Type::Int32Ty)
+              when Type::Int32Ty
+                context.rc = val
+              else
+                raise "Unsupported type #{recv[0].inspect2}"
+              end
+              context}]
+       },
+    },
+
     :-@ => {
       :inline_proc => 
         lambda {|para|
@@ -502,6 +523,11 @@ module MethodDefinition
          :argtype => [Type::DoubleTy],
          :send_self => false,
          :cname => "llvm.cos.f64"},
+      :tan => 
+        {:rettype => Type::DoubleTy,
+         :argtype => [Type::DoubleTy],
+         :send_self => false,
+         :cname => "llvm.tan.f64"},
      },
 
     :Float => {
