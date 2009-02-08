@@ -425,7 +425,7 @@ class YarvTranslator<YarvVisitor
     end
 
     if rett2 == nil # or rett2.type == nil then
-      rett2 = RubyType.value(info[3], "nil")
+      rett2 = RubyType.value(info[3], "nil", NilClass)
     end
 
     b = nil
@@ -939,7 +939,7 @@ class YarvTranslator<YarvVisitor
   end
 
   def visit_putnil(code, ins, local_vars, ln, info)
-    @expstack.push [RubyType.value(info[3], "nil"), 
+    @expstack.push [RubyType.value(info[3], "nil", NilClass), 
       lambda {|b, context| 
         context.rc = 4.llvm   # 4 means nil
         context
@@ -1281,7 +1281,10 @@ class YarvTranslator<YarvVisitor
       end
     }
     sup = @expstack.pop
-    supklass = sup ? sup[0].klass : nil
+    supklass = sup[0].klass
+    if supklass == :NilClass then
+      sup = nil
+    end
     code.traverse_code(info.clone, action)
     case ins[3]
     when 0

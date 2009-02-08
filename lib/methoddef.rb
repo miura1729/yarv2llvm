@@ -159,6 +159,19 @@ module MethodDefinition
        },
     },
 
+    :rand => {
+      :inline_proc => 
+        lambda {|para|
+          info = para[:info]
+          @expstack.push [RubyType.float(info[3], "Return type of rand"),
+            lambda {|b, context|
+              ftype = Type.function(Type::DoubleTy, [])
+              func = @builder.external_function('rb_genrand_real', ftype)
+              context.rc = b.call(func)
+              context}]
+       },
+    },
+
     :| => {
       :inline_proc => 
         lambda {|para|
@@ -199,8 +212,13 @@ module MethodDefinition
         lambda {|para|
           info = para[:info]
           rtype = RubyType.value(info[3], "Return type of print")
-          gen_call_var_args_and_self(para, 'rb_io_print', rtype,
-                                     STDOUT.immediate)
+          stdout = para[:receiver]
+          if stdout == nil or stdout[0].klass == :NilClass then
+            stdout = [nil, lambda {|b, context| 
+                             context.rc = STDOUT.immediate
+                             context}]
+          end
+          gen_call_var_args_and_self(para, 'rb_io_print', rtype, stdout)
         }
      },
 
@@ -209,8 +227,14 @@ module MethodDefinition
         lambda {|para|
           info = para[:info]
           rtype = RubyType.value(info[3], "Return type of print")
+          stdout = para[:receiver]
+          if stdout == nil or stdout[0].klass == :NilClass then
+            stdout = [nil, lambda {|b, context| 
+                            context.rc = STDOUT.immediate
+                            context}]
+          end
           gen_call_var_args_and_self(para, 'rb_io_puts', rtype,
-                                     STDOUT.immediate)
+                                     stdout)
         }
      },
 
@@ -218,9 +242,25 @@ module MethodDefinition
       :inline_proc =>
         lambda {|para|
           info = para[:info]
-          rtype = RubyType.value(info[3], "Return type of sprint")
+          rtype = RubyType.value(info[3], "Return type of sprintf")
           fname = 'rb_f_sprintf'
           gen_call_var_args(para, 'rb_f_sprintf', rtype)
+        }
+     },
+
+    :printf => {
+      :inline_proc =>
+        lambda {|para|
+          info = para[:info]
+          rec = para[:receiver]
+          rtype = RubyType.value(info[3], "Return type of print")
+          stdout = para[:receiver]
+          if stdout == nil or stdout[0].klass == :NilClass then
+            stdout = [nil, lambda {|b, context| 
+                             context.rc = STDOUT.immediate
+                             context}]
+          end
+          gen_call_var_args_and_self(para, 'rb_io_printf', rtype, stdout)
         }
      },
 

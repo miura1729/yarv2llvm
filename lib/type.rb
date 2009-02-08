@@ -162,7 +162,9 @@ class RubyType
           if OPTION[:strict_type_inference] then
             raise mess
           else
-            print mess
+            if OPTION[:type_message] then
+              print mess
+            end
 
             ty.conflicted_types[ty.type.klass] = ty.type
             ty.type = PrimitiveType.new(VALUE, Object)

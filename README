@@ -21,9 +21,17 @@ yarv2llvm -- Yarv to LLVM Translater
 
    For example
 
-   require 'yarv2llvm'
-   YARV2LLVM::compile('def fact(n);if n == 0 then 1 else n * fact(n -1);end;end')   
-   p fact(5)  # -> 120
+    require 'yarv2llvm'
+    YARV2LLVM::compile('def fact(n);if n == 0 then 1 else n * fact(n -1);end;end')   
+    p fact(5)  # -> 120
+
+
+   You can also use yarv2llvm as subset Ruby compler.
+   For example
+
+    ruby19 yarv2llvm.rb bm_so_nbody.rb
+    -0.169074947
+    -0.169083520
 
 -- Limit
    yarv2llvm accepts very small subset of ruby.
@@ -42,3 +50,6 @@ yarv2llvm -- Yarv to LLVM Translater
 -- License
 
  under the Ruby's License
+
+ "sample/ao-render.rb" is under BSD3
+ Original version was written by Syoyo Fujita.

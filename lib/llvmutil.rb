@@ -71,7 +71,8 @@ module LLVMUtil
     ftype = Type.function(VALUE, [Type::Int32Ty, P_VALUE, VALUE])
     gen_call_var_args_common(para, fname, rtype, ftype) {
       |b, context, func, nele, argarea|
-      b.call(func, nele.llvm, argarea, slf)
+      slfval = slf[1].call(b, context).rc
+      b.call(func, nele.llvm, argarea, slfval)
     }
   end
 

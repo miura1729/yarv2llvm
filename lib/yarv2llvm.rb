@@ -29,6 +29,8 @@ DEF_OPTION = {
   :strict_type_inference => false,
 
   :inline_block => false,
+
+  :type_message => true,
 }
 OPTION = {}
 

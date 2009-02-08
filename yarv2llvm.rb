@@ -67,6 +67,11 @@ if __FILE__ == $0 then
          'Display type inferenced inforamtion about function and local variable') do |f|
     y2lopt[:func_signature] = f
   end
+
+  opt.on('--[no-]type-message', 
+         'Display type message for example Type Conflict Error') do |f|
+    y2lopt[:type_message] = f
+  end
   
   opt.parse!(ARGV)
 
