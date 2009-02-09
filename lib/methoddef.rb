@@ -335,7 +335,11 @@ module MethodDefinition
                     func = context.builder.external_function('rb_ary_entry', ftype)
                     av = b.call(func, rc, idxp)
                     arrelet = rec[0].type.element_type.type
-                    arrelet.from_value(av, b, context)
+                    if arrelet
+                      arrelet.from_value(av, b, context)
+                    else
+                      av
+                    end
                   }
                   context = loopproc.call(b, context, lst, led, body, rcval)
                   context

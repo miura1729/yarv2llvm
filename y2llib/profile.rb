@@ -24,9 +24,9 @@ END {
     cont.each_with_index do |srcln, ln|
       re = res[fn + ":" + (ln + 1).to_s].to_i
       if re != 0 then
-        printf("%10d %5d:  %s", re, ln + 1, srcln)
+        printf("%13d %5d:  %s", re, ln + 1, srcln)
       else
-        printf("           %5d:  %s", ln + 1, srcln)
+        printf("              %5d:  %s", ln + 1, srcln)
       end
     end
   end
