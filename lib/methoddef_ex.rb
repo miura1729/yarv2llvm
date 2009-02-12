@@ -15,13 +15,11 @@ module MethodDefinition
         lambda {|para|
           info = para[:info]
           rettype = RubyType.fixnum(info[3], "Return type of gen_interval_cycle")
-          glno = add_global_variable("interval_cycle", 
+          prevvalp = add_global_variable("interval_cycle", 
                                      Type::Int64Ty, 
                                      0.llvm(Type::Int64Ty))
           @expstack.push [rettype,
             lambda {|b, context|
-              prevvalp = context.builder.global_variable
-              prevvalp = b.struct_gep(prevvalp, glno)
               prevval = b.load(prevvalp)
               ftype = Type.function(Type::Int64Ty, [])
               fname = 'llvm.readcyclecounter'

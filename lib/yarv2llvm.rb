@@ -92,6 +92,7 @@ end
 module LLVM::RubyInternals
   RFLOAT = Type.struct([RBASIC, Type::DoubleTy])
   P_RFLOAT = Type.pointer(RFLOAT)
+  P_P_VALUE = Type.pointer(P_VALUE)
 end
 
 =begin

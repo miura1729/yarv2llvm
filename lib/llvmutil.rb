@@ -107,8 +107,7 @@ module LLVMUtil
   end
 
   def add_global_variable(name, type, init)
-    @global_malloc_area_tab[name] = [type, init]
-    @global_malloc_area_tab.size - 1
+    @builder.define_global_variable(type, init)
   end
 
   def gen_binary_operator(para, core)

@@ -17,12 +17,15 @@ module IntRuby
   include LLVMUtil
 
   def gen_ivar_ptr(builder)
-    ftype = Type.function(P_VALUE, [VALUE, VALUE])
+    ftype = Type.function(P_VALUE, [VALUE, VALUE, P_VALUE])
     b = builder.define_function_raw('llvm_ivar_ptr', ftype)
     args = builder.arguments
     embed = builder.create_block
     nonembed = builder.create_block
     comm = builder.create_block
+    cachehit = builder.create_block
+    cachemiss = builder.create_block
+
     rbp = Type.pointer(RBASIC)
     slfop = b.int_to_ptr(args[0], Type.pointer(ROBJECT))
     slf = b.int_to_ptr(args[0], rbp)
@@ -56,8 +59,8 @@ module IntRuby
     niv_index_tbl = b.load(ivitp)
 
     b.br(comm)
-
     b.set_insert_point(comm)
+
     ptr = b.phi(P_VALUE)
     ptr.add_incoming(eptr, embed)
     ptr.add_incoming(nptr, nonembed)
@@ -65,6 +68,20 @@ module IntRuby
     iv_index_tbl = b.phi(P_VALUE)
     iv_index_tbl.add_incoming(eiv_index_tbl, embed)
     iv_index_tbl.add_incoming(niv_index_tbl, nonembed)
+
+    oldindex = b.load(args[2])
+    ishit = b.icmp_ne(oldindex, -1.llvm)
+
+    b.cond_br(ishit, cachehit, cachemiss)
+
+    # Inline Cache hit
+    b.set_insert_point(cachehit)
+    index = b.load(args[2])
+    resp = b.gep(ptr, index)
+    b.return(resp)
+
+    # Inline Cache Misss
+    b.set_insert_point(cachemiss)
 
 
     indexp = b.alloca(VALUE, 1)
@@ -75,8 +92,9 @@ module IntRuby
     
     index = b.load(indexp)
     resp = b.gep(ptr, index)
+
+    b.store(index, args[2])
     b.return(resp)
-    
   end
 end
 end

@@ -179,7 +179,7 @@ class YarvTranslator<YarvVisitor
     }
 
     # Information of global variables by malloc
-    @global_malloc_area_tab = {}
+    @global_malloc_area_tab = []
 
     # Number of trace(for profile speed up)
     @trace_no = 0
@@ -374,11 +374,15 @@ class YarvTranslator<YarvVisitor
         if cnt > 0 and 
            OPTION[:cache_instance_variable] and 
            info[1] != :initialize then
-          ftype = Type.function(P_VALUE, [VALUE, VALUE])
+
+          # define inline cache area
+          oldindex = add_global_variable("old_index", VALUE, -1.llvm)
+          ftype = Type.function(P_VALUE, [VALUE, VALUE, P_VALUE])
           func = context.builder.get_or_insert_function_raw('llvm_ivar_ptr', ftype)
           ivid = ((key.object_id << 1) / RVALUE_SIZE)
           slf = b.load(context.local_vars[2][:area])
-          vptr = b.call(func, slf, ivid.llvm)
+
+          vptr = b.call(func, slf, ivid.llvm, oldindex)
           context.instance_vars_local_area[key] = vptr
         else
           context.instance_vars_local_area[key] = nil
@@ -2364,17 +2368,7 @@ class YarvTranslator<YarvVisitor
     b = builder.define_function_raw('init_ruby', ftype)
     initfunc = builder.current_function
     member = []
-    @global_malloc_area_tab.each do |vname, val|
-      member.push val[0]
-    end
-    type = Type.struct(member)
-
     initarg = []
-    @global_malloc_area_tab.each do |vname, val|
-      initarg.push val[1]
-    end
-    init = Value.get_struct_constant(type, *initarg)
-    gl = builder.define_global_variable(type, init)
 
     @generated_define_func.each do |klass, defperklass|
       if klass then
