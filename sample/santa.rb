@@ -2,7 +2,7 @@
 # orignal program in Haskell
 
 def random_delay
-  n = (rand * 100.0).to_i
+  n = (rand * 100000.0).to_i
   n.times do 
     Thread.pass
   end

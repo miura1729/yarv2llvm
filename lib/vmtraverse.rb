@@ -1052,15 +1052,15 @@ class YarvTranslator<YarvVisitor
     nele.times {|n|
       v = @expstack.pop
       inits.push v
-      if etype and etype != v[0].type.llvm then
-        mess = "Element of array must be same type in yarv2llvm #{etype} expected but #{v[0].inspect2} in #{info[3]}"
+      if etype and etype.llvm != v[0].type.llvm then
+        mess = "Element of array must be same type in yarv2llvm #{etype.inspect2} expected but #{v[0].inspect2} in #{info[3]}"
         if OPTION[:strict_type_inference] then
           raise mess
         else
           print mess, "\n"
         end
       end
-      etype = v[0].type.llvm
+      etype = v[0].type
       atype.type.element_type.conflicted_types[etype.llvm] = etype
     }
     arraycurlevel = @expstack.size
