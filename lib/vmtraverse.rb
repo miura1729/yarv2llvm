@@ -1053,7 +1053,7 @@ class YarvTranslator<YarvVisitor
       v = @expstack.pop
       inits.push v
       if etype and etype != v[0].type.llvm then
-        mess = "Element of array must be same type in yarv2llvm #{etype} expected but #{v[0].inspect2}"
+        mess = "Element of array must be same type in yarv2llvm #{etype} expected but #{v[0].inspect2} in #{info[3]}"
         if OPTION[:strict_type_inference] then
           raise mess
         else

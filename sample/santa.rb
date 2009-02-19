@@ -2,8 +2,7 @@
 # orignal program in Haskell
 
 def random_delay
-  seed = YARV2LLVM::get_interval_cycle
-  n = seed % 5
+  n = (rand * 100.0).to_i
   n.times do 
     Thread.pass
   end
@@ -145,12 +144,13 @@ end
 class Santa
   def exec(group1, group2)
     while true
-      puts "----------"
       choose([group1, group2])
+      Thread.pass
     end
   end
 
   def run(task, gates)
+    puts "----------"
     puts sprintf("Ho Ho Ho let's task %s ", task)
     gates[0].operate
     gates[1].operate
