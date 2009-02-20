@@ -2210,6 +2210,20 @@ class YarvTranslator<YarvVisitor
             context
           end
 
+        when :Hash
+          context = idx[1].call(b, context)
+          idxp = context.rc
+          idxval = idx[0].type.to_value(idxp, b, context)
+          context = arr[1].call(b, context)
+          arrp = context.rc
+          ftype = Type.function(VALUE, [VALUE, VALUE])
+          func = context.builder.external_function('rb_hash_aref', ftype)
+          av = b.call(func, arrp, idxval)
+          arrelet = arr[0].type.element_type.type
+          context.rc = arrelet.from_value(av, b, context)
+          
+          context
+
         when :String
           raise "Not impremented String::[] in #{info[3]}"
           context

@@ -85,6 +85,21 @@ module MethodDefinition
               b.call(func, a, i, vval)
               arr[0].type.element_content[i] = v
               context
+            when HashType
+              ftype = Type.function(Type::VoidTy, 
+                                    [VALUE, VALUE, VALUE])
+              func = context.builder.external_function('rb_hash_aset', ftype)
+              context = val[1].call(b, context)
+              v = context.rc
+              context = idx[1].call(b, context)
+              i = context.rc
+              context = arr[1].call(b, context)
+              a = context.rc
+              vval = val[0].type.to_value(v, b, context)
+              ival = idx[0].type.to_value(i, b, context)
+              b.call(func, a, ival, vval)
+              arr[0].type.element_content[i] = v
+              context
             else
               # Todo: []= handler of other type
               raise "Unkonw type #{arr[0].type.inspect2}"
@@ -521,6 +536,22 @@ module MethodDefinition
              context.rc = b.call(func, stfubc, initarea2)
 
              context}]
+      }
+    },
+
+    :current => {
+      :inline_proc => lambda {|para|
+        info = para[:info]
+        rettype = RubyType.value(info[3], "Thread object", Thread)
+        @expstack.push [rettype, 
+          lambda {|b, context|
+            ftype = Type.function(VALUE, [])
+            fname = 'rb_thread_current'
+            builder = context.builder
+            func = builder.external_function(fname, ftype)
+            context.rc = b.call(func)
+            context
+        }],
       }
     },
 

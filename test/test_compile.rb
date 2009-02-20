@@ -45,6 +45,30 @@ EOS
    assert_equal(arr(3), 4.0)
   end
 
+  def test_hash
+    YARV2LLVM::compile(<<-EOS)
+def hasht(n)
+  b = Hash.new
+  a = Hash.new
+  a[0] = 0
+  a[1] = 1
+  a[2] = 4
+  a[3] = 9
+  b[0] = 1.0
+  b[1] = 2.0
+  b[2] = 3.0
+  b[3] = 4.0
+  b[0] = b[n]
+  b[n]
+end
+EOS
+
+   assert_equal(hasht(0), 1.0)
+   assert_equal(hasht(1), 2.0)
+   assert_equal(hasht(2), 3.0)
+   assert_equal(hasht(3), 4.0)
+  end
+
   def test_array2
     YARV2LLVM::compile(<<-EOS)
 def arr2(a)

@@ -223,6 +223,16 @@ class RubyType
     RubyType.new(na, lno, name, Array)
   end
 
+  # hash is already define by Ruby system
+  def self.hashtype(lno = nil, name = nil)
+    na = HashType.new(nil)
+
+    etype = RubyType.new(nil)
+    na.element_type = etype
+
+    RubyType.new(na, lno, name, Hash)
+  end
+
   def self.struct(lno = nil, name = nil)
     na = StructType.new
     RubyType.new(na, lno, name, Struct)
@@ -258,6 +268,9 @@ class RubyType
     when :Array
       RubyType.array(lno, name)
 
+    when :Hash
+      RubyType.hashtype(lno, name)
+
     else
       obj = nil
       if sym then
@@ -290,6 +303,9 @@ class RubyType
 
     when ::Array
       RubyType.array(lno, obj)
+
+    when ::Hash
+      RubyType.hashtype(lno, obj)
 
     when ::Range
       fst = RubyType.typeof(obj.first, nil, obj.first)
@@ -590,6 +606,71 @@ class ArrayType<AbstructContainerType
       end
     else
       "Array of nil"
+    end
+  end
+
+  def to_value(val, b, context)
+    val
+  end
+
+  def from_value(val, b, context)
+    val
+  end
+
+  def llvm
+    VALUE
+  end
+end
+
+class HashType<AbstructContainerType
+  include LLVM
+  include RubyHelpers
+
+  def initialize(etype)
+    set_klass(Hash)
+    @element_type = RubyType.new(etype, nil, nil)
+    @ptr = nil
+    @element_content = Hash.new
+  end
+  attr_accessor :element_type
+  attr_accessor :ptr
+  attr_accessor :element_content
+
+  def dup_type
+    no = self.class.new(nil)
+    no.element_type = @element_type
+    no
+  end
+
+  def has_cycle_aux(r, t)
+    if r == t then
+      return true
+    else
+      if r.is_a?(ComplexType) and 
+         t.is_a?(ComplexType) and 
+         r.element_type.type.is_a?(ComplexType) then
+        r = r.element_type.type.element_type.type
+        t = t.element_type.type
+        return has_cycle_aux(r, t)
+      else
+        return false
+      end
+    end
+  end
+
+  def has_cycle?
+    has_cycle_aux(@element_type.type, self)
+  end
+
+  def inspect2
+    if @element_type then
+      if has_cycle? then
+        "Hash of VALUE"
+      else
+        "Hash of #{@element_type.inspect2}"
+      end
+    else
+      "Hash of nil"
     end
   end
 
