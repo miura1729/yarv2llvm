@@ -86,6 +86,7 @@ module MethodDefinition
         }
       }
     },
+
     :commit => {
       :inline_proc => lambda {|para|
         info = para[:info]

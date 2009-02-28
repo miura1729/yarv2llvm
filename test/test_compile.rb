@@ -8,6 +8,7 @@ class Foo
 end
 
 class CompileTests < Test::Unit::TestCase
+#=begin
   def test_fib
     YARV2LLVM::compile(<<-EOS)
 def fib(n)
@@ -459,9 +460,8 @@ EOS
   c = "bar"
   assert_equal(tembeddedstring, "Embedded string is #{n}, #{b} and #{c}")
 end
-
+#=end
 =begin
-
   def test_thread
     YARV2LLVM::compile(<<-EOS)
 def tthread
@@ -469,11 +469,13 @@ def tthread
     10.times do |i|
       p i
     end
+    nil
   }
   print "END"
   10.times do |i|
     puts sprintf("foo%d", i)
   end
+  sleep(2)
   nil
 end
 EOS
@@ -483,6 +485,7 @@ end
 
 # I can't pass this test yet.
 
+=begin
   def test_complex_type
     YARV2LLVM::compile(<<-EOS, {:optimize => false})
         def t_complex_str(arr)

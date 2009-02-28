@@ -272,6 +272,17 @@ module LLVMUtil
       context
     }
   end
+
+  def gen_to_i_internal(recv, val, b, context)
+    case recv[0].type.llvm
+    when Type::DoubleTy
+      return b.fp_to_si(val, Type::Int32Ty)
+    when Type::Int32Ty
+      return val
+    else
+      raise "Unsupported type #{recv[0].inspect2}"
+    end
+  end
 end
 
 module SendUtil

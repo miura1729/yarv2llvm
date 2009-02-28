@@ -142,14 +142,7 @@ module MethodDefinition
             lambda {|b, context|
               context = recv[1].call(b, context)
               val = context.rc
-              case recv[0].type.llvm
-              when Type::DoubleTy
-                context.rc = b.fp_to_si(val, Type::Int32Ty)
-              when Type::Int32Ty
-                context.rc = val
-              else
-                raise "Unsupported type #{recv[0].inspect2}"
-              end
+              context.rc = gen_to_i_internal(recv, val, b, context)
               context}]
        },
     },
@@ -206,6 +199,22 @@ module MethodDefinition
             })
         },
     },
+
+    :sleep => {
+      :inline_proc =>
+        lambda {|para|
+          pterm = para[:args][0]
+          @expstack.push [pterm[0], 
+            lambda {|b, context|
+              context = pterm[1].call(b, context)
+              sec = context.rc
+              sec = gen_to_i_internal(pterm, sec, b, context)
+              ftype = Type.function(Type::VoidTy, [Type::Int32Ty])
+              func = @builder.external_function('rb_thread_sleep', ftype)
+              b.call(func, sec)
+              context}]
+        }
+     },
 
     :p => {
       :inline_proc =>

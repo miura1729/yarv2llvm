@@ -2,10 +2,14 @@
 # orignal program in Haskell
 
 def random_delay
+=begin
   n = (rand * 100000.0).to_i
   n.times do 
     Thread.pass
   end
+=end
+  n = rand * 5.0
+  sleep(n)
 end
 
 class Worker

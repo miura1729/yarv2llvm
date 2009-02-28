@@ -77,7 +77,11 @@ EOS
           dest = "document.getElementById(\"tab#{i}-1\").innerHTML"
           script += "#{dest} =  \"#{info[1]}\";\n"
           dest = "document.getElementById(\"tab#{i}-2\").innerHTML"
-          script += "#{dest} =  \"#{info[3]}\";\n"
+          if key.status == "run"
+            script += "#{dest} =  \"#{info[3]}\";\n"
+          else
+            script += "#{dest} =  \"Zzz...\";\n"
+          end
           i = i + 1
         end
       end
@@ -110,26 +114,13 @@ Thread.new {
   server = SpyServer.new
 }
 
-=begin
-Thread.new {
-  while true
-    if $pos then
-      $pos.each do |key, value|
-#        print "#{key}\t #{YARV2LLVM::TRACE_INFO[value]}\n"
-      end
-    end
-    sleep 1
-  end
-}
-=end
-
 <<-EOS
 module YARV2LLVM
   $pos = Hash.new
   def trace_func(event, no)
-    if rand < 0.1 then
+    # if event == 8 or rand < 0.1 then
       $pos[Thread.current] = no
-    end
+    # end
   end
 end
 
