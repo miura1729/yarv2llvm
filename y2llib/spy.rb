@@ -118,9 +118,9 @@ Thread.new {
 module YARV2LLVM
   $pos = Hash.new
   def trace_func(event, no)
-    # if event == 8 or rand < 0.1 then
+    if event == 8 or rand < 0.1 then
       $pos[Thread.current] = no
-    # end
+    end
   end
 end
 

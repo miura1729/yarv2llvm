@@ -1247,9 +1247,16 @@ class YarvTranslator<YarvVisitor
     end
     if minfo = MethodDefinition::RubyMethod[:trace_func][:YARV2LLVM] then
       argt = minfo[:argtype]
+      istdetect = false
       if argt[0].type == nil then
         RubyType.fixnum.add_same_type argt[0]
+        istdetect = true
+      end
+      if argt[1].type == nil then
         RubyType.fixnum.add_same_type argt[1]
+        istdetect = true
+      end
+      if istdetect then
         RubyType.resolve
       end
     end
@@ -1260,9 +1267,16 @@ class YarvTranslator<YarvVisitor
       context = oldrescode.call(b, context)
       if minfo = MethodDefinition::RubyMethod[:trace_func][:YARV2LLVM] then
         argt = minfo[:argtype]
+        istdetect = false
         if argt[0].type == nil then
           RubyType.fixnum.add_same_type argt[0]
+          istdetect = true
+        end
+        if argt[1].type == nil then
           RubyType.fixnum.add_same_type argt[1]
+          istdetect = true
+        end
+        if istdetect then
           RubyType.resolve
         end
         if info[0] == nil then
