@@ -897,7 +897,7 @@ class YarvTranslator<YarvVisitor
         ftype = Type.function(VALUE, [VALUE])
         area = nil
         if  info[1] == :initialize or
-#            info[1] == :trace_func or 
+            info[1] == :trace_func or 
             info[1] == nil then
           func1 = context.builder.external_function('rb_global_entry', ftype)
           glid = ((glname.object_id << 1) / RVALUE_SIZE)
@@ -944,7 +944,7 @@ class YarvTranslator<YarvVisitor
 
       area = nil
       if info[1] == :initialize or 
-#         info[1] == :trace_func or 
+         info[1] == :trace_func or 
          info[1] == nil then
         ftype = Type.function(VALUE, [VALUE])
         func1 = context.builder.external_function('rb_global_entry', ftype)
