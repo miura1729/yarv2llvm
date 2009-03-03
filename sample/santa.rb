@@ -8,7 +8,7 @@ def random_delay
     Thread.pass
   end
 =end
-  n = rand * 5.0
+  n = rand * 10.0
   sleep(n)
 end
 

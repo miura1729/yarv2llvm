@@ -195,9 +195,11 @@ class YarvTranslator<YarvVisitor
 
     # generate code for access Ruby internal
     if OPTION[:cache_instance_variable] then
-      gen_ivar_ptr(@builder)
+      if @instance_var_tab.size != 0 then
+        gen_ivar_ptr(@builder)
+      end
     end
-
+    
     @generated_define_func.each do |klass, value|
       value.each do |name, gen|
         if name then
@@ -886,15 +888,26 @@ class YarvTranslator<YarvVisitor
     unless type 
       type = RubyType.new(nil, info[3], "$#{glname}")
       @global_var_tab[glname][:type] = type
+      areap = add_global_variable("glarea_ptr", VALUE, 4.llvm)
+      @global_var_tab[glname][:area] = areap
     end
+    areap = @global_var_tab[glname][:area]
     @expstack.push [type,
       lambda {|b, context|
         ftype = Type.function(VALUE, [VALUE])
-        func1 = context.builder.external_function('rb_global_entry', ftype)
-        func2 = context.builder.external_function('rb_gvar_get', ftype)
-        glid = ((glname.object_id << 1) / RVALUE_SIZE)
-        glob = b.call(func1, glid.llvm)
-        val = b.call(func2, glob)
+        area = nil
+        if  info[1] == :initialize or
+#            info[1] == :trace_func or 
+            info[1] == nil then
+          func1 = context.builder.external_function('rb_global_entry', ftype)
+          glid = ((glname.object_id << 1) / RVALUE_SIZE)
+          area = b.call(func1, glid.llvm)
+        else
+          area = b.load(areap)
+        end
+          
+        func1 = context.builder.external_function('rb_gvar_get', ftype)
+        val = b.call(func1, area)
         context.rc = type.type.from_value(val, b, context)
         context
       }]
@@ -907,7 +920,10 @@ class YarvTranslator<YarvVisitor
     unless dsttype
       dsttype = RubyType.new(nil, info[3], "$#{glname}")
       @global_var_tab[glname][:type] = dsttype
+      areap = add_global_variable("glarea_ptr", VALUE, 4.llvm)
+      @global_var_tab[glname][:area] = areap
     end
+    areap = @global_var_tab[glname][:area]
 
     src = @expstack.pop
     srctype = src[0]
@@ -926,16 +942,22 @@ class YarvTranslator<YarvVisitor
       dsttype.type = dsttype.type.dup_type
       dsttype.type.content = srcval
 
-      ftype1 = Type.function(VALUE, [VALUE])
-      func1 = context.builder.external_function('rb_global_entry', ftype1)
+      area = nil
+      if info[1] == :initialize or 
+#         info[1] == :trace_func or 
+         info[1] == nil then
+        ftype = Type.function(VALUE, [VALUE])
+        func1 = context.builder.external_function('rb_global_entry', ftype)
+        glid = ((glname.object_id << 1) / RVALUE_SIZE)
+        area = b.call(func1, glid.llvm)
+      else
+        area = b.load(areap)
+      end
 
       ftype2 = Type.function(VALUE, [VALUE, VALUE])
       func2 = context.builder.external_function('rb_gvar_set', ftype2)
 
-      glid = ((glname.object_id << 1) / RVALUE_SIZE)
-
-      gent = b.call(func1, glid.llvm)
-      b.call(func2, gent, srcval2)
+      b.call(func2, area, srcval2)
       context.org = dsttype.name
 
       context
@@ -2397,6 +2419,15 @@ class YarvTranslator<YarvVisitor
     initfunc = builder.current_function
     member = []
     initarg = []
+
+    @global_var_tab.each do |name, info|
+      ftype1 = Type.function(VALUE, [VALUE])
+      func1 = builder.external_function('rb_global_entry', ftype1)
+      glid = ((name.object_id << 1) / RVALUE_SIZE)
+      area = b.call(func1, glid.llvm)
+      dst = info[:area] 
+      b.store(area, dst)
+    end
 
     @generated_define_func.each do |klass, defperklass|
       if klass then

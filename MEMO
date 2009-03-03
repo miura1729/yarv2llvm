@@ -1,6 +1,16 @@
+2009-03-03    <miura>
+* global変数関係でSEGVが出たらglobal_variable[...][:area]のキャッシュを使う
+条件をチェックすること。特に、trace_funcは現在キャッシュするようにしているが、
+そうするとsample/santa.rbを-r y2llib/profile.rbで実行するとSEGVする。未定義の
+global変数を参照するからだと思われる。
+ 
+
 2009-01-16    <miura>
 
 * もし、get_or_insert_functionでエラーが出たら@jump_fromの設定をチェックすること。valexpがnilのとき@jump_fromを設定しないようにしてあるが、これではまずいかもしれない。
 
 * optimizeのみが出来なくなったらPHI関連を疑うこと
+
+
+
 
