@@ -1196,10 +1196,13 @@ class YarvTranslator<YarvVisitor
     @rescode = lambda {|b, context|
       context = oldrescode.call(b, context)
       if exp then
+=begin
+        RubyType.resolve
         if exp[0].type == nil then
           exp[0].type = PrimitiveType.new(VALUE, nil)
           exp[0].clear_same
         end
+=end
         context.rc = exp[1].call(b, context)
       end
 
@@ -1449,7 +1452,7 @@ class YarvTranslator<YarvVisitor
     # minfo doesn't exist yet
     para = gen_arg_eval(args, receiver, ins, local_vars, info, nil, mname)
 
-    rett = RubyType.new(nil, info[3], "Return type of #{mname}")
+    rett = RubyType.new(nil, info[3], "Return forward type of #{mname}")
     @expstack.push [rett,
       lambda {|b, context|
         recklass = receiver ? receiver[0].klass : nil
