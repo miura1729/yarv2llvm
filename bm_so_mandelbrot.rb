@@ -7,7 +7,7 @@
 
 #size = ARGV[0].to_i
 
-size = 100
+size = 256
 
 puts "P4\n#{size} #{size}"
 
@@ -52,12 +52,12 @@ for y in 0..count_size
     # Code is very similar for these cases, but using separate blocks
     # ensures we skip the shifting when it's unnecessary, which is most cases.
     if (bit_num == 8)
-      print byte_acc # .chr
+      printf "%c", byte_acc # .chr
       byte_acc = 0
       bit_num = 0
     elsif (x == count_size)
       byte_acc <<= (8 - bit_num)
-      print byte_acc # .chr
+      printf "%c", byte_acc # .chr
       byte_acc = 0
       bit_num = 0
     end

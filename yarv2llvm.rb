@@ -77,6 +77,11 @@ if __FILE__ == $0 then
          'Display type message for example Type Conflict Error') do |f|
     y2lopt[:type_message] = f
   end
+
+  opt.on('--compile-only',
+         'Do compile but execute it') do |f|
+    y2lopt[:compile_only] = f
+  end
   
   opt.parse!(ARGV)
 

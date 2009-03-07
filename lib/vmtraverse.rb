@@ -223,12 +223,11 @@ class YarvTranslator<YarvVisitor
     end
 
     if OPTION[:optimize] then
-      @builder.optimize
+      initfunc = @builder.optimize
     end
 
     if OPTION[:post_optimize] then
-      @builder.post_optimize
-      @builder.optimize
+      initfunc = @builder.post_optimize
     end
 
     deffunc = gen_define_ruby(@builder)
@@ -237,8 +236,10 @@ class YarvTranslator<YarvVisitor
       @builder.disassemble
     end
 
-    LLVM::ExecutionEngine.run_function(deffunc)
-    LLVM::ExecutionEngine.run_function(initfunc)
+    unless OPTION[:compile_only]
+      LLVM::ExecutionEngine.run_function(deffunc)
+      LLVM::ExecutionEngine.run_function(initfunc)
+    end
   end
   
   def visit_block_start(code, ins, local_vars, ln, info)

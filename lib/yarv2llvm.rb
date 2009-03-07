@@ -33,6 +33,8 @@ DEF_OPTION = {
   :inline_block => false,
 
   :type_message => true,
+  
+  :compile_only => false,
 }
 OPTION = {}
 

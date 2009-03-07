@@ -222,6 +222,7 @@ class LLVMBuilder
         end
       end
     end
+    @module.get_or_insert_function('init_ruby', Type.function(VALUE, []))
   end
 
   def disassemble
