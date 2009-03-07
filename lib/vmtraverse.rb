@@ -830,8 +830,6 @@ class YarvTranslator<YarvVisitor
         if val then
           context.rc = val.llvm
         else
-          # slf = b.load(context.local_vars[2][:area])
-          #slf = eval("self", @binding).llvm
           slf = Object.llvm
 
           coid = ((cname.object_id << 1) / RVALUE_SIZE)
@@ -860,8 +858,6 @@ class YarvTranslator<YarvVisitor
       cname = ins[1]
       @rescode = lambda {|b, context|
         context = oldrescode.call(b, context)
-        # slf = b.load(context.local_vars[2][:area])
-        #slf = eval("self", @binding).llvm
         slf = Object.llvm
 
         context = val[1].call(b, context)
@@ -974,7 +970,6 @@ class YarvTranslator<YarvVisitor
 
   def visit_putself(code, ins, local_vars, ln, info)
     type = local_vars[2][:type]
-    #type = RubyType.new(nil, info[3], "self")
     @expstack.push [type,
       lambda  {|b, context|
         if type.type then
@@ -1427,24 +1422,21 @@ class YarvTranslator<YarvVisitor
       end
     end
 
-#    if MethodDefinition::RubyMethod[mname][recklass] == nil then
-#        MethodDefinition::RubyMethod[mname][nil] == nil then
-      if funcinfo = MethodDefinition::SystemMethod[mname] then
-        return
-      end
+    if funcinfo = MethodDefinition::SystemMethod[mname] then
+      return
+    end
 
-      funcinfo = get_inline_function(recklass, info[0], mname)
-      if funcinfo and 
+    funcinfo = get_inline_function(recklass, info[0], mname)
+    if funcinfo and 
         para = {:info => info, 
-                :ins => ins,
-                :code => code,
-                :args => args, 
-                :receiver => receiver, 
-                :local => local_vars}
-        instance_exec(para, &funcinfo[:inline_proc])
-        return
-      end
-#    end
+        :ins => ins,
+        :code => code,
+        :args => args, 
+        :receiver => receiver, 
+        :local => local_vars}
+      instance_exec(para, &funcinfo[:inline_proc])
+      return
+    end
 
     # Undefined method, it may be forward call.
     pppp "RubyMethod forward called #{mname.inspect}"
@@ -1559,7 +1551,6 @@ class YarvTranslator<YarvVisitor
 
     if info[1] then
       rett2 = MethodDefinition::RubyMethod[info[1]][info[0]][:rettype]
-#      rett2.add_same_type retexp[0]
       retexp[0].add_same_type rett2
       RubyType.resolve
     end
@@ -1636,7 +1627,6 @@ class YarvTranslator<YarvVisitor
       valexp = @expstack.pop
     end
     bval = nil
-#    @is_live = false
     iflab = nil
     @jump_from[lab] ||= []
     @jump_from[lab].push (ln.to_s + "_1").to_sym
@@ -1680,7 +1670,6 @@ class YarvTranslator<YarvVisitor
       valexp = @expstack.pop
     end
     bval = nil
-#    @is_live = false
     iflab = nil
     @jump_from[lab] ||= []
     @jump_from[lab].push (ln.to_s + "_1").to_sym
