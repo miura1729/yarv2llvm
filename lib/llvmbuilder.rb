@@ -204,6 +204,16 @@ class LLVMBuilder
     File.popen("/usr/local/bin/opt -O3 -f #{bitout.path}") {|fp|
       @module = LLVM::Module.read_bitcode(fp.read)
     }
+    update_methodstub_table
+  end
+
+  def post_optimize
+    llvmstr = YARV2LLVM::PostOptimizer.new.optimize(@module.inspect)
+    @module = LLVM::Module.read_assembly(llvmstr)
+    update_methodstub_table
+  end
+
+  def update_methodstub_table
     MethodDefinition::RubyMethodStub.each do |nm, klasstab|
       klasstab.each do |rec, val|
         if nm then

@@ -5,6 +5,7 @@ require 'llvm'
 require 'lib/llvmutil.rb'
 require 'lib/instruction.rb'
 require 'lib/type.rb'
+require 'lib/postopt.rb'
 require 'lib/llvmbuilder.rb'
 require 'lib/methoddef.rb'
 require 'lib/methoddef_ex.rb'
@@ -19,6 +20,7 @@ module YARV2LLVM
 DEF_OPTION = {
   :disasm => false,
   :optimize => true,
+  :post_optimize => false,
   :dump_yarv => false,
   :write_bc => false,
   :func_signature => false,

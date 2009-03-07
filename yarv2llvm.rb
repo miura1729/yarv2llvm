@@ -17,6 +17,11 @@ if __FILE__ == $0 then
     y2lopt[:optimize] = f
   end
 
+  opt.on('--[no-]post-optimize', 
+         'Execute post optimize (llvm level peephole optimize)') do |f|
+    y2lopt[:post_optimize] = f
+  end
+
   opt.on('-r FILE', 
          'Execute FILE by Ruby1.9 before compile main program') do |f|
     rf = File.read(f)

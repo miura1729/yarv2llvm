@@ -226,6 +226,11 @@ class YarvTranslator<YarvVisitor
       @builder.optimize
     end
 
+    if OPTION[:post_optimize] then
+      @builder.post_optimize
+      @builder.optimize
+    end
+
     deffunc = gen_define_ruby(@builder)
 
     if OPTION[:disasm] then
