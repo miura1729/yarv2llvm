@@ -13,6 +13,8 @@ yarv2llvm -- Yarv to LLVM Translater
    2. Copy yarv2llvm.rb and ./lib/*.* to any directory which is in 
       the ruby library path.
 
+  yarv2llvm need ruby1.9.x .
+
 -- Usage
 
    require 'yarv2llvm'

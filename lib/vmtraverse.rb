@@ -1439,7 +1439,7 @@ class YarvTranslator<YarvVisitor
         :code => code,
         :args => args, 
         :receiver => receiver, 
-        :local => local_vars}
+        :local => local_vars} then
       instance_exec(para, &funcinfo[:inline_proc])
       return
     end

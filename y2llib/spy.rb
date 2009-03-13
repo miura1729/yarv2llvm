@@ -10,6 +10,28 @@ class SpyServer
 HTML_TEMPLATE = <<EOS
 <html>
   <style type="text/css">
+    table#main {
+      border-collapse: collaspe;
+      empty-cells: hide;
+      border-spacing: 0
+    }
+
+   th#tname {
+      width: 20ex;
+      text-align: left
+   }
+   th#tclass {
+      width: 20ex;
+      text-align: left
+   }
+   th#tmethod {
+      width: 20ex;
+      text-align: left
+   }
+   th#tstatus {
+      width: 20ex;
+      text-align: left
+   }
   </style>
 
   <script type="text/javascript" id="main">
@@ -26,7 +48,13 @@ HTML_TEMPLATE = <<EOS
 
   </script>
   <body>
-    <table border>
+    <table id="main">
+       <tr>
+       <th id="tname"> Name  </th> 
+       <th id="tclass"> Class  </th> 
+       <th id="tmethod"> Method  </th> 
+       <th id="tstatus"> Line number </th> 
+       </tr>
        <%= @table_prototye %>
     </table>
   </body>
@@ -38,9 +66,9 @@ EOS
       super
       table_prototye = ""
       30.times do |i|
-        table_prototye += "<tr>"
-        3.times do |j|
-          table_prototye += "<td> <div id=\"tab#{i}-#{j}\"> </div></td>"
+        table_prototye += "<tr id=\"tab#{i}\">"
+        4.times do |j|
+          table_prototye += "<td> <div id=\"tab#{i}-#{j}\" width=\"20em\"> </div></td>"
         end
         table_prototye += "</tr>"
       end
@@ -68,15 +96,19 @@ EOS
       sleep(1)
       script = ""
 
-      if $pos then
+      if $spypos then
         i = 0
-        $pos.each do |key, value|
+        $spypos.each do |key, value|
           info = YARV2LLVM::TRACE_INFO[value][1]
+          nameno = $spyname[key]
+          name = YARV2LLVM::TRACE_INFO[nameno][1][0]
           dest = "document.getElementById(\"tab#{i}-0\").innerHTML"
-          script += "#{dest} =  \"#{info[0]}\";\n"
+          script += "#{dest} =  \"#{name}\";\n"
           dest = "document.getElementById(\"tab#{i}-1\").innerHTML"
-          script += "#{dest} =  \"#{info[1]}\";\n"
+          script += "#{dest} =  \"#{info[0]}\";\n"
           dest = "document.getElementById(\"tab#{i}-2\").innerHTML"
+          script += "#{dest} =  \"#{info[1]}\";\n"
+          dest = "document.getElementById(\"tab#{i}-3\").innerHTML"
           if key.status == "run"
             script += "#{dest} =  \"#{info[3]}\";\n"
           else
@@ -116,10 +148,19 @@ Thread.new {
 
 <<-EOS
 module YARV2LLVM
-  $pos = Hash.new
+  $spypos = Hash.new
+  $spyname = Hash.new
+  $spythread = Hash.new
   def trace_func(event, no)
-    if event == 8 or rand < 0.1 then
-      $pos[Thread.current] = no
+    cur = Thread.current
+    if $spythread[cur] == nil then
+      $spyname[cur] = no
+      $spypos[cur] = no
+      $spythread[cur] = 0
+    elsif event == 8 then
+      $spypos[cur] = no
+    elsif rand < 0.1 then
+      $spypos[cur] = no
     end
   end
 end
