@@ -290,12 +290,23 @@ module SendUtil
   include RubyHelpers
 
   MaxSmallPolymotphicNum = 4
-  def gen_method_select(recklass, lexklass, mname)
+  def gen_method_select(rectype, lexklass, mname)
     mtab = MethodDefinition::RubyMethod[mname].clone
-
     mtab.delete_if {|klass, info| 
       !info.is_a?(Hash)
     }
+
+    recklass = nil
+    if rectype then
+      conftype = rectype.conflicted_types
+      if conftype.size <= 1 then
+        recklass = rectype.klass
+      else
+        mtab.delete_if {|klass, info| 
+          conftype[klass] == nil
+        }
+      end
+    end
 
     minfo = mtab[recklass]
     if minfo.is_a?(Hash) and minfo[:func] then

@@ -29,7 +29,7 @@ class RubyType
     @same_type = []
     @same_value = []
     @@type_table.push self
-    @conflicted_types = Hash.new(0)
+    @conflicted_types = Hash.new
   end
   attr_accessor :type
   attr_accessor :conflicted_types
@@ -125,6 +125,10 @@ class RubyType
   def resolve
     rone = lambda {|dupp|
       lambda {|ty|
+        if ty.type and @type and ty.type.klass != @type.klass then
+          ty.conflicted_types[ty.type.klass] = ty.type
+          ty.conflicted_types[@type.klass] = @type
+        end
         if ty.type and ty.type.is_a?(ComplexType) then
           if ty.type.is_a?(@type.class) and ty.type.class != @type.class then
             if dupp then
@@ -136,7 +140,7 @@ class RubyType
             resolve
             return
           end
-          
+            
           if @type.is_a?(ty.type.class) then
             if ty.type != @type then
               if dupp then
@@ -153,7 +157,6 @@ class RubyType
             return
           end
         end
-        
         ty.conflicted_types.merge!(@conflicted_types)
         if ty.type and ty.type.llvm != @type.llvm then
           mess = "Type conflict \n"

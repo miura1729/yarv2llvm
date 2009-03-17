@@ -1084,7 +1084,7 @@ class YarvTranslator<YarvVisitor
         end
       end
       etype = v[0].type
-      atype.type.element_type.conflicted_types[etype.llvm] = etype
+      atype.type.element_type.conflicted_types[v[0].klass] = etype
     }
     arraycurlevel = @expstack.size
     if nele != 0 then
@@ -1361,8 +1361,9 @@ class YarvTranslator<YarvVisitor
 
     RubyType.resolve
     recklass = receiver ? receiver[0].klass : nil
+    rectype = receiver ? receiver[0] : nil
 
-    minfo, func = gen_method_select(recklass, info[0], mname)
+    minfo, func = gen_method_select(rectype, info[0], mname)
     if minfo then
       pppp "RubyMethod called #{mname.inspect}"
 
@@ -1370,7 +1371,7 @@ class YarvTranslator<YarvVisitor
       @expstack.push [minfo[:rettype],
         lambda {|b, context|
           recklass = receiver ? receiver[0].klass : nil
-          minfo, func = gen_method_select(recklass, info[0], mname)
+          minfo, func = gen_method_select(rectype, info[0], mname)
           if func then
             gen_call(func, para ,b, context)
           else
@@ -1454,10 +1455,11 @@ class YarvTranslator<YarvVisitor
     @expstack.push [rett,
       lambda {|b, context|
         recklass = receiver ? receiver[0].klass : nil
-        minfo, func = gen_method_select(recklass, info[0], mname)
+        rectype = receiver ? receiver[0] : nil
+        minfo, func = gen_method_select(rectype, info[0], mname)
         if minfo == nil then
           # Retry for generate dynamic dispatch.
-          minfo, func = gen_method_select(recklass, nil, mname)
+          minfo, func = gen_method_select(rectype, nil, mname)
         end
 
         nargt = minfo[:argtype]
