@@ -990,7 +990,7 @@ class YarvTranslator<YarvVisitor
     p1 = ins[1]
     type = RubyType.typeof(p1, info[3], p1)
     orgtype = type.type
-    type.type.constant = p1
+
     @expstack.push [type, 
       lambda {|b, context| 
         pppp p1
@@ -2277,8 +2277,13 @@ class YarvTranslator<YarvVisitor
           context.rc = arrelet.from_value(av, b, context)
           
           context
+
+        when :"YARV2LLVM::LLVMLIB::Unsafe"
+          raise "foo"
+
         else
           # Todo: Hash table?
+          p arr[0]
           raise "Not impremented #{arr[0].inspect2} in #{info[3]}"
           context
         end

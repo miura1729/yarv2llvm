@@ -316,7 +316,7 @@ module SendUtil
 
     # inheritance search
     if recklass then
-      sup = Object.const_get(recklass, true)
+      sup = Object.nested_const_get(recklass)
       while sup do
         minfo = mtab[sup.name.to_sym]
         if minfo.is_a?(Hash) then
@@ -330,7 +330,7 @@ module SendUtil
       end
     elsif lexklass then
       # Search lexcal class
-      sup = Object.const_get(lexklass, true)
+      sup = Object.nested_const_get(lexklass)
       while sup do
         minfo = mtab[sup.name.to_sym]
         if minfo.is_a?(Hash) then
@@ -458,7 +458,7 @@ module SendUtil
       if MethodDefinition::RubyMethod[mname][recklass] then
         return true
       end
-      obj = Object.const_get(recklass, true)
+      obj = Object.nested_const_get(recklass, true)
       subclasses_of(obj).each do |sub|
         if MethodDefinition::RubyMethod[mname][sub.name.to_sym] then
           return true

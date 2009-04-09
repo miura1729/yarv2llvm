@@ -2,6 +2,12 @@ require 'rubygems'
 require 'tempfile'
 require 'llvm'
 
+module YARV2LLVM
+module LLVMLIB
+  class Unsafe; end
+end
+end
+
 require 'lib/llvmutil.rb'
 require 'lib/instruction.rb'
 require 'lib/type.rb'
@@ -53,6 +59,10 @@ TRACE_INFO = []
 end
 
 class Object
+  def nested_const_get(name)
+    name.to_s.split(/::/).inject(Object){|o,c| o.const_get(c) }
+  end
+
   def llvm
     YARV2LLVM::EXPORTED_OBJECT[self] = true
     immediate
@@ -88,7 +98,7 @@ end
 
 class Symbol
   def llvm
-    YARV2LLLVM::EXPORTED_OBJECT[self] = true
+#    YARV2LLLVM::EXPORTED_OBJECT[self] = true
     immediate
   end
 end

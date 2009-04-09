@@ -6,6 +6,7 @@ module Transaction
 end
 
 module YARV2LLVM
+
 module MethodDefinition
   include LLVMUtil
 
@@ -34,7 +35,27 @@ module MethodDefinition
       }
     },
 
-  }
+  },
+
+  InlineMethod_LLVMLIB = {
+    :unsafe => {
+      :inline_proc => lambda {|para|
+        info = para[:info]
+        ptr = para[:args][1]
+        objtype = para[:args][0][0].type.content
+        mess = "return type of LLVMLIB::unsafe"
+        unsafetype = RubyType.unsafe(info[3], mess, objtype)
+        @expstack.push [unsafetype,
+          lambda {|b, context|
+            ptr0 = ptr[1].call(b, context).rc
+            newptr = unsafetype.type.from_value(ptr0, b, context)
+            context.rc = newptr
+            context
+          }
+        ]
+      }
+    },
+  },
 
   InlineMethod_Transaction = {
     :begin_transaction => {
@@ -187,6 +208,7 @@ module MethodDefinition
   }
 
   InlineMethod[:YARV2LLVM] = InlineMethod_YARV2LLVM
+  InlineMethod[:"YARV2LLVM::LLVMLIB"] = InlineMethod_LLVMLIB
   InlineMethod[:Transaction] = InlineMethod_Transaction
 end
 end

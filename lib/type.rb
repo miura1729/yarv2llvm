@@ -17,6 +17,8 @@ class RubyType
     @line_no = lno
     if type == nil 
       @type = nil
+    elsif type.is_a?(UnsafeType) then
+      @type = type
     elsif type.is_a?(ComplexType) then
       @type = type
     else
@@ -254,6 +256,11 @@ class RubyType
     RubyType.new(VALUE, lno, name, klass)
   end
 
+  def self.unsafe(lno = nil, name = nil, treat = nil)
+    type = UnsafeType.new(treat)
+    RubyType.new(type, lno, name, :"YARV2LLVM::LLVMLIB::Unsafe")
+  end
+
   def self.from_sym(sym, lno, name)
     case sym
     when :Fixnum
@@ -288,6 +295,12 @@ class RubyType
   end
 
   def self.typeof(obj, lno = nil, name = nil)
+    res = self.typeof_aux(obj, lno, name)
+    res.type.content = obj
+    res
+  end
+
+  def self.typeof_aux(obj, lno, name)
     case obj
     when ::TrueClass, ::FalseClass
       RubyType.boolean(lno, name)
@@ -330,6 +343,39 @@ class RubyType
     end
   end
 end
+
+class UnsafeType
+  def initialize(type)
+    @klass = :"YARV2LLVM::LLVMLIB::Unsafe"
+    @type = type
+    @content = nil
+    @constant = nil
+    @element_type = RubyType.value
+  end
+
+  attr_accessor :klass
+  attr_accessor :content
+  attr_accessor :constant
+  attr_accessor :element_type
+
+  def dup_type
+    nt = self.class.new(@type)
+
+    nt
+  end
+
+  def to_value(val, b, context)
+    b.ptr_to_int(val, VALUE)
+  end
+
+  def from_value(val, b, context)
+    b.int_to_ptr(val, @type)
+  end
+
+  def llvm
+    @type
+  end
+end  
 
 class PrimitiveType
   include LLVM
