@@ -458,7 +458,7 @@ module SendUtil
       if MethodDefinition::RubyMethod[mname][recklass] then
         return true
       end
-      obj = Object.nested_const_get(recklass, true)
+      obj = Object.const_get(recklass, true)
       subclasses_of(obj).each do |sub|
         if MethodDefinition::RubyMethod[mname][sub.name.to_sym] then
           return true
