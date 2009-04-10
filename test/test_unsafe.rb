@@ -8,7 +8,8 @@ class UnsafeTests < Test::Unit::TestCase
   def test_unsafe
     YARV2LLVM::compile(<<-EOS, {:disasm => true, :dump_yarv => true, :optimize=> false})
 def unsafe
-  foo = YARV2LLVM::LLVMLIB::unsafe([:a], RubyHelpers::VALUE)
+  type = LLVM::Type.struct([VALUE, VALUE])
+  foo = YARV2LLVM::LLVMLIB::unsafe([:a], type)
   foo[0]
   1
 end

@@ -34,7 +34,8 @@ module LLVMUtil
   end
 
   def gen_common_opt_2arg(b, context, s1, s2)
-    if s1[0].type.constant and s2[0].type.constant then
+    if !UNDEF.equal?(s1[0].type.constant) and 
+       !UNDEF.equal?(s2[0].type.constant) then
       return [s1[0].type.constant, s2[0].type.constant, context, true]
     end
 
@@ -522,7 +523,7 @@ module SendUtil
           # value cache
           local_vars.each do |le|
             if le[:type].type then
-              le[:type].type.content = nil
+              le[:type].type.content = UNDEF
             end
           end
           # receiver of block is parent class

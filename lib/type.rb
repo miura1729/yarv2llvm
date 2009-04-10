@@ -48,8 +48,8 @@ class RubyType
     no = clone
     if @type then
       no.type = @type.clone
-      no.type.constant = nil
-      no.type.content = nil
+      no.type.constant = UNDEF
+      no.type.content = UNDEF
     end
     add_same_type no
     no.add_same_type self
@@ -101,7 +101,7 @@ class RubyType
   def self.clear_content
     @@type_table.each do |ty|
       if ty.type then
-        ty.type.content = nil
+        ty.type.content = UNDEF
         if ty.type.is_a?(ArrayType) then
           ty.type.ptr = nil
           ty.type.element_content = {}
@@ -348,8 +348,8 @@ class UnsafeType
   def initialize(type)
     @klass = :"YARV2LLVM::LLVMLIB::Unsafe"
     @type = type
-    @content = nil
-    @constant = nil
+    @content = UNDEF
+    @constant = UNDEF
     @element_type = RubyType.value
   end
 
@@ -390,8 +390,8 @@ class PrimitiveType
       @klass = nil
     end
     @type = type
-    @content = nil
-    @constant = nil
+    @content = UNDEF
+    @constant = UNDEF
   end
 
   attr_accessor :klass
@@ -519,7 +519,7 @@ class ComplexType
     else
       @klass = nil
     end
-    @constant = nil
+    @constant = UNDEF
   end
 
   attr_accessor :klass
@@ -547,7 +547,7 @@ class RangeType<ComplexType
     @first = first
     @last = last
     @excl = excl
-    @content = nil
+    @content = UNDEF
   end
   attr_accessor :first
   attr_accessor :last
@@ -578,10 +578,12 @@ class AbstructContainerType<ComplexType
   def initialize(etype)
     set_klass(Object)
     @element_type = RubyType.new(etype)
-    @content = nil
+    @content = UNDEF
+    @constant = UNDEF
   end
   attr_accessor :element_type
   attr_accessor :content
+  attr_accessor :constant
 
   def dup_type
     no = self.class.new(nil)
@@ -615,6 +617,8 @@ class ArrayType<AbstructContainerType
     @element_type = RubyType.new(etype, nil, nil)
     @ptr = nil
     @element_content = Hash.new
+    @content = UNDEF
+    @constant = UNDEF
   end
   attr_accessor :element_type
   attr_accessor :ptr
@@ -680,6 +684,8 @@ class HashType<AbstructContainerType
     @element_type = RubyType.new(etype, nil, nil)
     @ptr = nil
     @element_content = Hash.new
+    @content = UNDEF
+    @constant = UNDEF
   end
   attr_accessor :element_type
   attr_accessor :ptr
@@ -743,6 +749,8 @@ class StringType<AbstructContainerType
   def initialize
     set_klass(String)
     @element_type = RubyType.new(CHAR, nil, nil, Fixnum)
+    @content = UNDEF
+    @constant = UNDEF
   end
   attr :element_type
 
@@ -781,6 +789,8 @@ class StructType<AbstructContainerType
   def initialize
     set_klass(Struct)
     @element_type = RubyType.new(VALUE, nil, nil, Object)
+    @content = UNDEF
+    @constant = UNDEF
   end
   attr :element_type
 

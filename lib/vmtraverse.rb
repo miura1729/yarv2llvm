@@ -856,7 +856,7 @@ class YarvTranslator<YarvVisitor
     if info[0] then
       const_path = "#{info[0]}::#{const_path}"
     end
-    if val[0].type.constant then
+    if !UNDEF.equal?(val[0].type.constant) then
       eval("#{const_path} = #{val[0].type.constant}", @binding)
     else
       @constant_type_tab[@binding][ins[1]] = val[0]
@@ -990,6 +990,7 @@ class YarvTranslator<YarvVisitor
     p1 = ins[1]
     type = RubyType.typeof(p1, info[3], p1)
     orgtype = type.type
+    type.type.constant = p1
 
     @expstack.push [type, 
       lambda {|b, context| 
@@ -2312,7 +2313,7 @@ class YarvTranslator<YarvVisitor
     type = local_vars[voff][:type]
     @expstack.push [type,
       lambda {|b, context|
-        unless context.rc = type.type.content
+        if UNDEF.equal?(context.rc = type.type.content) then
           context.rc = b.load(context.local_vars[voff][:area])
         end
         context.org = local_vars[voff][:name]
@@ -2354,7 +2355,7 @@ class YarvTranslator<YarvVisitor
 
     @expstack.push [type,
       lambda {|b, context|
-        unless context.rc = type.type.content
+        if UNDEF.equal?(context.rc = type.type.content)
           if context.inline_args then
             varp = alocal[:area]
           else

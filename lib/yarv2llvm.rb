@@ -6,6 +6,7 @@ module YARV2LLVM
 module LLVMLIB
   class Unsafe; end
 end
+UNDEF = [:UNDEF]
 end
 
 require 'lib/llvmutil.rb'
