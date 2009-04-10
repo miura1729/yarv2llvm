@@ -1107,6 +1107,7 @@ class YarvTranslator<YarvVisitor
       @expstack.push [atype,
         lambda {|b, context|
           context.rc = arr.llvm
+          context
         }]
     else
       @expstack.push [atype,
@@ -2213,7 +2214,12 @@ class YarvTranslator<YarvVisitor
       arr[0].type = AbstructContainerType.new(nil)
     end
 
-    @expstack.push [arr[0].type.element_type, 
+    rettype = arr[0].type.element_type
+    if arr[0].klass == :"YARV2LLVM::LLVMLIB::Unsafe" then
+      rettype = RubyType.unsafe
+    end
+
+    @expstack.push [rettype,
       lambda {|b, context|
         pppp "aref start"
         case arr[0].klass
@@ -2292,7 +2298,27 @@ class YarvTranslator<YarvVisitor
           context
 
         when :"YARV2LLVM::LLVMLIB::Unsafe"
-          raise "foo"
+          context = idx[1].call(b, context)
+          idxp = context.rc
+          context = arr[1].call(b, context)
+          arrp = context.rc
+          case arr[0].type.type
+          when LLVM_Pointer
+            addr = b.gep(arrp, idxp)
+            rettype.type.type = arr[0].type.type.member
+            context.rc = b.load(addr)
+
+          when LLVM_Struct
+            indx = idx[0].type.constant
+            rettype.type.type = arr[0].type.type.member[indx]
+            addr = b.struct_gep(arrp, indx)
+            context.rc = b.load(addr)
+            context.rc = arrp
+
+          else
+            p arr[0].type.type.class
+          end
+          context
 
         else
           # Todo: Hash table?

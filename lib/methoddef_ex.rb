@@ -7,6 +7,26 @@ end
 
 module YARV2LLVM
 
+class LLVM_Struct
+  def initialize(type, member)
+    @type = type
+    @member = member
+  end
+  
+  attr_accessor :type
+  attr_accessor :member
+end
+  
+class LLVM_Pointer
+  def initialize(type, member)
+    @type = type
+    @member = member
+  end
+  
+  attr_accessor :type
+  attr_accessor :member
+end
+
 module MethodDefinition
   include LLVMUtil
 
@@ -35,6 +55,47 @@ module MethodDefinition
       }
     },
 
+  },
+
+  InlineMethod_LLVM = {
+    :struct => {
+      :inline_proc => lambda {|para|
+        info = para[:info]
+        tarr = para[:args][0]
+        rtarr = tarr[0].type.content
+        struct = Type.pointer(Type.struct(rtarr))
+        struct0 = LLVM_Struct.new(struct, rtarr)
+        mess = "return type of LLVM::struct"
+        type = RubyType.value(info[3], mess, LLVM_Struct)
+        type.type.content = struct0
+        @expstack.push [type,
+          lambda {|b, context|
+            context.rc = struct0.llvm
+            context
+          }
+        ]
+      }
+    },
+
+    :pointer => {
+      :inline_proc => lambda {|para|
+        info = para[:info]
+        tarr = para[:args][0]
+        dstt = tarr[0].type.content
+        ptr = Type.pointer(dstt.type)
+        ptr0 = LLVM_Pointer.new(ptr, dstt)
+
+        mess = "return type of LLVM_Pointer"
+        type = RubyType.value(info[3], mess, LLVM_Pointer)
+        type.type.content =ptr0
+        @expstack.push [type,
+          lambda {|b, context|
+            context.rc = ptr0.llvm
+            context
+          }
+        ]
+      }
+    },
   },
 
   InlineMethod_LLVMLIB = {
@@ -209,6 +270,7 @@ module MethodDefinition
 
   InlineMethod[:YARV2LLVM] = InlineMethod_YARV2LLVM
   InlineMethod[:"YARV2LLVM::LLVMLIB"] = InlineMethod_LLVMLIB
+  InlineMethod[:"LLVM"] = InlineMethod_LLVM
   InlineMethod[:Transaction] = InlineMethod_Transaction
 end
 end

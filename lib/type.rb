@@ -350,10 +350,11 @@ class UnsafeType
     @type = type
     @content = UNDEF
     @constant = UNDEF
-    @element_type = RubyType.value
+    @element_type = nil
   end
 
   attr_accessor :klass
+  attr_accessor :type
   attr_accessor :content
   attr_accessor :constant
   attr_accessor :element_type
@@ -369,11 +370,11 @@ class UnsafeType
   end
 
   def from_value(val, b, context)
-    b.int_to_ptr(val, @type)
+    b.int_to_ptr(val, @type.type)
   end
 
   def llvm
-    @type
+    @type.type
   end
 end  
 
