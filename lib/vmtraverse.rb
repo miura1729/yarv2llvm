@@ -991,6 +991,7 @@ class YarvTranslator<YarvVisitor
     type = RubyType.typeof(p1, info[3], p1)
     orgtype = type.type
     type.type.constant = p1
+    type.type.content = p1
 
     @expstack.push [type, 
       lambda {|b, context| 
@@ -1099,36 +1100,47 @@ class YarvTranslator<YarvVisitor
       atype.type.element_type.add_same_type(inits[0][0])
       inits[0][0].add_same_type(atype.type.element_type)
     end
-    @expstack.push [atype,
-      lambda {|b, context|
-        if nele == 0 then
-          ftype = Type.function(VALUE, [])
-          func = context.builder.external_function('rb_ary_new', ftype)
-          rc = b.call(func)
-          context.rc = rc
-          pppp "newarray END"
-        else
-          initsize = inits.size
-          initarea = context.array_alloca_area
-          initarea2 =  b.gep(initarea, arraycurlevel.llvm)
-          inits.each_with_index do |e, n|
-            context = e[1].call(b, context)
-            sptr = b.gep(initarea2, n.llvm)
-            if e[0].type then
-              rcvalue = e[0].type.to_value(context.rc, b, context)
-            else
-              rcvalue = context.rc
-            end
-            b.store(rcvalue, sptr)
-          end
 
-          ftype = Type.function(VALUE, [Type::Int32Ty, P_VALUE])
-          func = context.builder.external_function('rb_ary_new4', ftype)
-          rc = b.call(func, initsize.llvm, initarea2)
-          context.rc = rc
-        end
-        context
-      }]
+    if (inits.all? {|e| e[0].type and !UNDEF.equal?(e[0].type.content)}) then
+      arr = inits.map {|e| e[0].type.content}
+      atype.type.content = arr
+      @expstack.push [atype,
+        lambda {|b, context|
+          context.rc = arr.llvm
+        }]
+    else
+      @expstack.push [atype,
+         lambda {|b, context|
+           if nele == 0 then
+             ftype = Type.function(VALUE, [])
+             func = context.builder.external_function('rb_ary_new', ftype)
+             rc = b.call(func)
+             context.rc = rc
+             pppp "newarray END"
+             
+           else
+             initsize = inits.size
+             initarea = context.array_alloca_area
+             initarea2 =  b.gep(initarea, arraycurlevel.llvm)
+             inits.each_with_index do |e, n|
+               context = e[1].call(b, context)
+               sptr = b.gep(initarea2, n.llvm)
+               if e[0].type then
+                 rcvalue = e[0].type.to_value(context.rc, b, context)
+               else
+                 rcvalue = context.rc
+               end
+               b.store(rcvalue, sptr)
+             end
+             
+             ftype = Type.function(VALUE, [Type::Int32Ty, P_VALUE])
+             func = context.builder.external_function('rb_ary_new4', ftype)
+             rc = b.call(func, initsize.llvm, initarea2)
+             context.rc = rc
+           end
+           context
+         }]
+    end
   end
 
   def visit_duparray(code, ins, local_vars, ln, info)
