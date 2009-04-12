@@ -44,6 +44,19 @@ class RubyType
     end
   end
 
+  def content
+    if @type and !UNDEF.equal?(@type.content) then
+      return @type.content
+    end
+    @same_value.each do |ty|
+      cont = ty.content
+      if !UNDEF.equal?(cont) then
+        return cont
+      end
+    end
+    UNDEF
+  end
+
   def dup_type
     no = clone
     if @type then

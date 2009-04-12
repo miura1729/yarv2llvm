@@ -1088,6 +1088,7 @@ class YarvTranslator<YarvVisitor
       etype = v[0].type
       atype.type.element_type.conflicted_types[v[0].klass] = etype
     }
+
     arraycurlevel = @expstack.size
     if nele != 0 then
       if @array_alloca_size == nil or @array_alloca_size < nele + arraycurlevel then
@@ -1101,46 +1102,47 @@ class YarvTranslator<YarvVisitor
       inits[0][0].add_same_type(atype.type.element_type)
     end
 
-    if (inits.all? {|e| e[0].type and !UNDEF.equal?(e[0].type.content)}) then
-      arr = inits.map {|e| e[0].type.content}
+    constarrp = inits.all? {|e| !UNDEF.equal?(e[0].content)}
+    if constarrp then
+      arr = inits.map {|e| e[0].content}
       atype.type.content = arr
       @expstack.push [atype,
         lambda {|b, context|
           context.rc = arr.llvm
           context
-        }]
+      }]
     else
       @expstack.push [atype,
-         lambda {|b, context|
-           if nele == 0 then
-             ftype = Type.function(VALUE, [])
-             func = context.builder.external_function('rb_ary_new', ftype)
-             rc = b.call(func)
-             context.rc = rc
-             pppp "newarray END"
-             
-           else
-             initsize = inits.size
-             initarea = context.array_alloca_area
-             initarea2 =  b.gep(initarea, arraycurlevel.llvm)
-             inits.each_with_index do |e, n|
-               context = e[1].call(b, context)
-               sptr = b.gep(initarea2, n.llvm)
-               if e[0].type then
-                 rcvalue = e[0].type.to_value(context.rc, b, context)
-               else
-                 rcvalue = context.rc
-               end
-               b.store(rcvalue, sptr)
-             end
-             
-             ftype = Type.function(VALUE, [Type::Int32Ty, P_VALUE])
-             func = context.builder.external_function('rb_ary_new4', ftype)
-             rc = b.call(func, initsize.llvm, initarea2)
-             context.rc = rc
-           end
-           context
-         }]
+        lambda {|b, context|
+          if nele == 0 then
+            ftype = Type.function(VALUE, [])
+            func = context.builder.external_function('rb_ary_new', ftype)
+            rc = b.call(func)
+            context.rc = rc
+            pppp "newarray END"
+          
+          else
+            initsize = inits.size
+            initarea = context.array_alloca_area
+            initarea2 =  b.gep(initarea, arraycurlevel.llvm)
+            inits.each_with_index do |e, n|
+              context = e[1].call(b, context)
+              sptr = b.gep(initarea2, n.llvm)
+              if e[0].type then
+                rcvalue = e[0].type.to_value(context.rc, b, context)
+              else
+                rcvalue = context.rc
+              end
+              b.store(rcvalue, sptr)
+            end
+          
+            ftype = Type.function(VALUE, [Type::Int32Ty, P_VALUE])
+            func = context.builder.external_function('rb_ary_new4', ftype)
+            rc = b.call(func, initsize.llvm, initarea2)
+            context.rc = rc
+          end
+          context
+       }]
     end
   end
 
@@ -2298,25 +2300,26 @@ class YarvTranslator<YarvVisitor
           context
 
         when :"YARV2LLVM::LLVMLIB::Unsafe"
-          context = idx[1].call(b, context)
-          idxp = context.rc
           context = arr[1].call(b, context)
           arrp = context.rc
           case arr[0].type.type
           when LLVM_Pointer
-            addr = b.gep(arrp, idxp)
+            context = idx[1].call(b, context)
+            idxp = context.rc
             rettype.type.type = arr[0].type.type.member
+            addr = b.gep(arrp, idxp)
             context.rc = b.load(addr)
 
           when LLVM_Struct
+            context = idx[1].call(b, context)
             indx = idx[0].type.constant
             rettype.type.type = arr[0].type.type.member[indx]
             addr = b.struct_gep(arrp, indx)
             context.rc = b.load(addr)
-            context.rc = arrp
 
           else
             p arr[0].type.type.class
+            raise "Unsupport type #{arr[0].type.type}"
           end
           context
 

@@ -63,7 +63,15 @@ module MethodDefinition
         info = para[:info]
         tarr = para[:args][0]
         rtarr = tarr[0].type.content
-        struct = Type.pointer(Type.struct(rtarr))
+        rtarr2 = rtarr.map {|e|
+          case e
+          when LLVM_Struct, LLVM_Pointer
+            e.type
+          else
+            e
+          end
+        }
+        struct = Type.pointer(Type.struct(rtarr2))
         struct0 = LLVM_Struct.new(struct, rtarr)
         mess = "return type of LLVM::struct"
         type = RubyType.value(info[3], mess, LLVM_Struct)
@@ -84,10 +92,9 @@ module MethodDefinition
         dstt = tarr[0].type.content
         ptr = Type.pointer(dstt.type)
         ptr0 = LLVM_Pointer.new(ptr, dstt)
-
+        type.type.content =ptr0
         mess = "return type of LLVM_Pointer"
         type = RubyType.value(info[3], mess, LLVM_Pointer)
-        type.type.content =ptr0
         @expstack.push [type,
           lambda {|b, context|
             context.rc = ptr0.llvm
@@ -103,13 +110,32 @@ module MethodDefinition
       :inline_proc => lambda {|para|
         info = para[:info]
         ptr = para[:args][1]
-        objtype = para[:args][0][0].type.content
         mess = "return type of LLVMLIB::unsafe"
+        objtype = para[:args][0][0].type.content
         unsafetype = RubyType.unsafe(info[3], mess, objtype)
         @expstack.push [unsafetype,
           lambda {|b, context|
             ptr0 = ptr[1].call(b, context).rc
             newptr = unsafetype.type.from_value(ptr0, b, context)
+            context.rc = newptr
+            context
+          }
+        ]
+      }
+    },
+
+    :safe => {
+      :inline_proc => lambda {|para|
+        info = para[:info]
+        ptr = para[:args][0]
+        ptrllvm = ptr[0].type.type
+        mess = "return type of LLVMLIB::safe"
+        safetype = RubyType.new(VALUE, info[3], mess)
+        @expstack.push [safetype,
+          lambda {|b, context|
+            ptr0 = ptr[1].call(b, context).rc
+            safetype.type = PrimitiveType.new(ptr[0].type.type, nil)
+            newptr = safetype.type.to_value(ptr0, b, context)
             context.rc = newptr
             context
           }
