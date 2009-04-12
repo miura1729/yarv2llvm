@@ -284,6 +284,15 @@ module LLVMUtil
       raise "Unsupported type #{recv[0].inspect2}"
     end
   end
+
+  def get_raw_llvm_type(e)
+    case e
+    when LLVM_Struct, LLVM_Pointer, LLVM_Function
+      e.type
+    else
+      e
+    end
+  end
 end
 
 module SendUtil

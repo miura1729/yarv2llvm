@@ -591,6 +591,9 @@ module MethodDefinition
   
   # can be maped to C function
   CMethod = {
+    # For define_external_function
+    nil => {}, 
+
     :Math => {
       :sqrt => 
         {:rettype => Type::DoubleTy,

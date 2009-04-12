@@ -386,8 +386,16 @@ class UnsafeType
     b.int_to_ptr(val, @type.type)
   end
 
+  def inspect2
+    self.inspect
+  end
   def llvm
-    @type.type
+    case @type
+    when LLVM_Struct, LLVM_Pointer, LLVM_Function
+      @type.type
+    else
+      @type
+    end
   end
 end  
 

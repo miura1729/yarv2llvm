@@ -1401,6 +1401,9 @@ class YarvTranslator<YarvVisitor
     if MethodDefinition::CMethod[recklass] then
       funcinfo = MethodDefinition::CMethod[recklass][mname]
     end
+    unless funcinfo
+      funcinfo = MethodDefinition::CMethod[nil][mname]
+    end
 
     if funcinfo then
       rettype = funcinfo[:rettype]

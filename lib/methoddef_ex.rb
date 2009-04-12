@@ -27,6 +27,24 @@ class LLVM_Pointer
   attr_accessor :member
 end
 
+class LLVM_Function
+  include LLVMUtil
+
+  def initialize(type, ret, arga)
+    @type = type
+    @ret_type = ret
+    @arg_type = arga
+  end
+  
+  attr_accessor :type
+  attr_accessor :ret_type
+  attr_accessor :arg_type
+
+  def arg_type_raw
+    @arg_type.map {|e| get_raw_llvm_type(e) }
+  end
+end
+
 module MethodDefinition
   include LLVMUtil
 
@@ -63,14 +81,8 @@ module MethodDefinition
         info = para[:info]
         tarr = para[:args][0]
         rtarr = tarr[0].type.content
-        rtarr2 = rtarr.map {|e|
-          case e
-          when LLVM_Struct, LLVM_Pointer
-            e.type
-          else
-            e
-          end
-        }
+        rtarr2 = rtarr.map {|e| get_raw_llvm_type(e)}
+
         struct = Type.pointer(Type.struct(rtarr2))
         struct0 = LLVM_Struct.new(struct, rtarr)
         mess = "return type of LLVM::struct"
@@ -98,6 +110,30 @@ module MethodDefinition
         @expstack.push [type,
           lambda {|b, context|
             context.rc = ptr0.llvm
+            context
+          }
+        ]
+      }
+    },
+
+    :function => {
+      :inline_proc => lambda {|para|
+        info = para[:info]
+        ret = para[:args][1]
+        arga = para[:args][0]
+        rett = ret[0].content
+        argta = arga[0].content
+
+        argta2 = argta.map {|e| get_raw_llvm_type(e)}
+
+        func = Type.function(rett, argta2)
+        funcobj = LLVM_Function.new(func, rett, argta)
+        mess = "return type of LLVM_Function"
+        type = RubyType.value(info[3], mess, LLVM_Function)
+        type.type.content = funcobj
+        @expstack.push [type,
+          lambda {|b, context|
+            context.rc = funcobj.llvm
             context
           }
         ]
@@ -137,6 +173,40 @@ module MethodDefinition
             safetype.type = PrimitiveType.new(ptr[0].type.type, nil)
             newptr = safetype.type.to_value(ptr0, b, context)
             context.rc = newptr
+            context
+          }
+        ]
+      }
+    },
+
+    :define_external_function => {
+      :inline_proc => lambda {|para|
+        info = para[:info]
+        sigobj = para[:args][0]
+        cfnobj = para[:args][1]
+        rfnobj = para[:args][2]
+        
+        sig = sigobj[0].content
+        cfuncname = cfnobj[0].content
+        rfuncname = rfnobj[0].content
+        mess = "External function: #{cfuncname}"
+        functype = RubyType.unsafe(info[3], mess, sig)
+=begin
+        argtype = sig.arg_type_raw.map do |e|
+          RubyType.unsafe(info[3], nil, e)
+        end
+        mess = "ret type of #{rfuncname}"
+        rettype = RubyType.unsafe(info[3], mess, sig.ret_type)
+=end
+        MethodDefinition::CMethod[nil][rfuncname] = {
+          :cname => cfuncname,
+          :argtype => sig.arg_type_raw,
+          :rettype => sig.ret_type,
+          :send_self => false
+        }
+        @expstack.push [functype,
+          lambda {|b, context|
+            context.rc = 4.llvm
             context
           }
         ]
