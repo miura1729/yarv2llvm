@@ -357,48 +357,6 @@ class RubyType
   end
 end
 
-class UnsafeType
-  def initialize(type)
-    @klass = :"YARV2LLVM::LLVMLIB::Unsafe"
-    @type = type
-    @content = UNDEF
-    @constant = UNDEF
-    @element_type = nil
-  end
-
-  attr_accessor :klass
-  attr_accessor :type
-  attr_accessor :content
-  attr_accessor :constant
-  attr_accessor :element_type
-
-  def dup_type
-    nt = self.class.new(@type)
-
-    nt
-  end
-
-  def to_value(val, b, context)
-    b.ptr_to_int(val, VALUE)
-  end
-
-  def from_value(val, b, context)
-    b.int_to_ptr(val, @type.type)
-  end
-
-  def inspect2
-    self.inspect
-  end
-  def llvm
-    case @type
-    when LLVM_Struct, LLVM_Pointer, LLVM_Function
-      @type.type
-    else
-      @type
-    end
-  end
-end  
-
 class PrimitiveType
   include LLVM
   include RubyHelpers
@@ -531,6 +489,60 @@ class PrimitiveType
     @type
   end
 end
+
+class UnsafeType
+  include LLVM
+  include RubyHelpers
+  def initialize(type)
+    @klass = :"YARV2LLVM::LLVMLIB::Unsafe"
+    @type = type
+    @content = UNDEF
+    @constant = UNDEF
+    @element_type = nil
+  end
+
+  attr_accessor :klass
+  attr_accessor :type
+  attr_accessor :content
+  attr_accessor :constant
+  attr_accessor :element_type
+
+  def dup_type
+    nt = self.class.new(@type)
+
+    nt
+  end
+
+  def to_value(val, b, context)
+    case @type
+    when LLVM_Struct, LLVM_Pointer
+      b.ptr_to_int(val, VALUE)
+    else
+      val
+    end
+  end
+
+  def from_value(val, b, context)
+    case @type
+    when LLVM_Struct, LLVM_Pointer
+      b.int_to_ptr(val, @type.type)
+    else
+      val
+    end
+  end
+
+  def inspect2
+    self.inspect
+  end
+  def llvm
+    case @type
+    when LLVM_Struct, LLVM_Pointer, LLVM_Function
+      @type.type
+    else
+      @type
+    end
+  end
+end  
 
 class ComplexType
   def set_klass(klass)

@@ -19,7 +19,7 @@ EOS
   end
 
   def test_define_external_function
-    YARV2LLVM::compile(<<-EOS, {:disasm => true, :dump_yarv => true, :optimize=> true})
+    YARV2LLVM::compile(<<-EOS, {:disasm => true, :dump_yarv => true, :optimize=> true, :func_signature => true})
 def tdefine_external_function
   value = RubyHelpers::VALUE
   int32ty = LLVM::Type::Int32Ty

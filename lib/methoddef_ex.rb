@@ -80,7 +80,7 @@ module MethodDefinition
       :inline_proc => lambda {|para|
         info = para[:info]
         tarr = para[:args][0]
-        rtarr = tarr[0].type.content
+        rtarr = tarr[0].content
         rtarr2 = rtarr.map {|e| get_raw_llvm_type(e)}
 
         struct = Type.pointer(Type.struct(rtarr2))
@@ -101,7 +101,7 @@ module MethodDefinition
       :inline_proc => lambda {|para|
         info = para[:info]
         tarr = para[:args][0]
-        dstt = tarr[0].type.content
+        dstt = tarr[0].content
         ptr = Type.pointer(dstt.type)
         ptr0 = LLVM_Pointer.new(ptr, dstt)
         type.type.content =ptr0
@@ -147,7 +147,7 @@ module MethodDefinition
         info = para[:info]
         ptr = para[:args][1]
         mess = "return type of LLVMLIB::unsafe"
-        objtype = para[:args][0][0].type.content
+        objtype = para[:args][0][0].content
         unsafetype = RubyType.unsafe(info[3], mess, objtype)
         @expstack.push [unsafetype,
           lambda {|b, context|
@@ -191,17 +191,15 @@ module MethodDefinition
         rfuncname = rfnobj[0].content
         mess = "External function: #{cfuncname}"
         functype = RubyType.unsafe(info[3], mess, sig)
-=begin
         argtype = sig.arg_type_raw.map do |e|
           RubyType.unsafe(info[3], nil, e)
         end
         mess = "ret type of #{rfuncname}"
         rettype = RubyType.unsafe(info[3], mess, sig.ret_type)
-=end
         MethodDefinition::CMethod[nil][rfuncname] = {
           :cname => cfuncname,
-          :argtype => sig.arg_type_raw,
-          :rettype => sig.ret_type,
+          :argtype => argtype,
+          :rettype => rettype,
           :send_self => false
         }
         @expstack.push [functype,
