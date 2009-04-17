@@ -1,3 +1,13 @@
+2009-04-15    <miura>
+
+*  type.rbのRubyType#resolveでの
+	if ty.type and !UNDEF.equal?(ty.type.constant) then
+          return
+        end
+   はかなりアドホックなので定数関係で型推論でバグが出たら真っ先にここを
+   疑え
+ 
+
 2009-03-03    <miura>
 * global変数関係でSEGVが出たらglobal_variable[...][:area]のキャッシュを使う
 条件をチェックすること。特に、trace_funcは現在キャッシュするようにしているが、

@@ -8,14 +8,22 @@ class UnsafeTests < Test::Unit::TestCase
   def test_unsafe
     YARV2LLVM::compile(<<-EOS, {:disasm => true, :dump_yarv => true, :optimize=> true})
 def tunsafe
-#  rbasic = LLVM::struct([RubyHelpers::VALUE, LLVM::Type::Int32Ty])
   type = LLVM::struct([RubyHelpers::VALUE, LLVM::Type::Int32Ty, RubyHelpers::VALUE, RubyHelpers::VALUE])
   a = [:a, :b]
   foo = YARV2LLVM::LLVMLIB::unsafe(a, type)
   YARV2LLVM::LLVMLIB::safe(foo[2])
 end
+
+def tunsafe2
+  type = LLVM::struct([RubyHelpers::VALUE, LLVM::Type::Int32Ty, RubyHelpers::VALUE, RubyHelpers::VALUE])
+  a = [:a, :b]
+  foo = YARV2LLVM::LLVMLIB::unsafe(a, type)
+  foo[2] = YARV2LLVM::LLVMLIB::unsafe(:c, RubyHelpers::VALUE)
+  YARV2LLVM::LLVMLIB::safe(foo[2])
+end
 EOS
     assert_equal(tunsafe, :a)
+    assert_equal(tunsafe2, :c)
   end
 
   def test_define_external_function
@@ -29,7 +37,7 @@ def tdefine_external_function
                                                type)
   
   siz = YARV2LLVM::LLVMLIB::unsafe(2, int32ty)
-  rb_ary_new2(siz)
+  YARV2LLVM::LLVMLIB::safe(rb_ary_new2(siz))
 end
 EOS
     assert_equal(tdefine_external_function, [])

@@ -85,6 +85,7 @@ class LLVMBuilder
   end
 
   def make_stub(recklass, name, rett, argt, orgfunc)
+
     pppp "Make stub #{name}"
     sname = "__stub_" + to_label(recklass.to_s, name)
     nargs = argt.size

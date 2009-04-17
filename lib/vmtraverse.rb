@@ -604,7 +604,7 @@ class YarvTranslator<YarvVisitor
           
           if commer_label.size > 0 and 
              context.block_value[commer_label[0]] then
-            phitype = RubyType.new(nil)
+            phitype = RubyType.new(nil, info[3])
             commer_label.uniq.reverse.each do |lab|
               bval = context.block_value[lab]
               if bval then
@@ -829,6 +829,7 @@ class YarvTranslator<YarvVisitor
     type = @constant_type_tab[@binding][cname]
     if type == nil then
       type = RubyType.typeof(val, info[3], cname)
+      type.type.constant = val
       @constant_type_tab[@binding][cname] = type
     end
     @expstack.push [type,
@@ -1106,6 +1107,7 @@ class YarvTranslator<YarvVisitor
     if constarrp then
       arr = inits.map {|e| e[0].content}
       atype.type.content = arr
+#      EXPORTED_OBJECT[arr] = true
       @expstack.push [atype,
         lambda {|b, context|
           context.rc = arr.llvm
@@ -2219,9 +2221,20 @@ class YarvTranslator<YarvVisitor
       arr[0].type = AbstructContainerType.new(nil)
     end
 
-    rettype = arr[0].type.element_type
-    if arr[0].klass == :"YARV2LLVM::LLVMLIB::Unsafe" then
+    rettype = nil
+    case arr[0].klass
+    when :Array, :Object
+      rettype = arr[0].type.element_type
+      
+    when :Hash, :Struct
+      rettype = RubyType.value
+
+    when :"YARV2LLVM::LLVMLIB::Unsafe"
       rettype = RubyType.unsafe
+
+    else
+      p arr[0]
+      raise "Unkown Type #{arr[0].klass}"
     end
 
     @expstack.push [rettype,
@@ -2305,16 +2318,15 @@ class YarvTranslator<YarvVisitor
         when :"YARV2LLVM::LLVMLIB::Unsafe"
           context = arr[1].call(b, context)
           arrp = context.rc
+          context = idx[1].call(b, context)
           case arr[0].type.type
           when LLVM_Pointer
-            context = idx[1].call(b, context)
             idxp = context.rc
             rettype.type.type = arr[0].type.type.member
             addr = b.gep(arrp, idxp)
             context.rc = b.load(addr)
 
           when LLVM_Struct
-            context = idx[1].call(b, context)
             indx = idx[0].type.constant
             rettype.type.type = arr[0].type.type.member[indx]
             addr = b.struct_gep(arrp, indx)
@@ -2357,7 +2369,7 @@ class YarvTranslator<YarvVisitor
     type = local_vars[voff][:type]
     @expstack.push [type,
       lambda {|b, context|
-        if UNDEF.equal?(context.rc = type.type.content) then
+        if UNDEF.equal?(context.rc = type.type.content) or true  then
           context.rc = b.load(context.local_vars[voff][:area])
         end
         context.org = local_vars[voff][:name]
@@ -2371,7 +2383,7 @@ class YarvTranslator<YarvVisitor
     srctype = src[0]
     srcvalue = src[1]
 
-    srctype.add_same_value(dsttype)
+    srctype.add_same_type(dsttype)
     dsttype.add_same_value(srctype)
 
     oldrescode = @rescode
@@ -2399,7 +2411,7 @@ class YarvTranslator<YarvVisitor
 
     @expstack.push [type,
       lambda {|b, context|
-        if UNDEF.equal?(context.rc = type.type.content)
+        if UNDEF.equal?(context.rc = type.type.content) then
           if context.inline_args then
             varp = alocal[:area]
           else
@@ -2431,7 +2443,7 @@ class YarvTranslator<YarvVisitor
     srctype = src[0]
     srcvalue = src[1]
 
-    srctype.add_same_value(dsttype)
+    srctype.add_same_type(dsttype)
     dsttype.add_same_value(srctype)
 
     oldrescode = @rescode

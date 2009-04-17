@@ -144,6 +144,7 @@ class RubyType
           ty.conflicted_types[ty.type.klass] = ty.type
           ty.conflicted_types[@type.klass] = @type
         end
+
         if ty.type and ty.type.is_a?(ComplexType) then
           if ty.type.is_a?(@type.class) and ty.type.class != @type.class then
             if dupp then
@@ -172,6 +173,7 @@ class RubyType
             return
           end
         end
+
         ty.conflicted_types.merge!(@conflicted_types)
         if ty.type and ty.type.llvm != @type.llvm then
           mess = "Type conflict \n"
@@ -189,17 +191,20 @@ class RubyType
          end
 
         elsif ty.type then
+#=begin
           if dupp then
             ty.type = @type.dup_type
           end
+#=end
+
         else
           if dupp then
             ty.type = @type.dup_type
           else
             ty.type = @type
           end
-          ty.resolve
         end
+        ty.resolve
       }
     }
 

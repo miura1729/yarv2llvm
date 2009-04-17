@@ -56,9 +56,9 @@ module MethodDefinition
           idx = para[:args][1]
           arr = para[:receiver]
           RubyType.resolve
-          if arr[0].type then
-            val[0].add_same_value(arr[0].type.element_type)
-            arr[0].type.element_type.add_same_value(val[0])
+          if arr[0].type.is_a?(ArrayType)  then
+            val[0].add_same_type(arr[0].type.element_type)
+            arr[0].type.element_type.add_same_type(val[0])
           end
 
           oldrescode = @rescode
@@ -66,12 +66,11 @@ module MethodDefinition
           @rescode = lambda {|b, context|
             context = oldrescode.call(b, context)
 
-            val[0].add_same_type(arr[0].type.element_type)
-            arr[0].type.element_type.add_same_value(val[0])
-            RubyType.resolve
-
             case arr[0].type
             when ArrayType
+              val[0].add_same_type(arr[0].type.element_type)
+              arr[0].type.element_type.add_same_type(val[0])
+              RubyType.resolve
               ftype = Type.function(Type::VoidTy, 
                                     [VALUE, Type::Int32Ty, VALUE])
               func = context.builder.external_function('rb_ary_store', ftype)
@@ -86,6 +85,9 @@ module MethodDefinition
               arr[0].type.element_content[i] = v
               context
             when HashType
+              val[0].add_same_type(arr[0].type.element_type)
+              arr[0].type.element_type.add_same_type(val[0])
+              RubyType.resolve
               ftype = Type.function(Type::VoidTy, 
                                     [VALUE, VALUE, VALUE])
               func = context.builder.external_function('rb_hash_aset', ftype)
@@ -100,8 +102,35 @@ module MethodDefinition
               b.call(func, a, ival, vval)
               arr[0].type.element_content[i] = v
               context
+
+            when YARV2LLVM::UnsafeType
+              context = val[1].call(b, context)
+              v = context.rc
+              context = arr[1].call(b, context)
+              arrp = context.rc
+              context = idx[1].call(b, context)
+              case arr[0].type.type
+              when LLVM_Pointer
+                idxp = context.rc
+                addr = b.gep(arrp, idxp)
+                b.store(v, addr)
+                context.rc = v
+
+              when LLVM_Struct
+                indx = idx[0].type.constant
+                addr = b.struct_gep(arrp, indx)
+                b.store(v, addr)
+                context.rc = v
+                
+              else
+                p arr[0].type.type.class
+                raise "Unsupport type #{arr[0].type.type}"
+              end
+              context
+
             else
               # Todo: []= handler of other type
+              p arr[0]
               raise "Unkonw type #{arr[0].type.inspect2}"
             end
           }
