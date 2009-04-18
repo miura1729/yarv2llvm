@@ -2233,7 +2233,7 @@ class YarvTranslator<YarvVisitor
       rettype = RubyType.unsafe
 
     when :Object
-      rettype = RubyType.new(nil)
+      rettype = arr[0].type.element_type
 
     else
       p arr[0]
