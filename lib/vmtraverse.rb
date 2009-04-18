@@ -2223,7 +2223,7 @@ class YarvTranslator<YarvVisitor
 
     rettype = nil
     case arr[0].klass
-    when :Array, :Object
+    when :Array #, :Object
       rettype = arr[0].type.element_type
       
     when :Hash, :Struct
@@ -2231,6 +2231,9 @@ class YarvTranslator<YarvVisitor
 
     when :"YARV2LLVM::LLVMLIB::Unsafe"
       rettype = RubyType.unsafe
+
+    when :Object
+      rettype = RubyType.new(nil)
 
     else
       p arr[0]
@@ -2292,8 +2295,7 @@ class YarvTranslator<YarvVisitor
           ftype = Type.function(VALUE, [VALUE, VALUE])
           func = context.builder.external_function('rb_hash_aref', ftype)
           av = b.call(func, arrp, idxval)
-          arrelet = arr[0].type.element_type.type
-          context.rc = arrelet.from_value(av, b, context)
+          context.rc = av
           
           context
 
@@ -2310,8 +2312,7 @@ class YarvTranslator<YarvVisitor
           ftype = Type.function(VALUE, [VALUE, VALUE])
           func = context.builder.external_function('rb_struct_aref', ftype)
           av = b.call(func, arrp, idxval)
-          arrelet = arr[0].type.element_type.type
-          context.rc = arrelet.from_value(av, b, context)
+          context.rc = av
           
           context
 
@@ -2340,7 +2341,7 @@ class YarvTranslator<YarvVisitor
 
         else
           # Todo: Hash table?
-          p arr[0]
+          pp arr[0]
           raise "Not impremented #{arr[0].inspect2} in #{info[3]}"
           context
         end

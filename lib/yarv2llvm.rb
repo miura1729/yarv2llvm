@@ -2,6 +2,8 @@ require 'rubygems'
 require 'tempfile'
 require 'llvm'
 
+require 'pp'
+
 module YARV2LLVM
 module LLVMLIB
   class Unsafe; end

@@ -49,7 +49,7 @@ class RubyType
       return @type.content
     end
     @same_value.each do |ty|
-      cont = ty.content
+      cont = ty.type.content
       if !UNDEF.equal?(cont) then
         return cont
       end
@@ -191,11 +191,11 @@ class RubyType
          end
 
         elsif ty.type then
-#=begin
           if dupp then
+            contorg = ty.type.content
             ty.type = @type.dup_type
+            ty.type.content = contorg
           end
-#=end
 
         else
           if dupp then

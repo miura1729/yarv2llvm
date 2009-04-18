@@ -85,8 +85,8 @@ module MethodDefinition
               arr[0].type.element_content[i] = v
               context
             when HashType
-              val[0].add_same_type(arr[0].type.element_type)
-              arr[0].type.element_type.add_same_type(val[0])
+#              val[0].add_same_type(arr[0].type.element_type)
+#              arr[0].type.element_type.add_same_type(val[0])
               RubyType.resolve
               ftype = Type.function(Type::VoidTy, 
                                     [VALUE, VALUE, VALUE])
