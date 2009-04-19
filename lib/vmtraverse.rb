@@ -853,12 +853,14 @@ class YarvTranslator<YarvVisitor
 
   def visit_setconstant(code, ins, local_vars, ln, info)
     val = @expstack.pop
-    const_path = ins[1].to_s
+    const_klass = nil
     if info[0] then
-      const_path = "#{info[0]}::#{const_path}"
+      const_klass = eval(info[0].to_s)
+    else
+      const_klass = Object
     end
     if !UNDEF.equal?(val[0].type.constant) then
-      eval("#{const_path} = #{val[0].type.constant}", @binding)
+      const_klass.const_set(ins[1], val[0].type.constant)
     else
       @constant_type_tab[@binding][ins[1]] = val[0]
       oldrescode = @rescode

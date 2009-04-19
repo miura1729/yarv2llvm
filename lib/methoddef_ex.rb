@@ -102,11 +102,11 @@ module MethodDefinition
         info = para[:info]
         tarr = para[:args][0]
         dstt = tarr[0].content
-        ptr = Type.pointer(dstt.type)
+        ptr = Type.pointer(get_raw_llvm_type(dstt))
         ptr0 = LLVM_Pointer.new(ptr, dstt)
-        type.type.content =ptr0
         mess = "return type of LLVM_Pointer"
         type = RubyType.value(info[3], mess, LLVM_Pointer)
+        type.type.content =ptr0
         @expstack.push [type,
           lambda {|b, context|
             context.rc = ptr0.llvm
@@ -121,11 +121,13 @@ module MethodDefinition
         info = para[:info]
         ret = para[:args][1]
         arga = para[:args][0]
-        rett = ret[0].content
+        rett = get_raw_llvm_type(ret[0].content)
         argta = arga[0].content
 
         argta2 = argta.map {|e| get_raw_llvm_type(e)}
 
+        p rett
+        p argta2
         func = Type.function(rett, argta2)
         funcobj = LLVM_Function.new(func, rett, argta)
         mess = "return type of LLVM_Function"

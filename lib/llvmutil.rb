@@ -474,7 +474,12 @@ module SendUtil
           return true
         end
       end
+
+      unless obj.is_a?(Class) then
+        return nil
+      end
       sup = obj.superclass
+
       while sup.is_a?(Class) do
         if MethodDefinition::RubyMethod[mname][sup.name.to_sym] then
           return true
