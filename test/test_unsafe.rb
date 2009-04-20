@@ -3,8 +3,9 @@
 #
 require 'test/unit'
 require 'yarv2llvm'
-class UnsafeTests < Test::Unit::TestCase
 
+class UnsafeTests < Test::Unit::TestCase
+=begin
   def test_unsafe
     YARV2LLVM::compile(<<-EOS, {:disasm => true, :dump_yarv => true, :optimize=> true})
 def tunsafe
@@ -41,5 +42,16 @@ def tdefine_external_function
 end
 EOS
     assert_equal(tdefine_external_function, [])
+  end
+=end
+  def test_define_macro
+    YARV2LLVM::compile(<<-EOS, {:disasm => true, :dump_yarv => true, :optimize=> true, :func_signature => true})
+YARV2LLVM::define_macro :foo do || `hello` end
+
+def tdefine_macro
+  foo
+end
+EOS
+    assert_equal(tdefine_macro, "hello")
   end
 end

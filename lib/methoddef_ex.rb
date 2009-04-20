@@ -49,6 +49,19 @@ module MethodDefinition
   include LLVMUtil
 
   InlineMethod_YARV2LLVM = {
+    :define_macro => {
+      :inline_proc => lambda {|para|
+        info = para[:info]
+        ins = para[:ins]
+        mbody = para[:args][0]
+        mname = para[:args][1]
+        
+        p ins
+        name = mname[0].content
+        body = mbody[0].content
+      }
+    },
+
     :get_interval_cycle => {
       :inline_proc =>
         lambda {|para|
@@ -73,7 +86,7 @@ module MethodDefinition
       }
     },
 
-  },
+  }
 
   InlineMethod_LLVM = {
     :struct => {
@@ -141,7 +154,7 @@ module MethodDefinition
         ]
       }
     },
-  },
+  }
 
   InlineMethod_LLVMLIB = {
     :unsafe => {
@@ -212,7 +225,7 @@ module MethodDefinition
         ]
       }
     },
-  },
+  }
 
   InlineMethod_Transaction = {
     :begin_transaction => {
