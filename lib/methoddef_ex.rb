@@ -53,12 +53,12 @@ module MethodDefinition
       :inline_proc => lambda {|para|
         info = para[:info]
         ins = para[:ins]
-        mbody = para[:args][0]
-        mname = para[:args][1]
+        arg0 = para[:args][0]
+        mname =  arg0[0].content
         
-        p ins
-        name = mname[0].content
-        body = mbody[0].content
+        iseq = VMLib::InstSeqTree.new(nil, ins[3][0])
+        prog = YARV2LLVM::YarvTranslatorToRuby.new(iseq, binding, []).to_ruby
+        p prog
       }
     },
 

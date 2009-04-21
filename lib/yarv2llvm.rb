@@ -20,6 +20,7 @@ require 'lib/methoddef.rb'
 require 'lib/methoddef_ex.rb'
 require 'lib/intruby.rb'
 require 'lib/vmtraverse.rb'
+require 'lib/yarv2ruby.rb'
 
 def pppp(n)
 #  p n

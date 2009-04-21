@@ -16,13 +16,14 @@ module YARV2LLVM
       @expstack = []
     end
 
-    def run
-      super
+    def to_ruby
+      run
       res = ""
       @labels.each do |l|
         res = res + @generated_code[l]
       end
-      print res, "\n"
+      res = res +  "\n"
+      print res
     end
 
     def visit_block_start(code, ins, local_vars, ln, info)
@@ -33,13 +34,34 @@ module YARV2LLVM
           :type => RubyType.new(nil, info[3], n),
           :area => nil}
       end
+      @labels.push ln
+      @generated_code[ln] = <<-EOS
+__state = #{ln.inspect}
+while true
+  case __state
+  when #{ln.inspect}
+EOS
     end
 
     def visit_block_end(code, ins, local_vars, ln, info)
+      ret = @expstack.pop
+      lln = @labels.last
+      @generated_code[lln] = <<-EOS
+    #{@generated_code[lln]}
+    break #{ret}
+  end
+end
+EOS
     end
 
     def visit_local_block_start(code, ins, local_vars, ln, info)
-      @labels.push ln
+      if ln then
+        @labels.push ln
+        @generated_code[ln] = <<-EOS 
+__state = #{ln.inspect}
+when #{ln.inspect}
+EOS
+      end
     end
 
     def visit_local_block_end(code, ins, local_vars, ln, info)
@@ -81,6 +103,13 @@ module YARV2LLVM
     # setclassvariable
 
     def visit_getconstant(code, ins, local_vars, ln, info)
+      const = ins[1]
+      recv = @expstack.pop
+      if recv == "nil" then
+        @expstack.push const.to_s
+      else
+        @expstack.push "#{recv}:#{const.to_s}"
+      end
     end
 
     def visit_setconstant(code, ins, local_vars, ln, info)
@@ -101,7 +130,7 @@ module YARV2LLVM
     end
 
     def visit_putobject(code, ins, local_vars, ln, info)
-      p1 = ins[1].to_s
+      p1 = ins[1].inspect
       @expstack.push p1
     end
 
@@ -111,7 +140,7 @@ module YARV2LLVM
     end
 
     def visit_putstring(code, ins, local_vars, ln, info)
-      p1 = ins[1].to_s
+      p1 = ins[1].inspect
       @expstack.push p1
     end
 
@@ -121,12 +150,12 @@ module YARV2LLVM
       nele.times do
         eles.push @expstack.pop
       end
-      @expstack.push eles.join
+      @expstack.push eles.reverse.join('+')
     end
 
     def visit_tostring(code, ins, local_vars, ln, info)
       v = @expstack.pop
-      @expstack.push ("\"#{v.to_s}\"")
+      @expstack.push v
     end
 
     # toregexp
@@ -187,7 +216,12 @@ module YARV2LLVM
       nargs.times do
         args.push @expstack.pop
       end
-      @expstack.push "#{mname}(#{args.reverse.join(',')})"
+      recv = @expstack.pop
+      if recv != 'nil' then
+        @expstack.push "#{recv}.#{mname}(#{args.reverse.join(',')})"
+      else
+        @expstack.push "#{mname}(#{args.reverse.join(',')})"
+      end
     end
 
     # invokesuper
@@ -203,7 +237,7 @@ module YARV2LLVM
 
     def visit_leave(code, ins, local_vars, ln, info)
       ret = @expstack.pop
-      @generated_code[ln] = "#{@generated_code[ln]}\nreturn (#{ret})"
+      @generated_code[ln] = "#{@generated_code[ln]}\nbreak (#{ret})"
     end
 
     # finish
@@ -211,30 +245,36 @@ module YARV2LLVM
     # throw
 
     def visit_jump(code, ins, local_vars, ln, info)
+      lab = ins[1]
+      @generated_code[ln] = <<-EOS
+#{@generated_code[ln]}
+__state = #{lab.inspect}
+next
+EOS
     end
 
     def visit_branchif(code, ins, local_vars, ln, info)
       cond = @expstack.pop
       lab = ins[1]
-      if @labels.include?(lab) then
-        @generated_code[lab] = "while #{cond} do\n#{@generated_code[lab]}"
-        @generated_code[ln] = "#{@generated_code[ln]}\nend"
-      else
-        @generated_code[lab] = "end\n#{@generated_code[lab]}"
-        @generated_code[ln] = "#{@generated_code[ln]}\nif #{cond} then"
-      end
+      @generated_code[ln] = <<-EOS
+#{@generated_code[ln]}
+if (#{cond}) then
+    __state = #{lab.inspect}
+    next
+end
+EOS
     end
 
     def visit_branchunless(code, ins, local_vars, ln, info)
       cond = @expstack.pop
       lab = ins[1]
-      if @generated_code[lab] != "" then
-        @generated_code[lab] = "while !#{cond} do\n#{@generated_code[lab]}"
-        @generated_code[ln] = "#{@generated_code[lab]}\nend"
-      else
-        @generated_code[lab] = "end\n#{@generated_code[lab]}"
-        @generated_code[ln] = "#{@generated_code[ln]}\nif #{cond} then"
-      end
+      @generated_code[ln] = <<-EOS
+#{@generated_code[ln]}
+if !(#{cond}) then
+    __state = #{lab.inspect}
+    next
+end
+EOS
     end
 
     # getinlinecache
@@ -246,79 +286,79 @@ module YARV2LLVM
     def visit_opt_plus(code, ins, local_vars, ln, info)
       b = @expstack.pop
       a = @expstack.pop
-      @expstack.push "((#{a}) + (#{b}))"
+      @expstack.push "((#{a}) + (#{b}))\n"
     end
 
     def visit_opt_minus(code, ins, local_vars, ln, info)
       b = @expstack.pop
       a = @expstack.pop
-      @expstack.push "((#{a}) - (#{b}))"
+      @expstack.push "((#{a}) - (#{b}))\n"
     end
 
     def visit_opt_mult(code, ins, local_vars, ln, info)
       b = @expstack.pop
       a = @expstack.pop
-      @expstack.push "((#{a}) * (#{b}))"
+      @expstack.push "((#{a}) * (#{b}))\n"
     end
 
     def visit_opt_div(code, ins, local_vars, ln, info)
       b = @expstack.pop
       a = @expstack.pop
-      @expstack.push "((#{a}) / (#{b}))"
+      @expstack.push "((#{a}) / (#{b}))\n"
     end
 
     def visit_opt_mod(code, ins, local_vars, ln, info)
       b = @expstack.pop
       a = @expstack.pop
-      @expstack.push "((#{a}) % (#{b}))"
+      @expstack.push "((#{a}) % (#{b}))\n"
     end
 
     def visit_opt_eq(code, ins, local_vars, ln, info)
       b = @expstack.pop
       a = @expstack.pop
-      @expstack.push "((#{a}) == (#{b}))"
+      @expstack.push "((#{a}) == (#{b}))\n"
     end
 
     def visit_opt_neq(code, ins, local_vars, ln, info)
       b = @expstack.pop
       a = @expstack.pop
-      @expstack.push "((#{a}) != (#{b}))"
+      @expstack.push "((#{a}) != (#{b}))\n"
     end
 
     def visit_opt_lt(code, ins, local_vars, ln, info)
       b = @expstack.pop
       a = @expstack.pop
-      @expstack.push "((#{a}) < (#{b}))"
+      @expstack.push "((#{a}) < (#{b}))\n"
     end
 
     def visit_opt_le(code, ins, local_vars, ln, info)
       b = @expstack.pop
       a = @expstack.pop
-      @expstack.push "((#{a}) <= (#{b}))"
+      @expstack.push "((#{a}) <= (#{b}))\n"
     end
 
     def visit_opt_gt(code, ins, local_vars, ln, info)
       b = @expstack.pop
       a = @expstack.pop
-      @expstack.push "((#{a}) > (#{b}))"
+      @expstack.push "((#{a}) > (#{b}))\n"
     end
 
     def visit_opt_ge(code, ins, local_vars, ln, info)
       b = @expstack.pop
       a = @expstack.pop
-      @expstack.push "((#{a}) <= (#{b}))"
+      @expstack.push "((#{a}) <= (#{b}))\n"
     end
 
     def visit_opt_ltlt(code, ins, local_vars, ln, info)
       b = @expstack.pop
       a = @expstack.pop
-      @expstack.push "((#{a}) << (#{b}))"
+      @expstack.push "((#{a}) << (#{b}))\n"
     end
 
     def visit_opt_aref(code, ins, local_vars, ln, info)
       a = @expstack.pop
       b = @expstack.pop
-      @expstack.push "(#{a}[#{b}])"
+      @expstack.push "(#{a}[#{b}])\n"
     end
 
     # opt_aset
@@ -335,22 +375,25 @@ module YARV2LLVM
 end
 
 if __FILE__ == $0 then
-  prog = <<-EOS
-a = Math.sin(10)
-while a == 1 do 
-   p 2 
+  prog = <<-'EOS'
+a = 10
+while a > 1 do 
+#  p Math.sin(2.0)
+  p `#{a} ,a`
+  a = a - 1
 end
+=begin
 if a == 1 then
   1
 else
   3
 end
+=end
 EOS
   is = RubyVM::InstructionSequence.compile( prog, "foo", 1, 
             {  :peephole_optimization    => true,
                :inline_const_cache       => false,
                :specialized_instruction  => true,}).to_a
-  p is
   iseq = VMLib::InstSeqTree.new(nil, is)
-  YARV2LLVM::YarvTranslatorToRuby.new(iseq, binding, []).run
+  YARV2LLVM::YarvTranslatorToRuby.new(iseq, binding, []).to_ruby
 end

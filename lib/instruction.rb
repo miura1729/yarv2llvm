@@ -97,7 +97,7 @@ module VMLib
           # この通し番号は例外処理でreturn pointの確定などに
           # 使われる。
           when :send
-            if inst[3] then
+            if inst[3] and inst[3][0] then
               obj = InstSeqTree.new(self, nil, [@info[0], @info[1], @cur_send_no])
               obj.init_from_ary(inst[3])
               @blockes[@cur_send_no]= obj

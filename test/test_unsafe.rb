@@ -54,4 +54,5 @@ end
 EOS
     assert_equal(tdefine_macro, "hello")
   end
+
 end
