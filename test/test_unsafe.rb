@@ -45,8 +45,8 @@ EOS
   end
 =end
   def test_define_macro
-    YARV2LLVM::compile(<<-EOS, {:disasm => true, :dump_yarv => true, :optimize=> true, :func_signature => true})
-YARV2LLVM::define_macro :foo do || `hello` end
+    YARV2LLVM::compile(<<-'EOS', {:disasm => true, :dump_yarv => true, :optimize=> true, :func_signature => true})
+YARV2LLVM::define_macro :foo do |arg| a = arg;`hello#{a}` end
 
 def tdefine_macro
   foo

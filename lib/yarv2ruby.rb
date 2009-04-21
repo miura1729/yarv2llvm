@@ -8,370 +8,419 @@ if __FILE__ == $0 then
 end
 
 module YARV2LLVM
-  class YarvTranslatorToRuby<YarvVisitor
-    def initialize(iseq, bind, preload)
-      super(iseq, preload)
-      @generated_code = Hash.new("")
-      @labels = []
-      @expstack = []
+class YarvTranslatorToRuby<YarvVisitor
+  def initialize(iseq, bind, preload)
+    super(iseq, preload)
+    @generated_code = Hash.new("")
+    @labels = []
+    @expstack = []
+    @locals = {}
+  end
+  
+  def to_ruby
+    run
+    res = ""
+    @labels.each do |l|
+      res = res + @generated_code[l]
     end
-
-    def to_ruby
-      run
-      res = ""
-      @labels.each do |l|
-        res = res + @generated_code[l]
-      end
-      res = res +  "\n"
-      print res
+    res = res +  "\n"
+    print res
+  end
+  
+  def visit_block_start(code, ins, local_vars, ln, info)
+    lbase = ([nil, nil] + code.header['locals'].reverse)
+    lbase.each_with_index do |n, i|
+      local_vars[i] = {
+        :name => n, 
+        :type => RubyType.new(nil, info[3], n),
+        :area => nil}
     end
-
-    def visit_block_start(code, ins, local_vars, ln, info)
-      lbase = ([nil, nil] + code.header['locals'].reverse)
-      lbase.each_with_index do |n, i|
-        local_vars[i] = {
-          :name => n, 
-          :type => RubyType.new(nil, info[3], n),
-          :area => nil}
-      end
-      @labels.push ln
-      @generated_code[ln] = <<-EOS
+    @locals[code] = local_vars
+    @labels.push ln
+    numarg = code.header['misc'][:arg_size]
+    localsiz = code.header['misc'][:local_size]
+    initarg = ""
+    numarg.times do |i|
+      vn = local_vars[i + localsiz - numarg + 1][:name]
+      initarg += "#{vn} = para[:args][#{i}]\n"
+    end
+    @generated_code[ln] = <<-EOS
+   #{initarg}
 __state = #{ln.inspect}
 while true
   case __state
   when #{ln.inspect}
 EOS
-    end
+  end
 
-    def visit_block_end(code, ins, local_vars, ln, info)
-      ret = @expstack.pop
-      lln = @labels.last
-      @generated_code[lln] = <<-EOS
+  def visit_block_end(code, ins, local_vars, ln, info)
+    ret = @expstack.pop
+    lln = @labels.last
+    @generated_code[lln] = <<-EOS
     #{@generated_code[lln]}
     break #{ret}
   end
 end
 EOS
-    end
+  end
 
-    def visit_local_block_start(code, ins, local_vars, ln, info)
-      if ln then
-        @labels.push ln
-        @generated_code[ln] = <<-EOS 
+  def visit_local_block_start(code, ins, local_vars, ln, info)
+    if ln then
+      @labels.push ln
+      @generated_code[ln] = <<-EOS 
 __state = #{ln.inspect}
 when #{ln.inspect}
 EOS
+    end
+  end
+
+  def visit_local_block_end(code, ins, local_vars, ln, info)
+  end
+
+  def visit_default(code, ins, local_vars, ln, info)
+  end
+
+  def visit_number(code, ins, local_vars, ln, info)
+  end
+
+  def visit_getlocal(code, ins, local_vars, ln, info)
+    voff = ins[1]
+    if code.header['type'] == :block then
+      acode = code
+      slev = 0
+      while acode.header['type'] == :block
+        acode = acode.parent
+        slev = slev + 1
       end
-    end
-
-    def visit_local_block_end(code, ins, local_vars, ln, info)
-    end
-
-    def visit_default(code, ins, local_vars, ln, info)
-    end
-
-    def visit_number(code, ins, local_vars, ln, info)
-    end
-
-    def visit_getlocal(code, ins, local_vars, ln, info)
-      voff = ins[1]
+      @expstack.push @locals[acode][voff][:name]
+    else
       @expstack.push local_vars[voff][:name]
     end
-
-    def visit_setlocal(code, ins, local_vars, ln, info)
-      voff = ins[1]
-      val = @expstack.pop
-      @generated_code[ln] = "#{@generated_code[ln]}\n#{local_vars[voff][:name]} = #{val}"
-    end
-
-    # getspecial
-    # setspecial
-
-    def visit_getdynamic(code, ins, local_vars, ln, info)
-    end
-
-    def visit_setdynamic(code, ins, local_vars, ln, info)
-    end
-
-    def visit_getinstancevariable(code, ins, local_vars, ln, info)
-    end
-
-    def visit_setinstancevariable(code, ins, local_vars, ln, info)
-    end
-
-    # getclassvariable
-    # setclassvariable
-
-    def visit_getconstant(code, ins, local_vars, ln, info)
-      const = ins[1]
-      recv = @expstack.pop
-      if recv == "nil" then
-        @expstack.push const.to_s
-      else
-        @expstack.push "#{recv}:#{const.to_s}"
+  end
+      
+  def visit_setlocal(code, ins, local_vars, ln, info)
+    voff = ins[1]
+    val = @expstack.pop
+    if code.header['type'] == :block then
+      acode = code
+      slev = 0
+      while acode.header['type'] == :block
+        acode = acode.parent
+        slev = slev + 1
       end
+      @generated_code[ln] = "#{@generated_code[ln]}\n#{acode[voff][:name]} = #{val}\n"
+    else
+      @generated_code[ln] = "#{@generated_code[ln]}\n#{local_vars[voff][:name]} = #{val}\n"
     end
-
-    def visit_setconstant(code, ins, local_vars, ln, info)
+  end
+      
+  # getspecial
+  # setspecial
+      
+  def visit_getdynamic(code, ins, local_vars, ln, info)
+    slev = ins[2]
+    voff = ins[1]
+    if slev == 0 then
+      @expstack.push local_vars[voff][:name]
+    else
+      acode = code
+      slev.times { acode = acode.parent}
+      @expstack.push @locals[acode][voff][:name]
     end
-
-    def visit_getglobal(code, ins, local_vars, ln, info)
+  end
+      
+  def visit_setdynamic(code, ins, local_vars, ln, info)
+    slev = ins[2]
+    voff = ins[1]
+    val = @expstack.pop
+    if slev == 0 then
+      @generated_code[ln] = "#{@generated_code[ln]}\n#{local_vars[voff][:name]} = #{val}\n"
+    else
+      acode = code
+      slev.times { acode = acode.parent}
+      @generated_code[ln] = "#{@generated_code[ln]}\n#{acode[voff][:name]} = #{val}\n"
     end
-
-    def visit_setglobal(code, ins, local_vars, ln, info)
+  end
+      
+  def visit_getinstancevariable(code, ins, local_vars, ln, info)
+  end
+      
+  def visit_setinstancevariable(code, ins, local_vars, ln, info)
+  end
+      
+  # getclassvariable
+  # setclassvariable
+      
+  def visit_getconstant(code, ins, local_vars, ln, info)
+    const = ins[1]
+    recv = @expstack.pop
+    if recv == "nil" then
+      @expstack.push const.to_s
+    else
+      @expstack.push "#{recv}:#{const.to_s}"
     end
-
-    def visit_putnil(code, ins, local_vars, ln, info)
-      @expstack.push 'nil'
+  end
+      
+  def visit_setconstant(code, ins, local_vars, ln, info)
+  end
+      
+  def visit_getglobal(code, ins, local_vars, ln, info)
+  end
+      
+  def visit_setglobal(code, ins, local_vars, ln, info)
+  end
+      
+  def visit_putnil(code, ins, local_vars, ln, info)
+    @expstack.push 'nil'
+  end
+      
+  def visit_putself(code, ins, local_vars, ln, info)
+    @expstack.push 'self'
+  end
+      
+  def visit_putobject(code, ins, local_vars, ln, info)
+    p1 = ins[1].inspect
+    @expstack.push p1
+  end
+      
+  # putspecialobject
+      
+  def visit_putiseq(code, ins, local_vars, ln, info)
+  end
+      
+  def visit_putstring(code, ins, local_vars, ln, info)
+    p1 = ins[1].inspect
+    @expstack.push p1
+  end
+      
+  def visit_concatstrings(code, ins, local_vars, ln, info)
+    nele = ins[1]
+    eles = []
+    nele.times do
+      eles.push @expstack.pop
     end
-
-    def visit_putself(code, ins, local_vars, ln, info)
-      @expstack.push 'self'
-    end
-
-    def visit_putobject(code, ins, local_vars, ln, info)
-      p1 = ins[1].inspect
-      @expstack.push p1
-    end
-
-    # putspecialobject
-    
-    def visit_putiseq(code, ins, local_vars, ln, info)
-    end
-
-    def visit_putstring(code, ins, local_vars, ln, info)
-      p1 = ins[1].inspect
-      @expstack.push p1
-    end
-
-    def visit_concatstrings(code, ins, local_vars, ln, info)
-      nele = ins[1]
-      eles = []
-      nele.times do
-        eles.push @expstack.pop
-      end
-      @expstack.push eles.reverse.join('+')
-    end
-
-    def visit_tostring(code, ins, local_vars, ln, info)
-      v = @expstack.pop
-      @expstack.push v
-    end
-
-    # toregexp
-
-    def visit_newarray(code, ins, local_vars, ln, info)
-      nele = ins[1]
-      inits = []
-      nele.times {|n|
-        inits.push @expstack.pop
-      }
-      @expstack.push inits
-    end
-
-    def visit_duparray(code, ins, local_vars, ln, info)
-      srcarr = ins[1]
-      @expstack.push srcarr.dup
-    end
-
-      # expandarray
-    # concatarray
-    # splatarray
-    # checkincludearray
-    # newhash
-
-    def visit_newrange(code, ins, local_vars, ln, info)
-    end
-
-    def visit_pop(code, ins, local_vars, ln, info)
-      @generated_code[ln] = "#{@generated_code[ln]}\n#{@expstack.pop}\n"
-    end
-
-    def visit_dup(code, ins, local_vars, ln, info)
-      @expstack.push @expstack.last
-    end
-
-    def visit_dupn(code, ins, local_vars, ln, info)
-    end
-
-    # swap
-    # reput
-    # topn
-    # setn
-    # adjuststack
+    @expstack.push eles.reverse.join('+')
+  end
+      
+  def visit_tostring(code, ins, local_vars, ln, info)
+    v = @expstack.pop
+    @expstack.push v
+  end
+      
+  # toregexp
+      
+  def visit_newarray(code, ins, local_vars, ln, info)
+    nele = ins[1]
+    inits = []
+    nele.times {|n|
+      inits.push @expstack.pop
+    }
+    @expstack.push inits
+  end
+      
+  def visit_duparray(code, ins, local_vars, ln, info)
+    srcarr = ins[1]
+    @expstack.push srcarr.dup
+  end
+      
+  # expandarray
+  # concatarray
+  # splatarray
+  # checkincludearray
+  # newhash
+      
+  def visit_newrange(code, ins, local_vars, ln, info)
+  end
+      
+  def visit_pop(code, ins, local_vars, ln, info)
+    @generated_code[ln] = "#{@generated_code[ln]}\n#{@expstack.pop}\n"
+  end
+      
+  def visit_dup(code, ins, local_vars, ln, info)
+    @expstack.push @expstack.last
+  end
+      
+  def visit_dupn(code, ins, local_vars, ln, info)
+  end
+      
+  # swap
+  # reput
+  # topn
+  # setn
+  # adjuststack
   
-    # defined
-
-    def visit_trace(code, ins, local_vars, ln, info)
+  # defined
+      
+  def visit_trace(code, ins, local_vars, ln, info)
+  end
+      
+  def visit_defineclass(code, ins, local_vars, ln, info)
+  end
+      
+  def visit_send(code, ins, local_vars, ln, info)
+    mname = ins[1]
+    nargs = ins[2]
+    res = mname
+    args = []
+    nargs.times do
+      args.push @expstack.pop
     end
-
-    def visit_defineclass(code, ins, local_vars, ln, info)
+    recv = @expstack.pop
+    if recv != 'nil' then
+      @expstack.push "#{recv}.#{mname}(#{args.reverse.join(',')})"
+    else
+      @expstack.push "#{mname}(#{args.reverse.join(',')})"
     end
-
-    def visit_send(code, ins, local_vars, ln, info)
-      mname = ins[1]
-      nargs = ins[2]
-      res = mname
-      args = []
-      nargs.times do
-        args.push @expstack.pop
-      end
-      recv = @expstack.pop
-      if recv != 'nil' then
-        @expstack.push "#{recv}.#{mname}(#{args.reverse.join(',')})"
-      else
-        @expstack.push "#{mname}(#{args.reverse.join(',')})"
-      end
+  end
+      
+  # invokesuper
+      
+  def visit_invokeblock(code, ins, local_vars, ln, info)
+    narg = ins[1]
+    args = []
+    narg.times do |n|
+      args.push @expstack.pop
     end
-
-    # invokesuper
-
-    def visit_invokeblock(code, ins, local_vars, ln, info)
-      narg = ins[1]
-      args = []
-      narg.times do |n|
-        args.push @expstack.pop
-      end
-      @expstack.push "yield(#{args.reverse.join(',')})"
-    end
-
-    def visit_leave(code, ins, local_vars, ln, info)
-      ret = @expstack.pop
-      @generated_code[ln] = "#{@generated_code[ln]}\nbreak (#{ret})"
-    end
-
-    # finish
-    
-    # throw
-
-    def visit_jump(code, ins, local_vars, ln, info)
-      lab = ins[1]
-      @generated_code[ln] = <<-EOS
+    @expstack.push "yield(#{args.reverse.join(',')})"
+  end
+      
+  def visit_leave(code, ins, local_vars, ln, info)
+    ret = @expstack.pop
+    @generated_code[ln] = "#{@generated_code[ln]}\nbreak (#{ret})"
+  end
+      
+  # finish
+      
+  # throw
+      
+  def visit_jump(code, ins, local_vars, ln, info)
+    lab = ins[1]
+    @generated_code[ln] = <<-EOS
 #{@generated_code[ln]}
 __state = #{lab.inspect}
 next
 EOS
-    end
+  end
 
-    def visit_branchif(code, ins, local_vars, ln, info)
-      cond = @expstack.pop
-      lab = ins[1]
-      @generated_code[ln] = <<-EOS
+  def visit_branchif(code, ins, local_vars, ln, info)
+    cond = @expstack.pop
+    lab = ins[1]
+    @generated_code[ln] = <<-EOS
 #{@generated_code[ln]}
 if (#{cond}) then
     __state = #{lab.inspect}
     next
 end
 EOS
-    end
+  end
 
-    def visit_branchunless(code, ins, local_vars, ln, info)
-      cond = @expstack.pop
-      lab = ins[1]
-      @generated_code[ln] = <<-EOS
+  def visit_branchunless(code, ins, local_vars, ln, info)
+    cond = @expstack.pop
+    lab = ins[1]
+    @generated_code[ln] = <<-EOS
 #{@generated_code[ln]}
 if !(#{cond}) then
     __state = #{lab.inspect}
     next
 end
 EOS
-    end
-
-    # getinlinecache
-    # onceinlinecache
-    # setinlinecache
-    # opt_case_dispatch
-    # opt_checkenv
-  
-    def visit_opt_plus(code, ins, local_vars, ln, info)
-      b = @expstack.pop
-      a = @expstack.pop
-      @expstack.push "((#{a}) + (#{b}))\n"
-    end
-
-    def visit_opt_minus(code, ins, local_vars, ln, info)
-      b = @expstack.pop
-      a = @expstack.pop
-      @expstack.push "((#{a}) - (#{b}))\n"
-    end
-
-    def visit_opt_mult(code, ins, local_vars, ln, info)
-      b = @expstack.pop
-      a = @expstack.pop
-      @expstack.push "((#{a}) * (#{b}))\n"
-    end
-
-    def visit_opt_div(code, ins, local_vars, ln, info)
-      b = @expstack.pop
-      a = @expstack.pop
-      @expstack.push "((#{a}) / (#{b}))\n"
-    end
-
-    def visit_opt_mod(code, ins, local_vars, ln, info)
-      b = @expstack.pop
-      a = @expstack.pop
-      @expstack.push "((#{a}) % (#{b}))\n"
-    end
-
-    def visit_opt_eq(code, ins, local_vars, ln, info)
-      b = @expstack.pop
-      a = @expstack.pop
-      @expstack.push "((#{a}) == (#{b}))\n"
-    end
-
-    def visit_opt_neq(code, ins, local_vars, ln, info)
-      b = @expstack.pop
-      a = @expstack.pop
-      @expstack.push "((#{a}) != (#{b}))\n"
-    end
-
-    def visit_opt_lt(code, ins, local_vars, ln, info)
-      b = @expstack.pop
-      a = @expstack.pop
-      @expstack.push "((#{a}) < (#{b}))\n"
-    end
-
-    def visit_opt_le(code, ins, local_vars, ln, info)
-      b = @expstack.pop
-      a = @expstack.pop
-      @expstack.push "((#{a}) <= (#{b}))\n"
-    end
-
-    def visit_opt_gt(code, ins, local_vars, ln, info)
-      b = @expstack.pop
-      a = @expstack.pop
-      @expstack.push "((#{a}) > (#{b}))\n"
-    end
-
-    def visit_opt_ge(code, ins, local_vars, ln, info)
-      b = @expstack.pop
-      a = @expstack.pop
-      @expstack.push "((#{a}) <= (#{b}))\n"
-    end
-
-    def visit_opt_ltlt(code, ins, local_vars, ln, info)
-      b = @expstack.pop
-      a = @expstack.pop
-      @expstack.push "((#{a}) << (#{b}))\n"
-    end
-
-    def visit_opt_aref(code, ins, local_vars, ln, info)
-      a = @expstack.pop
-      b = @expstack.pop
-      @expstack.push "(#{a}[#{b}])\n"
-    end
-
-    # opt_aset
-    # opt_length
-    # opt_succ
-    # opt_not
-    # opt_regexpmatch1
-    # opt_regexpmatch2
-    # opt_call_c_function
-  
-    # bitblt
-    # answer
   end
+
+  # getinlinecache
+  # onceinlinecache
+  # setinlinecache
+  # opt_case_dispatch
+  # opt_checkenv
+  
+  def visit_opt_plus(code, ins, local_vars, ln, info)
+    b = @expstack.pop
+    a = @expstack.pop
+    @expstack.push "((#{a}) + (#{b}))\n"
+  end
+
+  def visit_opt_minus(code, ins, local_vars, ln, info)
+    b = @expstack.pop
+    a = @expstack.pop
+    @expstack.push "((#{a}) - (#{b}))\n"
+  end
+
+  def visit_opt_mult(code, ins, local_vars, ln, info)
+    b = @expstack.pop
+    a = @expstack.pop
+    @expstack.push "((#{a}) * (#{b}))\n"
+  end
+
+  def visit_opt_div(code, ins, local_vars, ln, info)
+    b = @expstack.pop
+    a = @expstack.pop
+    @expstack.push "((#{a}) / (#{b}))\n"
+  end
+
+  def visit_opt_mod(code, ins, local_vars, ln, info)
+    b = @expstack.pop
+    a = @expstack.pop
+    @expstack.push "((#{a}) % (#{b}))\n"
+  end
+
+  def visit_opt_eq(code, ins, local_vars, ln, info)
+    b = @expstack.pop
+    a = @expstack.pop
+    @expstack.push "((#{a}) == (#{b}))\n"
+  end
+
+  def visit_opt_neq(code, ins, local_vars, ln, info)
+    b = @expstack.pop
+    a = @expstack.pop
+    @expstack.push "((#{a}) != (#{b}))\n"
+  end
+
+  def visit_opt_lt(code, ins, local_vars, ln, info)
+    b = @expstack.pop
+    a = @expstack.pop
+    @expstack.push "((#{a}) < (#{b}))\n"
+  end
+
+  def visit_opt_le(code, ins, local_vars, ln, info)
+    b = @expstack.pop
+    a = @expstack.pop
+    @expstack.push "((#{a}) <= (#{b}))\n"
+  end
+
+  def visit_opt_gt(code, ins, local_vars, ln, info)
+    b = @expstack.pop
+    a = @expstack.pop
+    @expstack.push "((#{a}) > (#{b}))\n"
+  end
+
+  def visit_opt_ge(code, ins, local_vars, ln, info)
+    b = @expstack.pop
+    a = @expstack.pop
+    @expstack.push "((#{a}) <= (#{b}))\n"
+  end
+
+  def visit_opt_ltlt(code, ins, local_vars, ln, info)
+    b = @expstack.pop
+    a = @expstack.pop
+    @expstack.push "((#{a}) << (#{b}))\n"
+  end
+
+  def visit_opt_aref(code, ins, local_vars, ln, info)
+    a = @expstack.pop
+    b = @expstack.pop
+    @expstack.push "(#{a}[#{b}])\n"
+  end
+
+  # opt_aset
+  # opt_length
+  # opt_succ
+  # opt_not
+  # opt_regexpmatch1
+  # opt_regexpmatch2
+  # opt_call_c_function
+  
+  # bitblt
+  # answer
+end
 end
 
 if __FILE__ == $0 then
