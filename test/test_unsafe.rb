@@ -45,11 +45,11 @@ EOS
   end
 =end
   def test_define_macro
-    YARV2LLVM::compile(<<-'EOS', {:disasm => true, :dump_yarv => true, :optimize=> true, :func_signature => true})
-YARV2LLVM::define_macro :foo do |arg| a = arg;`hello#{a}` end
+    YARV2LLVM::compile(<<-'EOS', {:disasm => false, :dump_yarv => false, :optimize=> true, :func_signature => false})
+YARV2LLVM::define_macro :foo do |arg| `thread(#{para[:args][0]}, #{para[:args][1]})` end
 
 def tdefine_macro
-  foo
+  foo([a, b, c])
 end
 EOS
     assert_equal(tdefine_macro, "hello")

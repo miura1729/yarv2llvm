@@ -24,7 +24,7 @@ class YarvTranslatorToRuby<YarvVisitor
       res = res + @generated_code[l]
     end
     res = res +  "\n"
-    print res
+    res
   end
   
   def visit_block_start(code, ins, local_vars, ln, info)
@@ -199,12 +199,12 @@ EOS
     nele.times do
       eles.push @expstack.pop
     end
-    @expstack.push eles.reverse.join('+')
+    @expstack.push eles.reverse
   end
       
   def visit_tostring(code, ins, local_vars, ln, info)
     v = @expstack.pop
-    @expstack.push v
+    @expstack.push "#{v}.to_s"
   end
       
   # toregexp
@@ -267,9 +267,46 @@ EOS
     end
     recv = @expstack.pop
     if recv != 'nil' then
-      @expstack.push "#{recv}.#{mname}(#{args.reverse.join(',')})"
+      if args.size == 0 then
+        @expstack.push "#{recv}.#{mname}"
+      else
+        @expstack.push "#{recv}.#{mname}(#{args.reverse.join(',')})"
+      end
     else
-      @expstack.push "#{mname}(#{args.reverse.join(',')})"
+      case mname
+      when :"`"
+        case args[0]
+        when Array
+          i = 0
+          argstr = ""
+          arghash = {}
+          args[0].each do |e|
+            case e
+            when /^\"(.*)\"$/
+              argstr += $1
+            when /^(.*)\.to_s$/
+              sym = "gEN#{i}"
+              i = i + 1
+              argstr += " #{sym} "
+              arghash[sym.to_sym] = $1
+            end
+          end
+          
+          hashlit = ""
+          arghash.map { |vn, val|
+            hashlit += "#{vn.to_sym} => #{val},"
+          }
+          @expstack.push "compile(#{argstr.inspect}, {#{hashlit}})"
+        else
+          @expstack.push "compile(#{args.reverse.join(',')})"
+        end
+      else
+        if args.size == 0 then
+          @expstack.push "#{mname}"
+        else
+          @expstack.push "#{mname}(#{args.reverse.join(',')})"
+        end
+      end
     end
   end
       
@@ -405,9 +442,9 @@ EOS
   end
 
   def visit_opt_aref(code, ins, local_vars, ln, info)
-    a = @expstack.pop
     b = @expstack.pop
-    @expstack.push "(#{a}[#{b}])\n"
+    a = @expstack.pop
+    @expstack.push "(#{a}[#{b}])"
   end
 
   # opt_aset
@@ -444,5 +481,5 @@ EOS
                :inline_const_cache       => false,
                :specialized_instruction  => true,}).to_a
   iseq = VMLib::InstSeqTree.new(nil, is)
-  YARV2LLVM::YarvTranslatorToRuby.new(iseq, binding, []).to_ruby
+  print YARV2LLVM::YarvTranslatorToRuby.new(iseq, binding, []).to_ruby
 end

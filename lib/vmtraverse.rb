@@ -1456,14 +1456,30 @@ class YarvTranslator<YarvVisitor
       return
     end
 
-    funcinfo = get_inline_function(recklass, info[0], mname)
-    if funcinfo and 
-        para = {:info => info, 
+    macroinfo = MethodDefinition::InlineMacro[mname]
+    if macroinfo then
+      para = {
+        :info => info,
         :ins => ins,
         :code => code,
         :args => args, 
         :receiver => receiver, 
-        :local => local_vars} then
+        :local => local_vars,
+      }
+#      eval(macroinfo[:body], TOPLEVEL_BINDING)
+      print macroinfo
+    end
+
+    funcinfo = get_inline_function(recklass, info[0], mname)
+    if funcinfo then
+      para = {
+        :info => info, 
+        :ins => ins,
+        :code => code,
+        :args => args, 
+        :receiver => receiver, 
+        :local => local_vars
+      }
       instance_exec(para, &funcinfo[:inline_proc])
       return
     end

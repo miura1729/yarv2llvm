@@ -617,6 +617,8 @@ module MethodDefinition
     :Thread => InlineMethod_Thread,
   }
 
+  InlineMacro = {
+  }
   
   # can be maped to C function
   CMethod = {

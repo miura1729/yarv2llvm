@@ -58,7 +58,10 @@ module MethodDefinition
         
         iseq = VMLib::InstSeqTree.new(nil, ins[3][0])
         prog = YARV2LLVM::YarvTranslatorToRuby.new(iseq, binding, []).to_ruby
-        p prog
+
+        MethodDefinition::InlineMacro[mname] = {
+          :body => prog
+        }
       }
     },
 
@@ -139,8 +142,6 @@ module MethodDefinition
 
         argta2 = argta.map {|e| get_raw_llvm_type(e)}
 
-        p rett
-        p argta2
         func = Type.function(rett, argta2)
         funcobj = LLVM_Function.new(func, rett, argta)
         mess = "return type of LLVM_Function"
