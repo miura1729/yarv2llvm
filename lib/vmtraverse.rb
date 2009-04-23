@@ -1466,8 +1466,9 @@ class YarvTranslator<YarvVisitor
         :receiver => receiver, 
         :local => local_vars,
       }
-#      eval(macroinfo[:body], TOPLEVEL_BINDING)
-      print macroinfo
+
+#      print macroinfo[:body]
+      eval(macroinfo[:body])
     end
 
     funcinfo = get_inline_function(recklass, info[0], mname)
@@ -2569,6 +2570,15 @@ def compile_file(fn, opt = {}, preload = [], bind = TOPLEVEL_BINDING)
   compcommon(is, opt, preload, bind)
 end
 
+def compile_for_macro(str, lmac, opt = {}, preload = [], bind = TOPLEVEL_BINDING)
+  lmac.each do |mname, body|
+    MethodDefinition::InlineMethod[nil][mname] = {
+      :inline_proc => body
+    }
+  end
+  compile(str, opt, preload, bind)
+end
+
 def compile(str, opt = {}, preload = [], bind = TOPLEVEL_BINDING)
   line = 1
   file = "<llvm2ruby>"
@@ -2618,6 +2628,7 @@ def compcommon(is, opt, preload, bind)
 end
 
 module_function :compile_file
+module_function :compile_for_macro
 module_function :compile
 module_function :compcommon
 end

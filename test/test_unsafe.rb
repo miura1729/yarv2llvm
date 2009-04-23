@@ -46,10 +46,10 @@ EOS
 =end
   def test_define_macro
     YARV2LLVM::compile(<<-'EOS', {:disasm => false, :dump_yarv => false, :optimize=> true, :func_signature => false})
-YARV2LLVM::define_macro :foo do |arg| `thread(#{para[:args][0]}, #{para[:args][1]})` end
+YARV2LLVM::define_macro :myif do |arg| `if #{para[:args][2]} then #{para[:args][1]} else #{para[:args][0]} end` end
 
 def tdefine_macro
-  foo([a, b, c])
+  myif(true, p("foo"), p("bar"))
 end
 EOS
     assert_equal(tdefine_macro, "hello")

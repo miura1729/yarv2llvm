@@ -294,11 +294,22 @@ EOS
           
           hashlit = ""
           arghash.map { |vn, val|
-            hashlit += "#{vn.to_sym} => #{val},"
+            stub = <<-EOS
+lambda { |pa|
+  @expstack.push [#{val}[0],
+    lambda {|b, context|
+      #{val}[1].call(b, context)
+      context
+  }]
+}
+EOS
+            hashlit += ":#{vn} => #{stub.chop},"
           }
-          @expstack.push "compile(#{argstr.inspect}, {#{hashlit}})"
+#          @expstack.push "print(#{argstr.inspect}, {#{hashlit}})"
+          @expstack.push "YARV2LLVM::compile_for_macro(#{argstr.inspect}, {#{hashlit}}, {:disasm => true, :dump_yarv=>true, :optimize=>false})"
         else
-          @expstack.push "compile(#{args.reverse.join(',')})"
+#          @expstack.push "print(#{args.reverse.join(',')})"
+          @expstack.push "YARV2LLVM::compile_for_macro(#{args.reverse.join(',')})"
         end
       else
         if args.size == 0 then
