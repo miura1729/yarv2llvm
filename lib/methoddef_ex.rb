@@ -50,19 +50,28 @@ module MethodDefinition
 
   InlineMethod_YARV2LLVM = {
     :define_macro => {
-      :inline_proc => lambda {|para|
-        info = para[:info]
-        ins = para[:ins]
-        arg0 = para[:args][0]
-        mname =  arg0[0].content
+      :inline_proc => 
+        lambda {|para|
+          info = para[:info]
+          code = para[:code]
+          ins = para[:ins]
+          arg0 = para[:args][0]
+          blk = ins[3]
+          code.blockes.delete(ins[3][1])
+          mname =  arg0[0].content
         
-        iseq = VMLib::InstSeqTree.new(nil, ins[3][0])
-        prog = YARV2LLVM::YarvTranslatorToRuby.new(iseq, binding, []).to_ruby
+          iseq = VMLib::InstSeqTree.new(nil, blk[0])
+          prog = YARV2LLVM::YarvTranslatorToRuby.new(iseq, binding, []).to_ruby
 
-        MethodDefinition::InlineMacro[mname] = {
-          :body => prog
+          MethodDefinition::InlineMacro[mname] = {
+            :body => prog
+          }
+          @expstack.push [RubyType.value, 
+            lambda {|b, context|
+              context.rc = 4.llvm
+              context
+          }]
         }
-      }
     },
 
     :get_interval_cycle => {

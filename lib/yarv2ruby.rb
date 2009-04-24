@@ -42,7 +42,7 @@ class YarvTranslatorToRuby<YarvVisitor
     initarg = ""
     numarg.times do |i|
       vn = local_vars[i + localsiz - numarg + 1][:name]
-      initarg += "#{vn} = para[:args][#{i}]\n"
+#      initarg += "#{vn} = para[:args][#{i}]\n"
     end
     @generated_code[ln] = <<-EOS
    #{initarg}
@@ -298,7 +298,7 @@ EOS
 lambda { |pa|
   @expstack.push [#{val}[0],
     lambda {|b, context|
-      #{val}[1].call(b, context)
+      context = #{val}[1].call(b, context)
       context
   }]
 }
@@ -306,10 +306,10 @@ EOS
             hashlit += ":#{vn} => #{stub.chop},"
           }
 #          @expstack.push "print(#{argstr.inspect}, {#{hashlit}})"
-          @expstack.push "YARV2LLVM::compile_for_macro(#{argstr.inspect}, {#{hashlit}}, {:disasm => true, :dump_yarv=>true, :optimize=>false})"
+          @expstack.push "compile_for_macro(#{argstr.inspect}, {#{hashlit}}, para)"
         else
 #          @expstack.push "print(#{args.reverse.join(',')})"
-          @expstack.push "YARV2LLVM::compile_for_macro(#{args.reverse.join(',')})"
+          @expstack.push "compile_for_macro(#{args.reverse.join(',')}, {}, para)"
         end
       else
         if args.size == 0 then

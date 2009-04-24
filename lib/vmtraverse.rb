@@ -242,6 +242,72 @@ class YarvTranslator<YarvVisitor
     end
   end
   
+  def compile_for_macro(str, lmac, para)
+    lmac.each do |mname, body|
+      MethodDefinition::InlineMethod[nil][mname] = {
+        :inline_proc => body
+      }
+    end
+    is = RubyVM::InstructionSequence.compile(str, "macro", 0, 
+            {  :peephole_optimization    => true,
+               :inline_const_cache       => false,
+               :specialized_instruction  => true,}).to_a
+    iseq = VMLib::InstSeqTree.new(nil, is)
+    iseq.body.each do |e|
+      if e[0] == :leave then
+        e[0] = :jump
+        e[1] = :label_end
+      end
+    end
+    iseq.body.push :label_end
+    run_once(iseq, 0, para)
+  end
+
+  def run_once(iseq, curlinno, para)
+    curlinno = 0
+    isnotfst = false
+    action = lambda {|code, info|
+      info[3] = "#{code.header['filename']}:#{curlinno}"
+      
+      if code.header['type'] == :block then
+        info[1] = (info[1].to_s + '+blk+' + code.info[2].to_s).to_sym
+      end
+      
+      local_vars = []
+#      visit_block_start(code, nil, local_vars, nil, info)
+      curln = nil
+      code.lblock_list.each do |ln|
+        if isnotfst then
+          visit_local_block_start(code, ln, local_vars, ln, info)
+        else
+          isnotfst = true
+        end
+        
+        curln = ln
+        code.lblock[ln].each do |ins|
+          if ins.is_a?(Fixnum) then
+            curlinno = ins
+            visit_number(code, ins, local_vars, curln, info)
+          else
+            info[3] = "#{code.header['filename']}:#{curlinno}"
+            opname = ins[0].to_s
+            send(("visit_" + opname).to_sym, code, ins, local_vars, curln, info)
+          end
+          
+          case ins[0]
+          when :branchif, :branchunless, :jump
+            curln = (curln.to_s + "_1").to_sym
+          end
+        end
+        visit_local_block_end(code, ln, local_vars, curln, info)
+      end
+      
+      visit_local_block_start(nil, nil, local_vars, :label_end, para[:info])
+    }
+    
+    iseq.traverse_code([nil, nil, nil, nil], action)
+  end
+
   def visit_block_start(code, ins, local_vars, ln, info)
     @have_yield = false
 
@@ -357,6 +423,7 @@ class YarvTranslator<YarvVisitor
       unless arg = context.inline_args then
         arg = context.builder.arguments
       end
+
       lvars = context.local_vars
       1.upto(numarg) do |n|
         b.store(arg[n - 1], lvars[-n][:area])
@@ -1461,14 +1528,15 @@ class YarvTranslator<YarvVisitor
       para = {
         :info => info,
         :ins => ins,
+        :ln => ln,
         :code => code,
         :args => args, 
         :receiver => receiver, 
         :local => local_vars,
       }
 
-#      print macroinfo[:body]
       eval(macroinfo[:body])
+      return
     end
 
     funcinfo = get_inline_function(recklass, info[0], mname)
@@ -2570,15 +2638,6 @@ def compile_file(fn, opt = {}, preload = [], bind = TOPLEVEL_BINDING)
   compcommon(is, opt, preload, bind)
 end
 
-def compile_for_macro(str, lmac, opt = {}, preload = [], bind = TOPLEVEL_BINDING)
-  lmac.each do |mname, body|
-    MethodDefinition::InlineMethod[nil][mname] = {
-      :inline_proc => body
-    }
-  end
-  compile(str, opt, preload, bind)
-end
-
 def compile(str, opt = {}, preload = [], bind = TOPLEVEL_BINDING)
   line = 1
   file = "<llvm2ruby>"
@@ -2628,7 +2687,7 @@ def compcommon(is, opt, preload, bind)
 end
 
 module_function :compile_file
-module_function :compile_for_macro
 module_function :compile
 module_function :compcommon
 end
+
