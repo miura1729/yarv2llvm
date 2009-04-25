@@ -50,7 +50,7 @@ EOS
 
 YARV2LLVM::define_macro :myif do |arg| `if #{para[:args][2]} then #{para[:args][1]} else #{para[:args][0]} end` end
 def tdefine_macro
-  myif(true, p("hello"), p("world"))
+  p myif(true, p("hello"), p("world"))
 end
 EOS
     assert_equal(tdefine_macro, "hello")

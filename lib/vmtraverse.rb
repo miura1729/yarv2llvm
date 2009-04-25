@@ -82,7 +82,7 @@ class YarvVisitor
             end
             
             case ins[0]
-            when :branchif, :branchunless, :jump
+            when :branchif, :branchunless
               curln = (curln.to_s + "_1").to_sym
             end
           end
@@ -295,7 +295,7 @@ class YarvTranslator<YarvVisitor
           end
           
           case ins[0]
-          when :branchif, :branchunless, :jump
+          when :branchif, :branchunless
             curln = (curln.to_s + "_1").to_sym
           end
         end
@@ -619,9 +619,12 @@ class YarvTranslator<YarvVisitor
 
     @is_live = nil
     @jump_from[ln] ||= []
-    @jump_from[ln].push @prev_label
+    if live then
+      @jump_from[ln].push @prev_label
+    end
     valexp = nil
-    if live and @expstack.size > 0 then
+#    if live and @expstack.size > 0 then
+    if @jump_from[ln].last == @prev_label and @expstack.size > 0 then
       valexp = @expstack.pop
     end
 
@@ -719,8 +722,8 @@ class YarvTranslator<YarvVisitor
     # don't call before visit_block_start call.
     if @is_live == nil then
       @is_live = true
-      @prev_label = ln
     end
+    @prev_label = ln
 
     # p @expstack.map {|n| n[1]}
   end
@@ -1745,7 +1748,8 @@ class YarvTranslator<YarvVisitor
     bval = nil
     iflab = nil
     @jump_from[lab] ||= []
-    @jump_from[lab].push (ln.to_s + "_1").to_sym
+#    @jump_from[lab].push (ln.to_s + "_1").to_sym
+    @jump_from[lab].push ln
     @rescode = lambda {|b, context|
       oldrescode.call(b, context)
       tblock = get_or_create_block(lab, b, context)
@@ -1788,7 +1792,8 @@ class YarvTranslator<YarvVisitor
     bval = nil
     iflab = nil
     @jump_from[lab] ||= []
-    @jump_from[lab].push (ln.to_s + "_1").to_sym
+#    @jump_from[lab].push (ln.to_s + "_1").to_sym
+    @jump_from[lab].push ln
     @rescode = lambda {|b, context|
       oldrescode.call(b, context)
       eblock = context.builder.create_block
