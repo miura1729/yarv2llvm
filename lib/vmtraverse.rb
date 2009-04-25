@@ -184,6 +184,9 @@ class YarvTranslator<YarvVisitor
     # Number of trace(for profile speed up)
     @trace_no = 0
 
+    # Sequence numner of macro. Increment every macro call
+    @macro_seq_no = 0
+
     @global_var_tab = Hash.new {|gltab, glname|
       gltab[glname] = {}
     }
@@ -252,14 +255,26 @@ class YarvTranslator<YarvVisitor
             {  :peephole_optimization    => true,
                :inline_const_cache       => false,
                :specialized_instruction  => true,}).to_a
-    iseq = VMLib::InstSeqTree.new(nil, is)
-    iseq.body.each do |e|
-      if e[0] == :leave then
-        e[0] = :jump
-        e[1] = :label_end
+    is_body = is[11]
+    is_body.unshift :label_start
+    is_body.push :label_end
+    is_body.each_with_index do |e, i|
+      if e.is_a?(Symbol) then
+        is_body[i] = "mac#{@macro_seq_no}_#{e.to_s}".to_sym
+      else
+        if e[0] == :leave then
+          e[0] = :jump
+          e[1] = :label_end
+        end
+
+        if e[0] == :jump or e[0] == :branchif or e[0] == :branchunless then
+          e[1] = "mac#{@macro_seq_no}_#{e[1].to_s}".to_sym
+        end
       end
     end
-    iseq.body.push :label_end
+    p is_body
+    iseq = VMLib::InstSeqTree.new(nil, is)
+    @macro_seq_no += 1
     run_once(iseq, 0, para)
   end
 
@@ -302,7 +317,7 @@ class YarvTranslator<YarvVisitor
         visit_local_block_end(code, ln, local_vars, curln, info)
       end
       
-      visit_local_block_start(nil, nil, local_vars, :label_end, para[:info])
+      visit_local_block_start(nil, nil, local_vars, "mac#{@macro_seq_no}_label_end2".to_sym, para[:info])
     }
     
     iseq.traverse_code([nil, nil, nil, nil], action)
@@ -1748,7 +1763,6 @@ class YarvTranslator<YarvVisitor
     bval = nil
     iflab = nil
     @jump_from[lab] ||= []
-#    @jump_from[lab].push (ln.to_s + "_1").to_sym
     @jump_from[lab].push ln
     @rescode = lambda {|b, context|
       oldrescode.call(b, context)
@@ -1792,7 +1806,6 @@ class YarvTranslator<YarvVisitor
     bval = nil
     iflab = nil
     @jump_from[lab] ||= []
-#    @jump_from[lab].push (ln.to_s + "_1").to_sym
     @jump_from[lab].push ln
     @rescode = lambda {|b, context|
       oldrescode.call(b, context)
