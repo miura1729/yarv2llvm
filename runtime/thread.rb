@@ -9,9 +9,17 @@ module LLVM::Runtime
   LONG  = LLVM::Type::Int32Ty
 
   P_VALUE = LLVM::pointer(VALUE)
+  RB_ISRQ_T = [
+    VALUE,                      # TYPE instruction sequence type
+    VALUE,                      # name Iseq Name
+    P_VALUE,                    # iseq (insn number and operands)
+  ]
 
   RB_CONTROL_FRAME_T = LLVM::struct [
-    VALUE,
+    VALUE,                      # PC cfp[0]
+    VALUE,                      # SP cfp[0]
+    VALUE,                      # BP cfp[0]
+    RB_ISEQ_T,                  # BP cfp[0]
   ]
 
   RB_BLOCK_T = LLVM::struct [

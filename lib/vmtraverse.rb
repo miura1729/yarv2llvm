@@ -272,7 +272,6 @@ class YarvTranslator<YarvVisitor
         end
       end
     end
-    p is_body
     iseq = VMLib::InstSeqTree.new(nil, is)
     @macro_seq_no += 1
     run_once(iseq, 0, para)

@@ -8,6 +8,17 @@ module LLVM::RubyInternals
   ROBJECT_EMBED_LEN_MAX = 3
   ROBJECT = Type::struct([RBASIC, LONG, P_VALUE, P_VALUE])
   RCLASS = Type::struct([RBASIC, P_VALUE, P_VALUE, P_VALUE])
+
+  P_LONG = Type.pointer(LONG)
+  RNODE = Type::struct([LONG,   # flags 0
+                        P_CHAR, # nd_file 1
+                        VALUE,  # node 2
+                        LONG,   # id 3
+                        VALUE,  # value 4
+                        VALUE,  # cfunc 5
+                        P_LONG  # tbl 6
+                       ])
+  P_RNODE = Type.pointer(RNODE)
 end
 
 module YARV2LLVM
@@ -15,6 +26,21 @@ module IntRuby
   include LLVM
   include RubyHelpers
   include LLVMUtil
+
+  def gen_get_method_cfunc(builder)
+    ftype = Type.function(VALUE, [VALUE, VALUE])
+    b = builder.define_function_raw('llvm_get_method_cfunc', ftype)
+    args = builder.arguments
+    klass = args[0]
+    id = args[1]
+    b = builder.create_block
+    ftype = Type.function(P_NODE, [VALUE, VALUE])
+    rmn = builder.external_function('rb_method_node', ftype)
+    pnode = b.call(rmn, klass, id)
+    pcfunc = b.struct_gep(pnode, 5)
+    cfunc = b.load(pcfunc)
+    b.return(cfunc)
+  end
 
   def gen_ivar_ptr(builder)
     ftype = Type.function(P_VALUE, [VALUE, VALUE, P_VALUE])
