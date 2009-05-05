@@ -11,12 +11,14 @@ module LLVM::RubyInternals
 
   P_LONG = Type.pointer(LONG)
   RNODE = Type::struct([LONG,   # flags 0
-                        P_CHAR, # nd_file 1
-                        VALUE,  # node 2
-                        LONG,   # id 3
-                        VALUE,  # value 4
-                        VALUE,  # cfunc 5
-                        P_LONG  # tbl 6
+                        LONG,   # dummy 1
+                        P_CHAR, # nd_file 2
+                        VALUE,  # node 3
+                        LONG,   # id 4
+                        LONG,   # dummy 5
+                        VALUE,  # value 6
+                        VALUE,  # cfunc 7
+                        P_LONG  # tbl 8
                        ])
   P_RNODE = Type.pointer(RNODE)
 end
@@ -33,11 +35,10 @@ module IntRuby
     args = builder.arguments
     klass = args[0]
     id = args[1]
-    b = builder.create_block
-    ftype = Type.function(P_NODE, [VALUE, VALUE])
-    rmn = builder.external_function('rb_method_node', ftype)
-    pnode = b.call(rmn, klass, id)
-    pcfunc = b.struct_gep(pnode, 5)
+    ftype = Type.function(P_RNODE, [VALUE, VALUE, VALUE])
+    rmn = builder.external_function('rb_get_method_body', ftype)
+    pnode = b.call(rmn, klass, id, 0.llvm)
+    pcfunc = b.struct_gep(pnode, 7)
     cfunc = b.load(pcfunc)
     b.return(cfunc)
   end

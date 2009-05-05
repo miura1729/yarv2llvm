@@ -181,11 +181,16 @@ class YarvTranslator<YarvVisitor
     # Information of global variables by malloc
     @global_malloc_area_tab = []
 
-    # Number of trace(for profile speed up)
+    # Sequence Number of trace(for profile speed up)
     @trace_no = 0
 
     # Sequence numner of macro. Increment every macro call
     @macro_seq_no = 0
+
+    # List of using method that is defined by Ruby system
+    @using_method_list = Hash.new {|hash, klass|
+      hash[klass] = {}
+    }
 
     @global_var_tab = Hash.new {|gltab, glname|
       gltab[glname] = {}
@@ -202,6 +207,7 @@ class YarvTranslator<YarvVisitor
         gen_ivar_ptr(@builder)
       end
     end
+    gen_get_method_cfunc(@builder)
     
     @generated_define_func.each do |klass, value|
       value.each do |name, gen|
@@ -851,8 +857,16 @@ class YarvTranslator<YarvVisitor
       @instance_var_tab[info[0]][ivname][:type] = dsttype
     end
     src = @expstack.pop
-    srctype = src[0]
-    srcvalue = src[1]
+    srctype = nil
+    srcvalue = nil
+    if src then
+      srctype = src[0]
+      srcvalue = src[1]
+    else
+      p ins
+      p info
+      raise
+    end
     
     srctype.add_same_value(dsttype)
     dsttype.add_same_value(srctype)
@@ -1247,7 +1261,26 @@ class YarvTranslator<YarvVisitor
     visit_newarray(code, [:newarray, srcarr.size], local_vars, ln, info)
   end
 
-  # expandarray
+  def visit_expandarray(code, ins, local_vars, ln, info)
+    siz = ins[1]
+    flag = ins[2]
+    arr = @expstack.pop
+    val = nil
+    siz.times do |i|
+      @expstack.push [arr[0],
+        lambda {|b, context|
+          unless val then
+            val = arr[1].call(b, context)
+          end
+          ftype = Type.function(VALUE, [VALUE, Type::Int32Ty])
+          func = context.builder.external_function('rb_ary_entry', ftype)
+          av = b.call(func, val, i.llvm)
+          context.rc = av
+          context
+        }]
+    end
+  end
+
   # concatarray
   # splatarray
   # checkincludearray
@@ -1479,6 +1512,8 @@ class YarvTranslator<YarvVisitor
           if func then
             gen_call(func, para ,b, context)
           else
+            p mname
+            p recklass
             raise "Undefined method \"#{mname}\" in #{info[3]}"
           end
         }]
@@ -1587,20 +1622,34 @@ class YarvTranslator<YarvVisitor
           minfo, func = gen_method_select(rectype, nil, mname)
         end
 
-        nargt = minfo[:argtype]
-        nargt.each_with_index do |ele, n|
-          para[n][0].add_same_type ele
-          ele.add_same_type ele
-        end
-        rett.add_same_type minfo[:rettype]
-        minfo[:rettype].add_same_type rett
-        RubyType.resolve
-
         if func then
+          nargt = minfo[:argtype]
+          nargt.each_with_index do |ele, n|
+            para[n][0].add_same_type ele
+            ele.add_same_type para[n][0]
+          end
+          rett.add_same_type minfo[:rettype]
+          minfo[:rettype].add_same_type rett
+          RubyType.resolve
+          
           gen_call(func, para, b, context)
         else
-          p recklass
-          raise "Undefined method \"#{mname}\" in #{info[3]}"
+          para.each do |ele|
+            RubyType.value.add_same_type ele[0]
+          end
+          RubyType.value.add_same_type rett
+          RubyType.resolve
+          ftype = Type.function(VALUE, [VALUE, VALUE])
+          fname = 'llvm_get_method_cfunc'
+          ggmc = context.builder.get_or_insert_function_raw(fname, ftype)
+          reck = eval(rectype.klass.to_s)
+          mid = b.ashr(mname.llvm, 8.llvm)
+          fp = b.call(ggmc, reck.llvm, mid)
+          ftype = Type.function(VALUE, [VALUE]* para.size)
+          ftype = Type.pointer(ftype)
+          fp = b.int_to_ptr(fp, ftype)
+          gen_call(fp, para, b, context)
+          #          raise "Undefined method \"#{mname}\" in #{info[3]}"
         end
       }]
 
@@ -2064,7 +2113,7 @@ class YarvTranslator<YarvVisitor
     s1 = @expstack.pop
     check_same_type_2arg_static(s1, s2)
     
-    @expstack.push [RubyType.new(nil), 
+    @expstack.push [RubyType.boolean(info[3]), 
       lambda {|b, context|
         sval = []
         sval, context, constp = gen_common_opt_2arg(b, context, s1, s2)
@@ -2101,7 +2150,7 @@ class YarvTranslator<YarvVisitor
     s1 = @expstack.pop
     check_same_type_2arg_static(s1, s2)
     
-    @expstack.push [RubyType.new(nil), 
+    @expstack.push [RubyType.boolean(info[3]), 
       lambda {|b, context|
         sval = []
         sval, context, constp = gen_common_opt_2arg(b, context, s1, s2)
@@ -2138,7 +2187,7 @@ class YarvTranslator<YarvVisitor
     s1 = @expstack.pop
     check_same_type_2arg_static(s1, s2)
     
-    @expstack.push [RubyType.new(nil), 
+    @expstack.push [RubyType.boolean(info[3]), 
       lambda {|b, context|
         sval = []
         sval, context, constp = gen_common_opt_2arg(b, context, s1, s2)
@@ -2173,7 +2222,7 @@ class YarvTranslator<YarvVisitor
     s1 = @expstack.pop
     check_same_type_2arg_static(s1, s2)
     
-    @expstack.push [RubyType.new(nil), 
+    @expstack.push [RubyType.boolean(info[3]), 
       lambda {|b, context|
         sval = []
         sval, context, constp = gen_common_opt_2arg(b, context, s1, s2)
@@ -2208,7 +2257,7 @@ class YarvTranslator<YarvVisitor
     s1 = @expstack.pop
     check_same_type_2arg_static(s1, s2)
     
-    @expstack.push [RubyType.new(nil), 
+    @expstack.push [RubyType.boolean(info[3]), 
       lambda {|b, context|
         sval = []
         sval, context, constp = gen_common_opt_2arg(b, context, s1, s2)
@@ -2243,7 +2292,7 @@ class YarvTranslator<YarvVisitor
     s1 = @expstack.pop
     check_same_type_2arg_static(s1, s2)
     
-    @expstack.push [RubyType.new(nil), 
+    @expstack.push [RubyType.boolean(info[3]), 
       lambda {|b, context|
         sval = []
         sval, context, constp = gen_common_opt_2arg(b, context, s1, s2)
