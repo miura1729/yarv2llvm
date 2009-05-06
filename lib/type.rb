@@ -6,6 +6,26 @@
 module YARV2LLVM
   include LLVM
 
+def klass2instance(klass)
+  if klass == Fixnum then
+    1
+  elsif klass == Float then
+    1.0
+  elsif klass == Symbol then
+    :foo
+  else
+    klass.new
+  end
+end
+module_function :klass2instance
+
+def variable_argument?(para)
+  para.any? {|item|
+    item[0] != :rec
+  }
+end
+module_function :variable_argument?
+
 class RubyType
   include LLVM
   include RubyHelpers

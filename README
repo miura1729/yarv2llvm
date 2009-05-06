@@ -13,7 +13,9 @@ yarv2llvm -- Yarv to LLVM Translater
    2. Copy yarv2llvm.rb and ./lib/*.* to any directory which is in 
       the ruby library path.
 
-  yarv2llvm need ruby1.9.x .
+  yarv2llvm need ruby1.9.2 or later.
+  If you want to use ruby 1.9.1, you must install methopara
+  (http://github.com/genki/methopara/tree/master).
 
 -- Usage
 

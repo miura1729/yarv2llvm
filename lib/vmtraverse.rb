@@ -1207,7 +1207,7 @@ class YarvTranslator<YarvVisitor
     if constarrp then
       arr = inits.map {|e| e[0].content}
       atype.type.content = arr
-#      EXPORTED_OBJECT[arr] = true
+      EXPORTED_OBJECT[arr] = true
       @expstack.push [atype,
         lambda {|b, context|
           context.rc = arr.llvm
@@ -1611,6 +1611,14 @@ class YarvTranslator<YarvVisitor
     # minfo doesn't exist yet
     para = gen_arg_eval(args, receiver, ins, local_vars, info, nil, mname)
 
+    curlevel = @expstack.size
+    npara = para.size
+    if npara != 0 then
+      if @array_alloca_size == nil or @array_alloca_size < npara + curlevel then
+        @array_alloca_size = npara + curlevel
+      end
+    end
+
     rett = RubyType.new(nil, info[3], "Return forward type of #{mname}")
     @expstack.push [rett,
       lambda {|b, context|
@@ -1645,10 +1653,36 @@ class YarvTranslator<YarvVisitor
           reck = eval(rectype.klass.to_s)
           mid = b.ashr(mname.llvm, 8.llvm)
           fp = b.call(ggmc, reck.llvm, mid)
-          ftype = Type.function(VALUE, [VALUE]* para.size)
-          ftype = Type.pointer(ftype)
-          fp = b.int_to_ptr(fp, ftype)
-          gen_call(fp, para, b, context)
+          inst = YARV2LLVM::klass2instance(reck)
+          painfo =  inst.method(mname).parameters
+          if YARV2LLVM::variable_argument?(painfo) then
+            ftype = Type.function(VALUE, [LONG, P_VALUE, VALUE])
+            ftype = Type.pointer(ftype)
+            fp = b.int_to_ptr(fp, ftype)
+            initarea = context.array_alloca_area
+            initarea2 =  b.gep(initarea, curlevel.llvm)
+            slfexp = para.shift
+            context = slfexp[1].call(b, context)
+            slf = context.rc
+            para.each_with_index do |e, n|
+              context = e[1].call(b, context)
+              sptr = b.gep(initarea2, n.llvm)
+              if e[0].type then
+                rcvalue = e[0].type.to_value(context.rc, b, context)
+              else
+                rcvalue = context.rc
+              end
+              b.store(rcvalue, sptr)
+            end
+
+            context.rc = b.call(fp, para.size.llvm, initarea2, slf)
+            context
+          else
+            ftype = Type.function(VALUE, [VALUE] * para.size)
+            ftype = Type.pointer(ftype)
+            fp = b.int_to_ptr(fp, ftype)
+            gen_call(fp, para, b, context)
+          end
           #          raise "Undefined method \"#{mname}\" in #{info[3]}"
         end
       }]
