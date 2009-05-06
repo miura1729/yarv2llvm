@@ -415,6 +415,7 @@ module SendUtil
     rescue
       p func
       p args
+      p args.size
       raise
     end
     context

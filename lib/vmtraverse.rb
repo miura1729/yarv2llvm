@@ -1639,7 +1639,7 @@ class YarvTranslator<YarvVisitor
           rett.add_same_type minfo[:rettype]
           minfo[:rettype].add_same_type rett
           RubyType.resolve
-          
+
           gen_call(func, para, b, context)
         else
           para.each do |ele|
@@ -1647,6 +1647,7 @@ class YarvTranslator<YarvVisitor
           end
           RubyType.value.add_same_type rett
           RubyType.resolve
+
           ftype = Type.function(VALUE, [VALUE, VALUE])
           fname = 'llvm_get_method_cfunc'
           ggmc = context.builder.get_or_insert_function_raw(fname, ftype)
@@ -1683,6 +1684,8 @@ class YarvTranslator<YarvVisitor
             fp = b.int_to_ptr(fp, ftype)
             gen_call(fp, para, b, context)
           end
+          context.rc = rett.type.from_value(context.rc, b, context)
+          context
           #          raise "Undefined method \"#{mname}\" in #{info[3]}"
         end
       }]
@@ -1932,7 +1935,17 @@ class YarvTranslator<YarvVisitor
     s[1] = @expstack.pop
     s[0] = @expstack.pop
     check_same_type_2arg_static(s[0], s[1])
-    rettype = s[0][0].dup_type
+    case s[0][0].type.llvm
+    when Type::DoubleTy, Type::Int32Ty
+      rettype = s[0][0].dup_type
+    else
+#      rettype = s[0][0].dup_type
+      if s[0][0].type then
+        rettype = RubyType.value
+      else
+        rettype = s[0][0].dup_type
+      end
+    end
     
     @expstack.push [rettype,
       lambda {|b, context|
@@ -1948,7 +1961,23 @@ class YarvTranslator<YarvVisitor
         case s[0][0].type.llvm
         when Type::DoubleTy, Type::Int32Ty
           context.rc = b.add(sval[0], sval[1])
-          
+
+        when P_CHAR
+          ftype = Type.function(VALUE, [P_CHAR])
+          fname = 'rb_str_new_cstr'
+          funcnewstr = context.builder.external_function(fname, ftype)
+          rs0 = b.call(funcnewstr, sval[0])
+          if s[1][0].type.llvm == P_CHAR then
+            rs1 = b.call(funcnewstr, sval[1])
+          elsif s[1][0].type.llvm == VALUE then
+            rs1 = sval[1]
+          else
+            raise "Unkown type #{s[1][0].type.llvm}"
+          end
+          ftype = Type.function(VALUE, [VALUE, VALUE])
+          funcapp = context.builder.external_function('rb_str_append', ftype)
+          context.rc = b.call(funcapp, rs0, rs1)
+
         when VALUE
           if s[0][0].conflicted_types.size == 1 and
              s[1][0].conflicted_types.size == 1 then
@@ -1965,6 +1994,8 @@ class YarvTranslator<YarvVisitor
                 s2ne = at2.from_value(sval[1], b, context)
                 addne = b.add(s1ne, s2ne)
                 context.rc = at1.to_value(addne, b, context)
+              else
+                raise "Unkown Type VALUE (#{conf1})"
               end
             else
               # Generic + dispatch
@@ -1972,6 +2003,9 @@ class YarvTranslator<YarvVisitor
           else
             # Generic + dispatch
           end
+
+        else
+          raise "Unkown Type #{s[0][0].type.llvm}"
         end
 
         context
