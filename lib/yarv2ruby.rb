@@ -305,10 +305,17 @@ lambda { |pa|
 EOS
             hashlit += ":#{vn} => #{stub.chop},"
           }
-#          @expstack.push "print(#{argstr.inspect}, {#{hashlit}})"
-          @expstack.push "compile_for_macro(#{argstr.inspect}, {#{hashlit}}, para)"
+          res = ""
+          res += "__lOHash = {#{hashlit}}\n"
+          res += "__lOStr = #{argstr.inspect}\n"
+          arghash.each do |vn, val|
+            res += "if #{val}.is_a?(Symbol) then\n"
+            res += "__lOStr.gsub!(' #{vn} ', #{val}.to_s)\n"
+            res += "__lOHash.delete(#{vn.inspect})\n"
+            res += "end\n"
+          end
+          @expstack.push [res, "compile_for_macro(__lOStr, __lOHash, para)\n"]
         else
-#          @expstack.push "print(#{args.reverse.join(',')})"
           @expstack.push "compile_for_macro(#{args.reverse.join(',')}, {}, para)"
         end
       else
@@ -334,7 +341,11 @@ EOS
       
   def visit_leave(code, ins, local_vars, ln, info)
     ret = @expstack.pop
-    @generated_code[ln] = "#{@generated_code[ln]}\nbreak (#{ret})"
+    if ret.is_a?(Array) then
+      @generated_code[ln] = "#{@generated_code[ln]}\n#{ret[0]}\nbreak (#{ret[1]})"
+    else
+      @generated_code[ln] = "#{@generated_code[ln]}\nbreak (#{ret})"
+    end
   end
       
   # finish

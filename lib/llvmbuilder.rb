@@ -133,6 +133,7 @@ class LLVMBuilder
   end
 
   def define_function(recklass, name, rett, argt, is_mkstub)
+    p name
     argtl = argt.map {|a| a.type.llvm}
     rettl = rett.type.llvm
     type = Type.function(rettl, argtl)

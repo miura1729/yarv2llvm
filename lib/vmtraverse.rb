@@ -1651,7 +1651,12 @@ class YarvTranslator<YarvVisitor
           ftype = Type.function(VALUE, [VALUE, VALUE])
           fname = 'llvm_get_method_cfunc'
           ggmc = context.builder.get_or_insert_function_raw(fname, ftype)
-          reck = eval(rectype.klass.to_s)
+          if rectype and rectype.klass then
+            reck = eval(rectype.klass.to_s)
+          else
+            reck = Object
+          end
+
           mid = b.ashr(mname.llvm, 8.llvm)
           fp = b.call(ggmc, reck.llvm, mid)
           inst = YARV2LLVM::klass2instance(reck)
@@ -2798,6 +2803,13 @@ def compcommon(is, opt, preload, bind)
   if OPTION[:dump_yarv] then
     p iseq.to_a
   end
+  prelude = 'runtime/prelude.rb'
+  preis = RubyVM::InstructionSequence.compile_file(prelude,
+             { :peephole_optimization    => true,
+               :inline_const_cache       => false,
+               :specialized_instruction  => true,}).to_a
+  preiseq = VMLib::InstSeqTree.new(nil, preis)
+  preload.unshift preiseq
   YarvTranslator.new(iseq, bind, preload).run
 =begin
   MethodDefinition::RubyMethodStub.each do |key, m|

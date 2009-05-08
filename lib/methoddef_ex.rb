@@ -62,6 +62,7 @@ module MethodDefinition
         
           iseq = VMLib::InstSeqTree.new(nil, blk[0])
           prog = YARV2LLVM::YarvTranslatorToRuby.new(iseq, binding, []).to_ruby
+        print prog
 
           MethodDefinition::InlineMacro[mname] = {
             :body => prog
