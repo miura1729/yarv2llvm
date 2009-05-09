@@ -252,9 +252,15 @@ class YarvTranslator<YarvVisitor
   end
   
   def compile_for_macro(str, lmac, para)
-    lmac.each do |mname, body|
+    lmac.each do |mname, val|
       MethodDefinition::InlineMethod[nil][mname] = {
-        :inline_proc => body
+        :inline_proc => lambda {|pa|
+          @expstack.push [val[0],
+            lambda {|b, context|
+              context = val[1].call(b, context)
+              context
+            }]
+        }
       }
     end
     is = RubyVM::InstructionSequence.compile(str, "macro", 0, 
@@ -286,6 +292,7 @@ class YarvTranslator<YarvVisitor
   def run_once(iseq, curlinno, para)
     curlinno = 0
     isnotfst = false
+    isstartcall = false
     action = lambda {|code, info|
       info[3] = "#{code.header['filename']}:#{curlinno}"
       
@@ -294,7 +301,10 @@ class YarvTranslator<YarvVisitor
       end
       
       local_vars = []
-#      visit_block_start(code, nil, local_vars, nil, info)
+      if isnotfst then
+        visit_block_start(code, nil, local_vars, nil, info)
+        isstartcall = true
+      end
       curln = nil
       code.lblock_list.each do |ln|
         if isnotfst then
@@ -321,10 +331,13 @@ class YarvTranslator<YarvVisitor
         end
         visit_local_block_end(code, ln, local_vars, curln, info)
       end
+      if isstartcall then
+        visit_block_end(code, nil, local_vars, nil, info)
+      end
       
       visit_local_block_start(nil, nil, local_vars, "mac#{@macro_seq_no}_label_end2".to_sym, para[:info])
     }
-    
+
     iseq.traverse_code([nil, nil, nil, nil], action)
   end
 

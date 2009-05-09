@@ -12,22 +12,25 @@ class YarvTranslatorToRuby<YarvVisitor
   def initialize(iseq, bind, preload)
     super(iseq, preload)
     @generated_code = Hash.new("")
-    @labels = []
+    @labels = {}
     @expstack = []
     @locals = {}
+    @curlabel = ""
+    @curlln = ""
   end
   
   def to_ruby
     run
     res = ""
-    @labels.each do |l|
-      res = res + @generated_code[l]
+    @labels[:_blk_].each do |lab|
+      res = res + @generated_code[lab]
     end
     res = res +  "\n"
     res
   end
   
   def visit_block_start(code, ins, local_vars, ln, info)
+    @curlabel = info[1].to_s.gsub(/\+/, '_').to_sym
     lbase = ([nil, nil] + code.header['locals'].reverse)
     lbase.each_with_index do |n, i|
       local_vars[i] = {
@@ -36,15 +39,16 @@ class YarvTranslatorToRuby<YarvVisitor
         :area => nil}
     end
     @locals[code] = local_vars
-    @labels.push ln
+    @labels[@curlabel] = []
+    @labels[@curlabel].push @curlabel
     numarg = code.header['misc'][:arg_size]
     localsiz = code.header['misc'][:local_size]
     initarg = ""
     numarg.times do |i|
       vn = local_vars[i + localsiz - numarg + 1][:name]
-#      initarg += "#{vn} = para[:args][#{i}]\n"
+      initarg += "#{vn} = para[:args]\n"
     end
-    @generated_code[ln] = <<-EOS
+    @generated_code[@curlabel] = <<-EOS
    #{initarg}
 __state = #{ln.inspect}
 while true
@@ -55,7 +59,7 @@ EOS
 
   def visit_block_end(code, ins, local_vars, ln, info)
     ret = @expstack.pop
-    lln = @labels.last
+    lln = @labels[@curlabel].last
     @generated_code[lln] = <<-EOS
     #{@generated_code[lln]}
     break #{ret}
@@ -66,8 +70,9 @@ EOS
 
   def visit_local_block_start(code, ins, local_vars, ln, info)
     if ln then
-      @labels.push ln
-      @generated_code[ln] = <<-EOS 
+      @curlln = (@curlabel.to_s + ln).to_sym
+      @labels[@curlabel].push @curlln
+      @generated_code[@curlln] = <<-EOS 
 __state = #{ln.inspect}
 when #{ln.inspect}
 EOS
@@ -108,9 +113,9 @@ EOS
         acode = acode.parent
         slev = slev + 1
       end
-      @generated_code[ln] = "#{@generated_code[ln]}\n#{acode[voff][:name]} = #{val}\n"
+      @generated_code[@curlln] = "#{@generated_code[@curlln]}\n#{acode[voff][:name]} = #{val}\n"
     else
-      @generated_code[ln] = "#{@generated_code[ln]}\n#{local_vars[voff][:name]} = #{val}\n"
+      @generated_code[@curlln] = "#{@generated_code[@curlln]}\n#{local_vars[voff][:name]} = #{val}\n"
     end
   end
       
@@ -134,11 +139,11 @@ EOS
     voff = ins[1]
     val = @expstack.pop
     if slev == 0 then
-      @generated_code[ln] = "#{@generated_code[ln]}\n#{local_vars[voff][:name]} = #{val}\n"
+      @generated_code[@curlln] = "#{@generated_code[@curlln]}\n#{local_vars[voff][:name]} = #{val}\n"
     else
       acode = code
       slev.times { acode = acode.parent}
-      @generated_code[ln] = "#{@generated_code[ln]}\n#{acode[voff][:name]} = #{val}\n"
+      @generated_code[@curlln] = "#{@generated_code[@curlln]}\n#{acode[voff][:name]} = #{val}\n"
     end
   end
       
@@ -233,7 +238,7 @@ EOS
   end
       
   def visit_pop(code, ins, local_vars, ln, info)
-    @generated_code[ln] = "#{@generated_code[ln]}\n#{@expstack.pop}\n"
+    @generated_code[@curlln] = "#{@generated_code[@curlln]}\n#{@expstack.pop}\n"
   end
       
   def visit_dup(code, ins, local_vars, ln, info)
@@ -261,6 +266,13 @@ EOS
     mname = ins[1]
     nargs = ins[2]
     res = mname
+
+    blk = ""
+    blklab = (@curlabel.to_s + "_blk_" + ins[3][1].to_s).to_sym
+#    @labels[blklab].each do |lab|
+#      blk = blk + @generated_code[lab]
+#    end
+
     args = []
     nargs.times do
       args.push @expstack.pop
@@ -268,9 +280,9 @@ EOS
     recv = @expstack.pop
     if recv != 'nil' then
       if args.size == 0 then
-        @expstack.push "#{recv}.#{mname}"
+        @expstack.push "#{recv}.#{mname} #{blk}"
       else
-        @expstack.push "#{recv}.#{mname}(#{args.reverse.join(',')})"
+        @expstack.push "#{recv}.#{mname}(#{args.reverse.join(',')}) #{blk}"
       end
     else
       case mname
@@ -303,7 +315,7 @@ lambda { |pa|
   }]
 }
 EOS
-            hashlit += ":#{vn} => #{stub.chop},"
+            hashlit += ":#{vn} => #{val},"
           }
           res = ""
           res += "__lOHash = {#{hashlit}}\n"
@@ -342,9 +354,9 @@ EOS
   def visit_leave(code, ins, local_vars, ln, info)
     ret = @expstack.pop
     if ret.is_a?(Array) then
-      @generated_code[ln] = "#{@generated_code[ln]}\n#{ret[0]}\nbreak (#{ret[1]})"
+      @generated_code[@curlln] = "#{@generated_code[@curlln]}\n#{ret[0]}\nbreak (#{ret[1]})"
     else
-      @generated_code[ln] = "#{@generated_code[ln]}\nbreak (#{ret})"
+      @generated_code[@curlln] = "#{@generated_code[@curlln]}\nbreak (#{ret})"
     end
   end
       
@@ -354,8 +366,8 @@ EOS
       
   def visit_jump(code, ins, local_vars, ln, info)
     lab = ins[1]
-    @generated_code[ln] = <<-EOS
-#{@generated_code[ln]}
+    @generated_code[@curlln] = <<-EOS
+#{@generated_code[@curlln]}
 __state = #{lab.inspect}
 next
 EOS
@@ -364,8 +376,8 @@ EOS
   def visit_branchif(code, ins, local_vars, ln, info)
     cond = @expstack.pop
     lab = ins[1]
-    @generated_code[ln] = <<-EOS
-#{@generated_code[ln]}
+    @generated_code[@curlln] = <<-EOS
+#{@generated_code[@curlln]}
 if (#{cond}) then
     __state = #{lab.inspect}
     next
@@ -376,8 +388,8 @@ EOS
   def visit_branchunless(code, ins, local_vars, ln, info)
     cond = @expstack.pop
     lab = ins[1]
-    @generated_code[ln] = <<-EOS
-#{@generated_code[ln]}
+    @generated_code[@curlln] = <<-EOS
+#{@generated_code[@curlln]}
 if !(#{cond}) then
     __state = #{lab.inspect}
     next

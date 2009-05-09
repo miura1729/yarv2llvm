@@ -99,7 +99,11 @@ module VMLib
           when :send
             if inst[3] and inst[3][0] then
               obj = InstSeqTree.new(self, nil, [@info[0], @info[1], @cur_send_no])
-              obj.init_from_ary(inst[3])
+              if inst[3][0] == "YARVInstructionSequence/SimpleDataFormat" then
+                obj.init_from_ary(inst[3])
+              else
+                obj.init_from_ary(inst[3][0])
+              end
               @blockes[@cur_send_no]= obj
               inst[3] = [inst[3], @cur_send_no]
             else

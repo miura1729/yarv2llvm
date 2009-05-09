@@ -59,10 +59,9 @@ module MethodDefinition
           blk = ins[3]
           code.blockes.delete(ins[3][1])
           mname =  arg0[0].content
-        
+
           iseq = VMLib::InstSeqTree.new(nil, blk[0])
           prog = YARV2LLVM::YarvTranslatorToRuby.new(iseq, binding, []).to_ruby
-        print prog
 
           MethodDefinition::InlineMacro[mname] = {
             :body => prog
