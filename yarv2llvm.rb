@@ -82,9 +82,20 @@ if __FILE__ == $0 then
          'Do compile but execute it') do |f|
     y2lopt[:compile_only] = f
   end
+
+  opt.on('--gc-profile',
+         'GC profiler invoke (for tuning yarv2llvm itself)') do |f|
+    y2lopt[:gc_profile] = f
+  end
   
   opt.parse!(ARGV)
 
+  if y2lopt[:gc_profile] then
+    GC::Profiler.enable
+  end
   YARV2LLVM::compile_file(ARGV[0], y2lopt, preload)
+  if y2lopt[:gc_profile] then
+    GC::Profiler.report
+  end
 end # __FILE__ == $0
 

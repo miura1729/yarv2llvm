@@ -11,7 +11,9 @@ module YARV2LLVM
 class YarvTranslatorToRuby<YarvVisitor
   def initialize(iseq, bind, preload)
     super(iseq, preload)
-    @generated_code = Hash.new("")
+    @generated_code = Hash.new { |hash, val|
+      lambda {|context| ""}
+    }
     @labels = {}
     @expstack = []
     @locals = {}
@@ -22,8 +24,8 @@ class YarvTranslatorToRuby<YarvVisitor
   def to_ruby
     run
     res = ""
-    @labels[:_blk_].each do |lab|
-      res = res + @generated_code[lab]
+    @labels[@labels.keys[0]].each do |lab|
+      res = res + @generated_code[lab].call(nil)
     end
     res = res +  "\n"
     res
@@ -44,38 +46,53 @@ class YarvTranslatorToRuby<YarvVisitor
     numarg = code.header['misc'][:arg_size]
     localsiz = code.header['misc'][:local_size]
     initarg = ""
-    numarg.times do |i|
-      vn = local_vars[i + localsiz - numarg + 1][:name]
-      initarg += "#{vn} = para[:args]\n"
+    if @curlabel == :_blk_ then
+      numarg.times do |i|
+        vn = local_vars[i + localsiz - numarg + 1][:name]
+        initarg += "#{vn} = para[:args]\n"
+      end
+    else
+      arglst = []
+      numarg.times do |i|
+        vn = local_vars[i + localsiz - numarg + 1][:name]
+        arglst.push "#{vn}"
+      end
+      initarg += "|#{arglst.join(',')}|"
     end
-    @generated_code[@curlabel] = <<-EOS
+    @generated_code[@curlabel] = lambda {|context| <<-EOS
    #{initarg}
 __state = #{ln.inspect}
 while true
   case __state
   when #{ln.inspect}
 EOS
+  }
   end
 
   def visit_block_end(code, ins, local_vars, ln, info)
     ret = @expstack.pop
     lln = @labels[@curlabel].last
-    @generated_code[lln] = <<-EOS
-    #{@generated_code[lln]}
-    break #{ret}
-  end
-end
-EOS
+    oldcode = @generated_code[lln]
+    @generated_code[lln] = lambda {|context| 
+      if ret then
+        oldcode.call(context) + "break #{ret.call(context)}\nend\nend\n"
+      else
+        oldcode.call(context) + "break\nend\nend\n"
+      end
+    }
   end
 
   def visit_local_block_start(code, ins, local_vars, ln, info)
     if ln then
       @curlln = (@curlabel.to_s + ln).to_sym
       @labels[@curlabel].push @curlln
-      @generated_code[@curlln] = <<-EOS 
+      oldcode = @generated_code[@curlln]
+      @generated_code[@curlln] = lambda {|context|
+        oldcode.call(context) + <<-EOS 
 __state = #{ln.inspect}
 when #{ln.inspect}
 EOS
+      }
     end
   end
 
@@ -97,9 +114,13 @@ EOS
         acode = acode.parent
         slev = slev + 1
       end
-      @expstack.push @locals[acode][voff][:name]
+      @expstack.push lambda {|context|
+        @locals[acode][voff][:name]
+      }
     else
-      @expstack.push local_vars[voff][:name]
+      @expstack.push lambda {|context|
+        local_vars[voff][:name]
+      }
     end
   end
       
@@ -113,9 +134,19 @@ EOS
         acode = acode.parent
         slev = slev + 1
       end
-      @generated_code[@curlln] = "#{@generated_code[@curlln]}\n#{acode[voff][:name]} = #{val}\n"
+      oldcode = @generated_code[@curlln]
+      @generated_code[@curlln] = lambda {|context|
+        oc = oldcode.call(context)
+        val = val.call(context)
+        oc + "\n#{acode[voff][:name]} = #{val}\n"
+      }
     else
-      @generated_code[@curlln] = "#{@generated_code[@curlln]}\n#{local_vars[voff][:name]} = #{val}\n"
+      oldcode = @generated_code[@curlln]
+      @generated_code[@curlln] = lambda {|context|
+        oc = oldcode.call(context)
+        val = val.call(context)
+        oc + "\n#{local_vars[voff][:name]} = #{val}\n"
+      }
     end
   end
       
@@ -126,11 +157,15 @@ EOS
     slev = ins[2]
     voff = ins[1]
     if slev == 0 then
-      @expstack.push local_vars[voff][:name]
+      @expstack.push lambda {|context| 
+        local_vars[voff][:name]
+      }
     else
       acode = code
       slev.times { acode = acode.parent}
-      @expstack.push @locals[acode][voff][:name]
+      @expstack.push lambda {|context|
+        @locals[acode][voff][:name]
+      }
     end
   end
       
@@ -139,11 +174,21 @@ EOS
     voff = ins[1]
     val = @expstack.pop
     if slev == 0 then
-      @generated_code[@curlln] = "#{@generated_code[@curlln]}\n#{local_vars[voff][:name]} = #{val}\n"
+      oldcode = @generated_code[@curlln]
+      @generated_code[@curlln] = lambda {|context|
+        oc = oldcode.call(context)
+        val = val.call(context)
+        oc + "\n#{local_vars[voff][:name]} = #{val}\n"
+      }
     else
       acode = code
       slev.times { acode = acode.parent}
-      @generated_code[@curlln] = "#{@generated_code[@curlln]}\n#{acode[voff][:name]} = #{val}\n"
+      oldcode = @generated_code[@curlln]
+      @generated_code[@curlln] = lamnda {|context|
+        oc = oldcode.call(context)
+        val = val.call(context)
+        oc + "\n#{acode[voff][:name]} = #{val}\n"
+      }
     end
   end
       
@@ -160,9 +205,9 @@ EOS
     const = ins[1]
     recv = @expstack.pop
     if recv == "nil" then
-      @expstack.push const.to_s
+      @expstack.push lambda {|context| const.to_s}
     else
-      @expstack.push "#{recv}:#{const.to_s}"
+      @expstack.push lambda {|context| "#{recv}:#{const.to_s}"}
     end
   end
       
@@ -176,16 +221,16 @@ EOS
   end
       
   def visit_putnil(code, ins, local_vars, ln, info)
-    @expstack.push 'nil'
+    @expstack.push lambda {|context| 'nil'}
   end
       
   def visit_putself(code, ins, local_vars, ln, info)
-    @expstack.push 'self'
+    @expstack.push lambda {|context| 'self'}
   end
       
   def visit_putobject(code, ins, local_vars, ln, info)
     p1 = ins[1].inspect
-    @expstack.push p1
+    @expstack.push lambda {|context| p1}
   end
       
   # putspecialobject
@@ -195,7 +240,7 @@ EOS
       
   def visit_putstring(code, ins, local_vars, ln, info)
     p1 = ins[1].inspect
-    @expstack.push p1
+    @expstack.push lambda {|context| p1}
   end
       
   def visit_concatstrings(code, ins, local_vars, ln, info)
@@ -209,7 +254,7 @@ EOS
       
   def visit_tostring(code, ins, local_vars, ln, info)
     v = @expstack.pop
-    @expstack.push "#{v}.to_s"
+    @expstack.push lambda {|context| "#{v.call(context)}.to_s"}
   end
       
   # toregexp
@@ -220,12 +265,12 @@ EOS
     nele.times {|n|
       inits.push @expstack.pop
     }
-    @expstack.push inits
+    @expstack.push lambda {|context| inits}
   end
       
   def visit_duparray(code, ins, local_vars, ln, info)
     srcarr = ins[1]
-    @expstack.push srcarr.dup
+    @expstack.push lambda {|context| srcarr.dup}
   end
       
   # expandarray
@@ -238,7 +283,16 @@ EOS
   end
       
   def visit_pop(code, ins, local_vars, ln, info)
-    @generated_code[@curlln] = "#{@generated_code[@curlln]}\n#{@expstack.pop}\n"
+    oldcode = @generated_code[@curlln]
+    @generated_code[@curlln] = lambda {|context|
+      exp = @expstack.pop
+      if exp then 
+        exp = exp.call(context)
+      else 
+        exp = nil
+      end
+      oldcode.call(context) + "\n#{exp}\n"
+    }
   end
       
   def visit_dup(code, ins, local_vars, ln, info)
@@ -261,6 +315,20 @@ EOS
       
   def visit_defineclass(code, ins, local_vars, ln, info)
   end
+
+  def gen_block_call(blklab, context)
+    blk = ""
+    if @labels[blklab] then
+      @labels[blklab].each do |lab|
+        blk = blk + @generated_code[lab].call(context)
+      end
+    end
+    if blk != "" then
+      blk = "do #{blk} end"
+    end
+
+    blk
+  end
       
   def visit_send(code, ins, local_vars, ln, info)
     mname = ins[1]
@@ -269,20 +337,25 @@ EOS
 
     blk = ""
     blklab = (@curlabel.to_s + "_blk_" + ins[3][1].to_s).to_sym
-#    @labels[blklab].each do |lab|
-#      blk = blk + @generated_code[lab]
-#    end
 
     args = []
     nargs.times do
       args.push @expstack.pop
     end
     recv = @expstack.pop
-    if recv != 'nil' then
+    if recv.call(nil) != 'nil' then
       if args.size == 0 then
-        @expstack.push "#{recv}.#{mname} #{blk}"
+        @expstack.push lambda {|context|
+          blk = gen_block_call(blklab, context)
+          "#{recv.call(context)}.#{mname} #{blk}"
+        }
       else
-        @expstack.push "#{recv}.#{mname}(#{args.reverse.join(',')}) #{blk}"
+        @expstack.push lambda {|context|
+          blk = gen_block_call(blklab, context)
+          args0 = args.map {|e| e.call(context)}
+          argsstr = args0.reverse.join(',')
+          "#{recv}.#{mname}(#{argsstr}) #{blk}"
+        }
       end
     else
       case mname
@@ -292,7 +365,8 @@ EOS
           i = 0
           argstr = ""
           arghash = {}
-          args[0].each do |e|
+          args[0].each do |e0|
+            e = e0.call(nil)
             case e
             when /^\"(.*)\"$/
               argstr += $1
@@ -326,15 +400,27 @@ EOS
             res += "__lOHash.delete(#{vn.inspect})\n"
             res += "end\n"
           end
-          @expstack.push [res, "compile_for_macro(__lOStr, __lOHash, para)\n"]
+          @expstack.push lambda {|context|
+            [res, "compile_for_macro(__lOStr, __lOHash, para)\n"]
+          }
         else
-          @expstack.push "compile_for_macro(#{args.reverse.join(',')}, {}, para)"
+          @expstack.push lambda {|context|
+            args0 = args.map {|e| e.call(contex)}
+            argsstr = args0.reverse.join(',')
+            "compile_for_macro(#{argsstr}, {}, para)"
+          }
         end
       else
         if args.size == 0 then
-          @expstack.push "#{mname}"
+          blk = gen_block_call(blklab, context)
+          @expstack.push lambda {|context| "#{mname} #{blk}"}
         else
-          @expstack.push "#{mname}(#{args.reverse.join(',')})"
+          blk = gen_block_call(blklab, context)
+          @expstack.push lambda {|context|
+            args0 = args.map {|e| e.call(context)}
+            argsstr = args0.reverse.join(',')
+            "#{mname}(#{argsstr}) #{blk}"
+          }
         end
       end
     end
@@ -348,17 +434,27 @@ EOS
     narg.times do |n|
       args.push @expstack.pop
     end
-    @expstack.push "yield(#{args.reverse.join(',')})"
+    @expstack.push lambda {|context|
+      args0 = args.map {|e| e.call(contex)}
+      argsstr = args0.reverse.join(',')
+      "yield(#{argsstr})"
+    }
   end
       
   def visit_leave(code, ins, local_vars, ln, info)
     ret = @expstack.pop
-    if ret.is_a?(Array) then
-      @generated_code[@curlln] = "#{@generated_code[@curlln]}\n#{ret[0]}\nbreak (#{ret[1]})"
-    else
-      @generated_code[@curlln] = "#{@generated_code[@curlln]}\nbreak (#{ret})"
-    end
-  end
+    oldcode = @generated_code[@curlln]
+    @generated_code[@curlln] = 
+        lambda {|context|
+          ret = ret.call(context)
+          if ret.is_a?(Array) then
+            "#{oldcode.call(context)}\n#{ret[0]}\nbreak (#{ret[1]})\n"
+          else
+            @generated_code[@curlln] = 
+              "#{oldcode.call(context)}\nbreak (#{ret})\n"
+          end
+        }
+      end
       
   # finish
       
@@ -366,35 +462,41 @@ EOS
       
   def visit_jump(code, ins, local_vars, ln, info)
     lab = ins[1]
-    @generated_code[@curlln] = <<-EOS
-#{@generated_code[@curlln]}
+    oldcode = @generated_code[@curlln]
+    @generated_code[@curlln] = lambda {|context|
+      oldcode.call(context) + <<-EOS
 __state = #{lab.inspect}
 next
 EOS
+    }
   end
 
   def visit_branchif(code, ins, local_vars, ln, info)
     cond = @expstack.pop
     lab = ins[1]
-    @generated_code[@curlln] = <<-EOS
-#{@generated_code[@curlln]}
-if (#{cond}) then
+    oldcode = @generated_code[@curlln]
+    @generated_code[@curlln] = lambda {|context|
+      oldcode.call(context) + <<-EOS
+  if (#{cond.call(context)}) then
     __state = #{lab.inspect}
     next
-end
+  end
 EOS
+    }
   end
 
   def visit_branchunless(code, ins, local_vars, ln, info)
     cond = @expstack.pop
     lab = ins[1]
-    @generated_code[@curlln] = <<-EOS
-#{@generated_code[@curlln]}
-if !(#{cond}) then
+    oldcode = @generated_code[@curlln]
+    @generated_code[@curlln] = lambda {|context|
+      oldcode.call(context) + <<-EOS
+if !(#{cond.call(context)}) then
     __state = #{lab.inspect}
     next
 end
 EOS
+}
   end
 
   # getinlinecache
@@ -406,79 +508,105 @@ EOS
   def visit_opt_plus(code, ins, local_vars, ln, info)
     b = @expstack.pop
     a = @expstack.pop
-    @expstack.push "((#{a}) + (#{b}))\n"
+    @expstack.push lambda {|context| 
+      "((#{a.call(context)}) + (#{b.call(context)}))\n"
+    }
   end
 
   def visit_opt_minus(code, ins, local_vars, ln, info)
     b = @expstack.pop
     a = @expstack.pop
-    @expstack.push "((#{a}) - (#{b}))\n"
+    @expstack.push lambda {|context|
+      "((#{a.call(context)}) - (#{b.call(context)}))\n"
+    }
   end
 
   def visit_opt_mult(code, ins, local_vars, ln, info)
     b = @expstack.pop
     a = @expstack.pop
-    @expstack.push "((#{a}) * (#{b}))\n"
+    @expstack.push lambda {|context|
+      "((#{a.call(context)}) * (#{b.call(context)}))\n"
+    }
   end
 
   def visit_opt_div(code, ins, local_vars, ln, info)
     b = @expstack.pop
     a = @expstack.pop
-    @expstack.push "((#{a}) / (#{b}))\n"
+    @expstack.push lambda {|context|
+      "((#{a.call(context)}) / (#{b.call(context)}))\n"
+    }
   end
 
   def visit_opt_mod(code, ins, local_vars, ln, info)
     b = @expstack.pop
     a = @expstack.pop
-    @expstack.push "((#{a}) % (#{b}))\n"
+    @expstack.push lambda {|context|
+      "((#{a.call(context)}) % (#{b.call(context)}))\n"
+    }
   end
 
   def visit_opt_eq(code, ins, local_vars, ln, info)
     b = @expstack.pop
     a = @expstack.pop
-    @expstack.push "((#{a}) == (#{b}))\n"
+    @expstack.push lambda {|context|
+      "((#{a.call(context)}) == (#{b.call(context)}))\n"
+    }
   end
 
   def visit_opt_neq(code, ins, local_vars, ln, info)
     b = @expstack.pop
     a = @expstack.pop
-    @expstack.push "((#{a}) != (#{b}))\n"
+    @expstack.push lambda {|context|
+      "((#{a.call(context)}) != (#{b.call(context)}))\n"
+    }
   end
 
   def visit_opt_lt(code, ins, local_vars, ln, info)
     b = @expstack.pop
     a = @expstack.pop
-    @expstack.push "((#{a}) < (#{b}))\n"
+    @expstack.push lambda {|context|
+      "((#{a.call(context)}) < (#{b.call(context)}))\n"
+    }
   end
 
   def visit_opt_le(code, ins, local_vars, ln, info)
     b = @expstack.pop
     a = @expstack.pop
-    @expstack.push "((#{a}) <= (#{b}))\n"
+    @expstack.push lambda {|context|
+      "((#{a.call(context)}) <= (#{b.call(context)}))\n"
+    }
   end
 
   def visit_opt_gt(code, ins, local_vars, ln, info)
     b = @expstack.pop
     a = @expstack.pop
-    @expstack.push "((#{a}) > (#{b}))\n"
+    @expstack.push lambda {|context|
+      "((#{a.call(context)}) > (#{b.call(context)}))\n"
+    }
   end
 
   def visit_opt_ge(code, ins, local_vars, ln, info)
     b = @expstack.pop
     a = @expstack.pop
-    @expstack.push "((#{a}) <= (#{b}))\n"
+    @expstack.push lambda {|context|
+      "((#{a.call(context)}) <= (#{b.call(context)}))\n"
+    }
   end
 
   def visit_opt_ltlt(code, ins, local_vars, ln, info)
     b = @expstack.pop
     a = @expstack.pop
-    @expstack.push "((#{a}) << (#{b}))\n"
+    @expstack.push lambda {|context|
+      "((#{a.call(context)}) << (#{b.call(context)}))\n"
+    }
   end
 
   def visit_opt_aref(code, ins, local_vars, ln, info)
     b = @expstack.pop
     a = @expstack.pop
-    @expstack.push "(#{a}[#{b}])"
+    @expstack.push lambda {|context|
+      "(#{a.call(context)}[#{b.call(context)}])"
+    }
   end
 
   # opt_aset
@@ -499,9 +627,11 @@ if __FILE__ == $0 then
 a = 10
 while a > 1 do 
 #  p Math.sin(2.0)
-  p `#{a} ,a`
-  a = a - 1
 end
+  [1, 2, 3].each do |n|
+    p n
+end
+  `#{a} ,a`
 =begin
 if a == 1 then
   1

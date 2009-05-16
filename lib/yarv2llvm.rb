@@ -45,6 +45,8 @@ DEF_OPTION = {
   :type_message => true,
   
   :compile_only => false,
+
+  :gc_profile => false,
 }
 OPTION = {}
 

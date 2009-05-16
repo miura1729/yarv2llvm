@@ -338,7 +338,7 @@ class YarvTranslator<YarvVisitor
       visit_local_block_start(nil, nil, local_vars, "mac#{@macro_seq_no}_label_end2".to_sym, para[:info])
     }
 
-    iseq.traverse_code([nil, nil, nil, nil], action)
+    iseq.traverse_code(para[:info], action)
   end
 
   def visit_block_start(code, ins, local_vars, ln, info)
@@ -1600,6 +1600,7 @@ class YarvTranslator<YarvVisitor
         :local => local_vars,
       }
 
+      #      print macroinfo[:body]
       eval(macroinfo[:body])
       return
     end
