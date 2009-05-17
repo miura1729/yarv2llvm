@@ -285,6 +285,8 @@ class YarvTranslator<YarvVisitor
       end
     end
     iseq = VMLib::InstSeqTree.new(nil, is)
+    para[:code].merge_other_iseq(iseq)
+    iseq.clear_related_iseq
     @macro_seq_no += 1
     run_once(iseq, 0, para)
   end
@@ -293,6 +295,8 @@ class YarvTranslator<YarvVisitor
     curlinno = 0
     isnotfst = false
     isstartcall = false
+    local_vars = para[:local]
+
     action = lambda {|code, info|
       info[3] = "#{code.header['filename']}:#{curlinno}"
       
@@ -300,7 +304,6 @@ class YarvTranslator<YarvVisitor
         info[1] = (info[1].to_s + '+blk+' + code.info[2].to_s).to_sym
       end
       
-      local_vars = []
       if isnotfst then
         visit_block_start(code, nil, local_vars, nil, info)
         isstartcall = true

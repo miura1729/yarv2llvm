@@ -199,6 +199,28 @@ module VMLib
       res
     end
 
+    def merge_other_iseq(oiseq)
+      oiseq.blockes.each do |name, blk|
+        @blockes[name] = blk
+      end
+
+      oiseq.methodes.each do |name, mth|
+        @methodes[name] = mth
+      end
+
+      oiseq.klasses.each do |name, mth|
+        @klasses[name] = mth
+      end
+
+      self
+    end
+
+    def clear_related_iseq
+      @blockes = {}
+      @methodes = {}
+      @klasses = {}
+    end
+
     def traverse_code(info, action)
       action.call(self, info)
 
