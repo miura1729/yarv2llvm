@@ -2171,7 +2171,10 @@ class YarvTranslator<YarvVisitor
     s2 = @expstack.pop
     s1 = @expstack.pop
     rettype = nil
-    if s1[0].type.llvm == P_CHAR then
+    if s1[0].type.klass == :String then
+      if @array_alloca_size == nil then
+        @array_alloca_size = 1
+      end
       rettype = RubyType.value(info[3], "return type of %")
     else
       check_same_type_2arg_static(s1, s2)
@@ -2181,7 +2184,28 @@ class YarvTranslator<YarvVisitor
     @expstack.push [rettype,
       lambda {|b, context|
         sval = []
+        if s1[0].type.klass == :String then
+          context = s1[1].call(b, context)
+          s1val = context.rc
+          context = s2[1].call(b, context)
+          s2val = context.rc
+
+          s1value = s1[0].type.to_value(s1val, b, context)
+          s2value = s2[0].type.to_value(s2val, b, context)
+
+          s2len = 1.llvm
+          s2ptr = context.array_alloca_area
+          b.store(s2value, s2ptr)
+
+          ftype = Type.function(VALUE, [LONG, P_VALUE, VALUE])
+          func = context.builder.external_function('rb_str_format', ftype)
+          context.rc = b.call(func, s2len, s2ptr, s1value)
+
+          return context
+        end
+
         sval, context, constp = gen_common_opt_2arg(b, context, s1, s2)
+
         if constp then
           rc = sval[0] % sval[1]
           rettype.type.constant = rc
@@ -2198,14 +2222,8 @@ class YarvTranslator<YarvVisitor
         when Type::Int32Ty
           context.rc = b.srem(sval[0], sval[1])
 
-        when P_CHAR
-          s1value = s1[0].type.to_value(sval[0], b, context)
-          s2value = s2[0].type.to_value(sval[1], b, context)
-          ftype = Type.function(VALUE, [VALUE, VALUE])
-          func = context.builder.external_function('rb_str_format_m', ftype)
-          context.rc = b.call(func, s1value, s2value)
-
         else
+          p s1[0].type.klass
           raise "Unsupported type #{s1[0].inspect2}"
         end
 
