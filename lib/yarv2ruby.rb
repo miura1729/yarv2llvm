@@ -412,11 +412,13 @@ EOS
         end
       else
         if args.size == 0 then
-          blk = gen_block_call(blklab, context)
-          @expstack.push lambda {|context| "#{mname} #{blk}"}
+          @expstack.push lambda {|context| 
+            blk = gen_block_call(blklab, context)
+            "#{mname} #{blk}"
+          }
         else
-          blk = gen_block_call(blklab, context)
           @expstack.push lambda {|context|
+            blk = gen_block_call(blklab, context)
             args0 = args.map {|e| e.call(context)}
             argsstr = args0.reverse.join(',')
             "#{mname}(#{argsstr}) #{blk}"

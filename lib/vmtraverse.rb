@@ -54,6 +54,19 @@ class YarvVisitor
     @iseqs.push iseq
   end
 
+  def reset_state
+    @jump_from = {}
+    @prev_label = nil
+    @is_live = nil
+    @frame_struct = {}
+    @locals = {}
+    @have_yield = false
+
+    @array_alloca_size = nil
+    @loop_cnt_alloca_size = 0
+    @loop_cnt_current = 0
+  end
+
   def run
     curlinno = 0
     @iseqs.each do |iseq|
@@ -93,6 +106,7 @@ class YarvVisitor
       }
 
       iseq.traverse_code([nil, nil, nil, nil], action)
+      reset_state
     end
   end
 
@@ -1782,6 +1796,7 @@ class YarvTranslator<YarvVisitor
   def visit_leave(code, ins, local_vars, ln, info)
     retexp = nil
     retexp = @expstack.pop
+    rett2 = nil
     if retexp == nil then
       rett2 = RubyType.value(info[3], "Return type of #{info[1]}")
       retexp = [rett2, lambda {|b, context|

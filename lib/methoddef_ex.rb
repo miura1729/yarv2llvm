@@ -66,6 +66,7 @@ module MethodDefinition
           MethodDefinition::InlineMacro[mname] = {
             :body => prog
           }
+
           @expstack.push [RubyType.value, 
             lambda {|b, context|
               context.rc = 4.llvm

@@ -99,7 +99,8 @@ EOS
  end
 
   def test_argument_order
-    YARV2LLVM::compile(<<-EOS, {:disasm => true, :optimize=>false})
+#    YARV2LLVM::compile(<<-EOS, {:disasm => true, :optimize=>false})
+    YARV2LLVM::compile(<<-EOS, {})
 def targorder(x, y, z)
   p "foo"
   p x
@@ -193,7 +194,8 @@ EOS
    # This resason is optimizer tries to ilining calling function pointer
    # as argument. When pass two different function pointer as argument ,
    # optimizer crashed.
-   YARV2LLVM::compile(<<-EOS, {:optimize => false})
+#   YARV2LLVM::compile(<<-EOS, {:optimize => false})
+   YARV2LLVM::compile(<<-EOS, {})
 class Fixnum
   def times
     j = 0
@@ -368,7 +370,7 @@ EOS
 
   def test_return1
 #    YARV2LLVM::compile(<<-EOS, {:dump_yarv => true})
-    YARV2LLVM::compile(<<-EOS)
+    YARV2LLVM::compile(<<-EOS, {})
 def treturn(f)
   if f == 1 then
     return 2
@@ -386,8 +388,8 @@ EOS
   end
 
   def test_array_each2
-    YARV2LLVM::compile(<<-EOS, {:func_signature => true})
-#    YARV2LLVM::compile(<<-EOS)
+#    YARV2LLVM::compile(<<-EOS, {:func_signature => true})
+    YARV2LLVM::compile(<<-EOS)
 def tarray_each2
   rc = 0
   a = [1, 2, 4, 8, 16]
@@ -447,7 +449,8 @@ EOS
 end
 
   def test_embedded_string
-    YARV2LLVM::compile(<<-'EOS', {:dump_yarv=>true})
+#    YARV2LLVM::compile(<<-'EOS', {:dump_yarv=>true})
+    YARV2LLVM::compile(<<-'EOS', {})
 def tembeddedstring
   n = 1
   b = 1.0
@@ -487,7 +490,8 @@ end
 
 =begin
   def test_complex_type
-    YARV2LLVM::compile(<<-EOS, {:optimize => false})
+#    YARV2LLVM::compile(<<-EOS, {:optimize => false})
+    YARV2LLVM::compile(<<-EOS, {})
         def t_complex_str(arr)
           arr[0]
         end
