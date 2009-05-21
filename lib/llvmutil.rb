@@ -548,5 +548,109 @@ module SendUtil
 
     para
   end
+  
+  def do_function(receiver, info, ins, local_vars, args, mname)
+    recklass = receiver ? receiver[0].klass : nil
+    rectype = receiver ? receiver[0] : nil
+    minfo, func = gen_method_select(rectype, info[0], mname)
+    if minfo then
+      pppp "RubyMethod called #{mname.inspect}"
+
+      para = gen_arg_eval(args, receiver, ins, local_vars, info, minfo, mname)
+      @expstack.push [minfo[:rettype],
+        lambda {|b, context|
+          recklass = receiver ? receiver[0].klass : nil
+          minfo, func = gen_method_select(rectype, info[0], mname)
+          if func then
+            gen_call(func, para ,b, context)
+          else
+            p mname
+            p recklass
+            raise "Undefined method \"#{mname}\" in #{info[3]}"
+          end
+        }]
+      return true
+    end
+
+    false
+  end
+
+  def do_cfunction(receiver, info, ins, local_vars, args, mname)
+    recklass = receiver ? receiver[0].klass : nil
+    funcinfo = nil
+    if MethodDefinition::CMethod[recklass] then
+      funcinfo = MethodDefinition::CMethod[recklass][mname]
+    end
+    unless funcinfo
+      funcinfo = MethodDefinition::CMethod[nil][mname]
+    end
+
+    if funcinfo then
+      rettype = funcinfo[:rettype]
+      argtype = funcinfo[:argtype]
+      unless rettype.is_a?(RubyType) then
+        rettype = RubyType.new(rettype, 
+                               info[3], 
+                               "return type of #{mname} in forward call")
+        argtype = funcinfo[:argtype].map {|ts| RubyType.new(ts, info[3])}
+      end
+      cname = funcinfo[:cname]
+      send_self = funcinfo[:send_self]
+      argnum = ins[2]
+      if send_self then
+        argnum += 1
+      end
+      
+      if argtype.size == argnum then
+        argtype2 = argtype.map {|tc| tc.type.llvm}
+        ftype = Type.function(rettype.type.llvm, argtype2)
+        func = @builder.external_function(cname, ftype)
+
+        if send_self then
+          para = gen_arg_eval(args, receiver, ins, local_vars, info, nil, mname)
+          slf = para.pop
+          para.unshift slf
+        else
+          para = gen_arg_eval(args, nil, ins, local_vars, info, nil, mname)
+        end
+
+        args.each_with_index do |pe, n|
+          pe[0].add_same_type argtype[n]
+          argtype[n].add_same_value pe[0]
+        end
+          
+        @expstack.push [rettype,
+          lambda {|b, context|
+            gen_call(func, para, b, context)
+          }
+        ]
+        return true
+      end
+    end
+
+    false
+  end
+
+  def do_macro(mname, _sender_env)
+    macroinfo = MethodDefinition::InlineMacro[mname]
+    if macroinfo then
+      #      print macroinfo[:body]
+      eval(macroinfo[:body])
+      return true
+    end
+
+    false
+  end
+
+  def do_inline_function(receiver, info, mname, env)
+    recklass = receiver ? receiver[0].klass : nil
+    funcinfo = get_inline_function(recklass, info[0], mname)
+    if funcinfo then
+      instance_exec(env, &funcinfo[:inline_proc])
+      return true
+    end
+
+    false
+  end
 end
 end

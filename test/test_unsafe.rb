@@ -48,7 +48,7 @@ EOS
     YARV2LLVM::compile(<<-'EOS', {:disasm => true, :dump_yarv => true, :optimize=> false, :func_signature => false})
 
 
-YARV2LLVM::define_macro :myif do |arg| `if #{para[:args][2]} then #{para[:args][1]} else #{para[:args][0]} end` end
+YARV2LLVM::define_macro :myif do |arg| `if #{_sender_env[:args][2]} then #{_sender_env[:args][1]} else #{_sender_env[:args][0]} end` end
 def tdefine_macro
   myif(false, p("hello"), p("world"))
   1

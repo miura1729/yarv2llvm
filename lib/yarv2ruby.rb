@@ -49,7 +49,7 @@ class YarvTranslatorToRuby<YarvVisitor
     if @curlabel == :_blk_ then
       numarg.times do |i|
         vn = local_vars[i + localsiz - numarg + 1][:name]
-        initarg += "#{vn} = para[:args]\n"
+        initarg += "#{vn} = _sender_env[:args]\n"
       end
     else
       arglst = []
@@ -401,13 +401,13 @@ EOS
             res += "end\n"
           end
           @expstack.push lambda {|context|
-            [res, "compile_for_macro(__lOStr, __lOHash, para)\n"]
+            [res, "compile_for_macro(__lOStr, __lOHash, _sender_env)\n"]
           }
         else
           @expstack.push lambda {|context|
             args0 = args.map {|e| e.call(contex)}
             argsstr = args0.reverse.join(',')
-            "compile_for_macro(#{argsstr}, {}, para)"
+            "compile_for_macro(#{argsstr}, {}, _sender_env)"
           }
         end
       else

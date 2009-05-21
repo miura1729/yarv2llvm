@@ -1527,117 +1527,42 @@ class YarvTranslator<YarvVisitor
     end
 
     RubyType.resolve
-    recklass = receiver ? receiver[0].klass : nil
-    rectype = receiver ? receiver[0] : nil
 
-    minfo, func = gen_method_select(rectype, info[0], mname)
-    if minfo then
-      pppp "RubyMethod called #{mname.inspect}"
-
-      para = gen_arg_eval(args, receiver, ins, local_vars, info, minfo, mname)
-      @expstack.push [minfo[:rettype],
-        lambda {|b, context|
-          recklass = receiver ? receiver[0].klass : nil
-          minfo, func = gen_method_select(rectype, info[0], mname)
-          if func then
-            gen_call(func, para ,b, context)
-          else
-            p mname
-            p recklass
-            raise "Undefined method \"#{mname}\" in #{info[3]}"
-          end
-        }]
+    if do_function(receiver, info, ins, local_vars, args, mname) then
       return
     end
 
-    funcinfo = nil
-    if MethodDefinition::CMethod[recklass] then
-      funcinfo = MethodDefinition::CMethod[recklass][mname]
-    end
-    unless funcinfo
-      funcinfo = MethodDefinition::CMethod[nil][mname]
-    end
-
-    if funcinfo then
-      rettype = funcinfo[:rettype]
-      argtype = funcinfo[:argtype]
-      unless rettype.is_a?(RubyType) then
-        rettype = RubyType.new(rettype, 
-                               info[3], 
-                               "return type of #{mname} in forward call")
-        argtype = funcinfo[:argtype].map {|ts| RubyType.new(ts, info[3])}
-      end
-      cname = funcinfo[:cname]
-      send_self = funcinfo[:send_self]
-      argnum = ins[2]
-      if send_self then
-        argnum += 1
-      end
-      
-      if argtype.size == argnum then
-        argtype2 = argtype.map {|tc| tc.type.llvm}
-        ftype = Type.function(rettype.type.llvm, argtype2)
-        func = @builder.external_function(cname, ftype)
-
-        if send_self then
-          para = gen_arg_eval(args, receiver, ins, local_vars, info, nil, mname)
-          slf = para.pop
-          para.unshift slf
-        else
-          para = gen_arg_eval(args, nil, ins, local_vars, info, nil, mname)
-        end
-
-        args.each_with_index do |pe, n|
-          pe[0].add_same_type argtype[n]
-          argtype[n].add_same_value pe[0]
-        end
-          
-        @expstack.push [rettype,
-          lambda {|b, context|
-            gen_call(func, para, b, context)
-          }
-        ]
-        return
-      end
+    if do_cfunction(receiver, info, ins, local_vars, args, mname) then
+      return
     end
 
     if funcinfo = MethodDefinition::SystemMethod[mname] then
       return
     end
 
-    macroinfo = MethodDefinition::InlineMacro[mname]
-    if macroinfo then
-      para = {
-        :info => info,
-        :ins => ins,
-        :ln => ln,
-        :code => code,
-        :args => args, 
-        :receiver => receiver, 
-        :local => local_vars,
-      }
+    sender_env = {
+      :info => info,
+      :ins => ins,
+      :ln => ln,
+      :code => code,
+      :args => args, 
+      :receiver => receiver, 
+      :local => local_vars,
+    }
 
-      #      print macroinfo[:body]
-      eval(macroinfo[:body])
+    if do_macro(mname, sender_env) then
       return
     end
 
-    funcinfo = get_inline_function(recklass, info[0], mname)
-    if funcinfo then
-      para = {
-        :info => info, 
-        :ins => ins,
-        :code => code,
-        :args => args, 
-        :receiver => receiver, 
-        :local => local_vars
-      }
-      instance_exec(para, &funcinfo[:inline_proc])
+    if do_inline_function(receiver, info, mname, sender_env)
       return
     end
 
     # Undefined method, it may be forward call.
     pppp "RubyMethod forward called #{mname.inspect}"
+
+    recklass = receiver ? receiver[0].klass : nil
+    rectype = receiver ? receiver[0] : nil
 
     # minfo doesn't exist yet
     para = gen_arg_eval(args, receiver, ins, local_vars, info, nil, mname)
@@ -2171,7 +2096,7 @@ class YarvTranslator<YarvVisitor
     s2 = @expstack.pop
     s1 = @expstack.pop
     rettype = nil
-    if s1[0].type.klass == :String then
+    if s1[0].type and s1[0].type.klass == :String then
       if @array_alloca_size == nil then
         @array_alloca_size = 1
       end
@@ -2192,14 +2117,18 @@ class YarvTranslator<YarvVisitor
 
           s1value = s1[0].type.to_value(s1val, b, context)
           s2value = s2[0].type.to_value(s2val, b, context)
-
-          s2len = 1.llvm
-          s2ptr = context.array_alloca_area
-          b.store(s2value, s2ptr)
-
-          ftype = Type.function(VALUE, [LONG, P_VALUE, VALUE])
-          func = context.builder.external_function('rb_str_format', ftype)
-          context.rc = b.call(func, s2len, s2ptr, s1value)
+          
+          if s2[0].type.klass == :Array then
+            
+          else
+            s2len = 1.llvm
+            s2ptr = context.array_alloca_area
+            b.store(s2value, s2ptr)
+            
+            ftype = Type.function(VALUE, [LONG, P_VALUE, VALUE])
+            func = context.builder.external_function('rb_str_format', ftype)
+            context.rc = b.call(func, s2len, s2ptr, s1value)
+          end
 
           return context
         end
