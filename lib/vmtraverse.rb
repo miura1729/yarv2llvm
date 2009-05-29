@@ -376,7 +376,7 @@ class YarvTranslator<YarvVisitor
         :area => nil}
     end
     local_vars[0][:type] = RubyType.new(P_CHAR, info[3], "Parent frame")
-    local_vars[1][:type] = RubyType.new(MACHINE_WORD, info[3], 
+    local_vars[1][:type] = RubyType.new(Type::Int32Ty, info[3], 
                                         "Pointer to block")
     local_vars[2][:type] = RubyType.from_sym(info[0], info[3], "self")
     local_vars[3][:type] = RubyType.new(Type::Int32Ty, info[3], 
@@ -458,7 +458,7 @@ class YarvTranslator<YarvVisitor
 
       if ncnt = context.loop_cnt_alloca_size then
         ncnt.times do |i|
-          area =  b.alloca(Type::Int32Ty, 1)
+          area =  b.alloca(MACHINE_WORD, 1)
           context.loop_cnt_alloca_area.push area
         end
       end
@@ -1166,7 +1166,7 @@ class YarvTranslator<YarvVisitor
     end
     eles.reverse!
     @expstack.push [rett, lambda {|b, context|
-      ftype = Type.function(VALUE, [P_CHAR, Type::Int32Ty])
+      ftype = Type.function(VALUE, [P_CHAR, MACHINE_WORD])
       funcnewstr = context.builder.external_function('rb_str_new', ftype)
       istr = b.int_to_ptr(0.llvm, P_CHAR)
       rs = b.call(funcnewstr, istr, 0.llvm)
@@ -1268,7 +1268,7 @@ class YarvTranslator<YarvVisitor
               b.store(rcvalue, sptr)
             end
           
-            ftype = Type.function(VALUE, [Type::Int32Ty, P_VALUE])
+            ftype = Type.function(VALUE, [MACHINE_WORD, P_VALUE])
             func = context.builder.external_function('rb_ary_new4', ftype)
             rc = b.call(func, initsize.llvm, initarea2)
             context.rc = rc
@@ -1302,7 +1302,7 @@ class YarvTranslator<YarvVisitor
           unless val then
             val = arr[1].call(b, context)
           end
-          ftype = Type.function(VALUE, [VALUE, Type::Int32Ty])
+          ftype = Type.function(VALUE, [VALUE, MACHINE_WORD])
           func = context.builder.external_function('rb_ary_entry', ftype)
           av = b.call(func, val, i.llvm)
           context.rc = av
@@ -2455,7 +2455,7 @@ class YarvTranslator<YarvVisitor
           if OPTION[:array_range_check] then
             context = arr[1].call(b, context)
             arrp = context.rc
-            ftype = Type.function(VALUE, [VALUE, Type::Int32Ty])
+            ftype = Type.function(VALUE, [VALUE, MACHINE_WORD])
             func = context.builder.external_function('rb_ary_entry', ftype)
             av = b.call(func, arrp, idxp)
             arrelet = arr[0].type.element_type.type
@@ -2475,12 +2475,39 @@ class YarvTranslator<YarvVisitor
                 # Array body in register
                 abdy = arr[0].type.ptr
               else
+	        embed = context.builder.create_block
+                nonembed = context.builder.create_block
+                comm = context.builder.create_block
                 context = arr[1].call(b, context)
                 arrp = context.rc
                 arrp = b.int_to_ptr(arrp, P_RARRAY)
-                abdyp = b.struct_gep(arrp, 3)
-                abdy = b.load(abdyp)
+                arrhp = b.struct_gep(arrp, 0)
+                arrhp = b.struct_gep(arrhp, 0)
+                arrh = b.load(arrhp)
+                isemb = b.and(arrh, EMBEDER_FLAG.llvm)
+                isemb = b.icmp_ne(isemb, 0.llvm)
+                b.cond_br(isemb, embed, nonembed)
+
+                #  Embedded format
+                b.set_insert_point(embed)
+                eabdy = b.struct_gep(arrp, 1)
+                eabdy = b.int_to_ptr(eabdy, P_VALUE)
+
+                b.br(comm)
+
+		#  Not embedded format
+                b.set_insert_point(nonembed)
+                nabdyp = b.struct_gep(arrp, 3)
+                nabdy = b.load(nabdyp)
+                b.br(comm)
+
+                b.set_insert_point(comm)
+                abdy = b.phi(P_VALUE)
+                abdy.add_incoming(eabdy, embed)
+                abdy.add_incoming(nabdy, nonembed)
                 arr[0].type.ptr = abdy
+
+		context.blocks[context.curln] = comm
               end
               avp = b.gep(abdy, idxp)
               av = b.load(avp)

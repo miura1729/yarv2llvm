@@ -277,7 +277,7 @@ module LLVMUtil
   def gen_to_i_internal(recv, val, b, context)
     case recv[0].type.llvm
     when Type::DoubleTy
-      return b.fp_to_si(val, Type::Int32Ty)
+      return b.fp_to_si(val, MACHINE_WORD)
     when Type::Int32Ty
       return val
     else
@@ -423,7 +423,7 @@ module SendUtil
 
 =begin
   def gen_get_framaddress(fstruct, b, context)
-    ftype = Type.function(P_CHAR, [Type::Int32Ty])
+    ftype = Type.function(P_CHAR, [MACHINE_WORD])
     func = context.builder.external_function('llvm.frameaddress', ftype)
     fraw = b.call(func, 0.llvm)
 

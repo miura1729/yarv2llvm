@@ -410,7 +410,7 @@ class PrimitiveType
 
   TYPE_HANDLER = {
     Type::Int32Ty =>
-      {:inspect => "Int32Ty",
+      {:inspect => "Type::Int32Ty",
 
        :to_value => lambda {|val, b, context|
          x = b.shl(val, 1.llvm)
@@ -426,13 +426,13 @@ class PrimitiveType
       {:inspect => "Char",
 
        :to_value => lambda {|val, b, context|
-         val32 = b.zext(val, Type::Int32Ty)
+         val32 = b.zext(val, MACHINE_WORD)
          x = b.shl(val32, 1.llvm)
          b.or(FIXNUM_FLAG, x)
        },
 
        :from_value => lambda {|val, b, context|
-         val32 = b.zext(val, Type::Int32Ty)
+         val32 = b.zext(val, MACHINE_WORD)
          x = b.lshr(val32, 1.llvm)
        },
       },
@@ -441,7 +441,7 @@ class PrimitiveType
       {:inspect => "Boolean",
 
        :to_value => lambda {|val, b, context|
-         val32 = b.zext(val, Type::Int32Ty)
+         val32 = b.zext(val, MACHINE_WORD)
          b.shl(val32, 1.llvm)
        },
 

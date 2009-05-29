@@ -91,7 +91,7 @@ module MethodDefinition
               func = context.builder.external_function(fname, ftype)
               curval = b.call(func)
               diffval = b.sub(curval, prevval)
-              rc = b.trunc(diffval, Type::Int32Ty)
+              rc = b.trunc(diffval, MACHINE_WORD)
               b.store(curval, prevvalp)
               context.rc = rc
               context

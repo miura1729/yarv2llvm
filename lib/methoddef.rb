@@ -72,7 +72,7 @@ module MethodDefinition
               arr[0].type.element_type.add_same_type(val[0])
               RubyType.resolve
               ftype = Type.function(Type::VoidTy, 
-                                    [VALUE, Type::Int32Ty, VALUE])
+                                    [VALUE, MACHINE_WORD, VALUE])
               func = context.builder.external_function('rb_ary_store', ftype)
               context = val[1].call(b, context)
               v = context.rc
@@ -238,7 +238,7 @@ module MethodDefinition
               context = pterm[1].call(b, context)
               sec = context.rc
               sec = gen_to_i_internal(pterm, sec, b, context)
-              ftype = Type.function(Type::VoidTy, [Type::Int32Ty])
+              ftype = Type.function(Type::VoidTy, [MACHINE_WORD])
               func = @builder.external_function('rb_thread_sleep', ftype)
               b.call(func, sec)
               context}]
@@ -384,7 +384,7 @@ module MethodDefinition
                   body = lambda {|b, context|
                     lcntp = context.loop_cnt_alloca_area[loop_cnt_current]
                     idxp = b.load(lcntp)
-                    ftype = Type.function(VALUE, [VALUE, Type::Int32Ty])
+                    ftype = Type.function(VALUE, [VALUE, MACHINE_WORD])
                     func = context.builder.external_function('rb_ary_entry', ftype)
                     av = b.call(func, rc, idxp)
                     arrelet = rec[0].type.element_type.type
