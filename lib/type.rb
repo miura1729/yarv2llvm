@@ -52,6 +52,9 @@ class RubyType
     @same_value = []
     @@type_table.push self
     @conflicted_types = Hash.new
+
+    @extent = []
+    @extent_base = [self]
   end
   attr_accessor :type
   attr_accessor :conflicted_types
@@ -99,6 +102,7 @@ class RubyType
 
   attr_accessor :type
   attr_accessor :resolveed
+  attr_accessor :extent
   attr :name
   attr :line_no
 
@@ -239,6 +243,43 @@ class RubyType
       rone_nodup = rone.call(false)
       @same_value.each(&rone_nodup)
     end
+  end
+
+  EXTENT_ORDER = {
+    nil => 0,
+    :block => 1,
+    :method => 2,
+    :instance => 3,
+    :global => 4
+  }
+
+  def add_extent_base(fty)
+    @extent_base.push fty
+  end
+
+  def extent_base
+    @extent_base.map do |e|
+      if e == self then
+        @extent_base
+      else
+        e.extent_base
+      end
+    end.flatten
+  end
+
+  def real_extent
+    ext_all = @extent_base.map {|e| e.extent_base}.flatten
+      
+    extmax = ext_all.max_by {|e| EXTENT_ORDER[e.extent[0]] }
+    if extmax.extent[0] then
+      if extmax.extent[0] == :instance then
+        return extmax.extent[1].real_extent
+      else
+        return extmax.extent[0]
+      end
+    end
+  
+    return :local
   end
 
   def self.fixnum(lno = nil, name = nil, klass = Fixnum)
