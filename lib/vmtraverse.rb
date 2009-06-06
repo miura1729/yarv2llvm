@@ -222,6 +222,7 @@ class YarvTranslator<YarvVisitor
       end
     end
     gen_get_method_cfunc(@builder)
+    gen_get_method_cfunc_singleton(@builder)
     
     @generated_define_func.each do |klass, value|
       value.each do |name, gen|
@@ -393,11 +394,6 @@ class YarvTranslator<YarvVisitor
         })
       end
     end
-
-    local_vars.each do |e|
-      e[:type].is_arg = true
-    end
-    local_vars[2][:type].is_arg = nil
 
     @locals[code] = local_vars
     numarg = code.header['misc'][:arg_size]
@@ -860,9 +856,6 @@ class YarvTranslator<YarvVisitor
       type = RubyType.new(nil, info[3], "#{info[0]}##{ivname}")
       @instance_var_tab[info[0]][ivname][:type] = type
     end
-    type.extent = :instance
-    type.slf = local_vars[2][:type]
-
     @expstack.push [type,
       lambda {|b, context|
         if vptr = context.instance_vars_local_area[ivname] then
@@ -908,8 +901,6 @@ class YarvTranslator<YarvVisitor
     
     srctype.add_same_value(dsttype)
     dsttype.add_same_value(srctype)
-    srctype.extent = :instance
-    srctype.slf = local_vars[2][:type]
 
     oldrescode = @rescode
     @rescode = lambda {|b, context|
@@ -997,7 +988,6 @@ class YarvTranslator<YarvVisitor
     else
       const_klass = Object
     end
-    val[0].extent = :global
     if !UNDEF.equal?(val[0].type.constant) then
       const_klass.const_set(ins[1], val[0].type.constant)
     else
@@ -1034,7 +1024,6 @@ class YarvTranslator<YarvVisitor
       @global_var_tab[glname][:type] = type
       areap = add_global_variable("glarea_ptr", VALUE, 4.llvm)
       @global_var_tab[glname][:area] = areap
-      type.extent = :global
     end
     areap = @global_var_tab[glname][:area]
     @expstack.push [type,
@@ -1076,7 +1065,6 @@ class YarvTranslator<YarvVisitor
     
     srctype.add_same_value(dsttype)
     dsttype.add_same_value(srctype)
-    srctype.extent = :global
 
     oldrescode = @rescode
     @rescode = lambda {|b, context|
@@ -1541,7 +1529,7 @@ class YarvTranslator<YarvVisitor
 
     RubyType.resolve
 
-    if do_function(receiver, info, ins, local_vars, args, mname) then
+    if do_function(receiver, info, ins, local_vars, args, mname, 0) then
       return
     end
 
@@ -1611,57 +1599,11 @@ class YarvTranslator<YarvVisitor
 
           gen_call(func, para, b, context)
         else
-          para.each do |ele|
-            RubyType.value.add_same_type ele[0]
-          end
           RubyType.value.add_same_type rett
           RubyType.resolve
 
-          ftype = Type.function(VALUE, [VALUE, VALUE])
-          fname = 'llvm_get_method_cfunc'
-          ggmc = context.builder.get_or_insert_function_raw(fname, ftype)
-          if rectype and rectype.klass then
-            reck = eval(rectype.klass.to_s)
-          else
-            reck = Object
-          end
-
-          mid = b.ashr(mname.llvm, 8.llvm)
-          fp = b.call(ggmc, reck.llvm, mid)
-          inst = YARV2LLVM::klass2instance(reck)
-          painfo =  inst.method(mname).parameters
-          if YARV2LLVM::variable_argument?(painfo) then
-            ftype = Type.function(VALUE, [LONG, P_VALUE, VALUE])
-            ftype = Type.pointer(ftype)
-            fp = b.int_to_ptr(fp, ftype)
-            initarea = context.array_alloca_area
-            initarea2 =  b.gep(initarea, curlevel.llvm)
-            slfexp = para.shift
-            context = slfexp[1].call(b, context)
-            slf = context.rc
-            para.each_with_index do |e, n|
-              context = e[1].call(b, context)
-              sptr = b.gep(initarea2, n.llvm)
-              if e[0].type then
-                rcvalue = e[0].type.to_value(context.rc, b, context)
-              else
-                rcvalue = context.rc
-              end
-              b.store(rcvalue, sptr)
-            end
-
-            context.rc = b.call(fp, para.size.llvm, initarea2, slf)
-            context
-          else
-            ftype = Type.function(VALUE, [VALUE] * para.size)
-            ftype = Type.pointer(ftype)
-            fp = b.int_to_ptr(fp, ftype)
-            gen_call(fp, para, b, context)
-          end
-          context.rc = rett.type.from_value(context.rc, b, context)
-          context
-          #          raise "Undefined method \"#{mname}\" in #{info[3]}"
-        end
+	  gen_call_from_ruby(rett, rectype, mname, para, curlevel, b, context)
+	end
       }]
 
     dst = MethodDefinition::RubyMethod[mname]
@@ -1748,7 +1690,6 @@ class YarvTranslator<YarvVisitor
       retexp[0].add_same_type rett2
       RubyType.resolve
     end
-    retexp[0].extent = :global
 
     oldrescode = @rescode
     @rescode = lambda {|b, context|
@@ -2616,7 +2557,7 @@ class YarvTranslator<YarvVisitor
     type = local_vars[voff][:type]
     @expstack.push [type,
       lambda {|b, context|
-        if UNDEF.equal?(context.rc = type.type.content) or true  then
+        if UNDEF.equal?(context.rc = type.type.content) then
           context.rc = b.load(context.local_vars[voff][:area])
         end
         context.org = local_vars[voff][:name]
@@ -2632,7 +2573,6 @@ class YarvTranslator<YarvVisitor
 
     srctype.add_same_type(dsttype)
     dsttype.add_same_value(srctype)
-    srctype.add_extent_base dsttype
 
     oldrescode = @rescode
     @rescode = lambda {|b, context|
@@ -2693,7 +2633,6 @@ class YarvTranslator<YarvVisitor
 
     srctype.add_same_type(dsttype)
     dsttype.add_same_value(srctype)
-    srctype.add_extent_base dsttype
 
     oldrescode = @rescode
     @rescode = lambda {|b, context|
