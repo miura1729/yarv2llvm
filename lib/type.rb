@@ -53,11 +53,15 @@ class RubyType
     @@type_table.push self
     @conflicted_types = Hash.new
 
-    @extent = []
+    @extent = nil
+    @is_arg = false
+    @slf = nil
     @extent_base = [self]
   end
   attr_accessor :type
   attr_accessor :conflicted_types
+  attr_accessor :is_arg
+  attr_accessor :slf
 
   def klass
     if @type then
@@ -94,7 +98,7 @@ class RubyType
 
   def inspect2
     if @type then
-      @type.inspect2
+      @type.inspect2 + " [#{real_extent}]"
     else
       'nil'
     end
@@ -266,16 +270,26 @@ class RubyType
       end
     end.flatten
   end
+  
+  def extent2
+    aext = @extent_base.map {|e| e.extent_base}.flatten
+    aext.map {|e| e.extent}
+  end
 
   def real_extent
     ext_all = @extent_base.map {|e| e.extent_base}.flatten
-      
-    extmax = ext_all.max_by {|e| EXTENT_ORDER[e.extent[0]] }
-    if extmax.extent[0] then
-      if extmax.extent[0] == :instance then
-        return extmax.extent[1].real_extent
+    extmax = ext_all.max_by {|e| EXTENT_ORDER[e.extent] }
+    if extmax.extent then
+      if extmax.extent == :instance then
+        slf = extmax.slf
+        if slf.is_arg then
+          p "foo"
+          return :global
+        else
+          return slf.real_extent
+        end
       else
-        return extmax.extent[0]
+        return extmax.extent
       end
     end
   

@@ -510,6 +510,11 @@ module SendUtil
     v = nil
     if receiver then
       v = receiver
+      args.each do |pe|
+        pe[0].slf = v[0]
+      end
+#      p info
+#      p v[0].name
     else
       v = [local_vars[2][:type], 
         lambda {|b, context|
