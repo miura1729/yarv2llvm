@@ -91,7 +91,7 @@ module MethodDefinition
               func = context.builder.external_function(fname, ftype)
               curval = b.call(func)
               diffval = b.sub(curval, prevval)
-              rc = b.trunc(diffval, Type::Int32Ty)
+              rc = b.trunc(diffval, MACHINE_WORD)
               b.store(curval, prevvalp)
               context.rc = rc
               context
@@ -272,7 +272,7 @@ module MethodDefinition
           b.br(lbody)
           
           fmlab = context.curln
-          context.blocks[fmlab] = lbody
+          context.blocks_tail[fmlab] = lbody
           
           b.set_insert_point(lbody)
           
@@ -321,7 +321,7 @@ module MethodDefinition
             lexit = context.builder.create_block
             lretry = trcontext[:body]
             fmlab = context.curln
-            context.blocks[fmlab] = lexit
+            context.blocks_tail[fmlab] = lexit
 
             cmp = b.icmp_eq(orgvalue, actval)
             b.cond_br(cmp, lexit, lretry)
@@ -377,7 +377,7 @@ module MethodDefinition
           lexit = context.builder.create_block
           lretry = trcontext[:body]
           fmlab = context.curln
-          context.blocks[fmlab] = lexit
+          context.blocks_tail[fmlab] = lexit
 
           b.br(lretry)
 

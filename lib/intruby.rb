@@ -11,14 +11,10 @@ module LLVM::RubyInternals
 
   P_LONG = Type.pointer(LONG)
   RNODE = Type::struct([LONG,   # flags 0
-                        LONG,   # dummy 1
                         P_CHAR, # nd_file 2
-                        VALUE,  # node 3
-                        LONG,   # id 4
-                        LONG,   # dummy 5
-                        VALUE,  # value 6
-                        VALUE,  # cfunc 7
-                        P_LONG  # tbl 8
+                        VALUE,  # u1
+                        VALUE,  # u2
+                        VALUE   # u3
                        ])
   P_RNODE = Type.pointer(RNODE)
 end
@@ -35,10 +31,37 @@ module IntRuby
     args = builder.arguments
     klass = args[0]
     id = args[1]
+
     ftype = Type.function(P_RNODE, [VALUE, VALUE, VALUE])
     rmn = builder.external_function('rb_get_method_body', ftype)
     pnode = b.call(rmn, klass, id, 0.llvm)
-    pcfunc = b.struct_gep(pnode, 7)
+
+    vpcnode = b.struct_gep(pnode, 3)
+    vcnode =b.load(vpcnode)
+    pcnode = b.int_to_ptr(vcnode, P_RNODE)
+    pcfunc = b.struct_gep(pcnode, 2)
+    cfunc = b.load(pcfunc)
+    b.return(cfunc)
+  end
+
+  def gen_get_method_cfunc_singleton(builder)
+    ftype = Type.function(VALUE, [VALUE, VALUE])
+    b = builder.define_function_raw('llvm_get_method_cfunc_singleton', ftype)
+    args = builder.arguments
+    klass = args[0]
+    id = args[1]
+    ftype = Type.function(VALUE, [VALUE])
+    sing_class = builder.external_function('rb_singleton_class', ftype)
+    sklass = b.call(sing_class, klass)
+
+    ftype = Type.function(P_RNODE, [VALUE, VALUE, VALUE])
+    rmn = builder.external_function('rb_get_method_body', ftype)
+    pnode = b.call(rmn, sklass, id, 0.llvm)
+
+    vpcnode = b.struct_gep(pnode, 3)
+    vcnode =b.load(vpcnode)
+    pcnode = b.int_to_ptr(vcnode, P_RNODE)
+    pcfunc = b.struct_gep(pcnode, 2)
     cfunc = b.load(pcfunc)
     b.return(cfunc)
   end

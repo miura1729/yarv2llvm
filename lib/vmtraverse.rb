@@ -9,7 +9,8 @@ class Context
     @local_vars = local
     @rc = nil
     @org = nil
-    @blocks = {}
+    @blocks_head = {}
+    @blocks_tail = {}
     @block_value = {}
     @curln = nil
     @builder = builder
@@ -30,7 +31,8 @@ class Context
   attr_accessor :local_vars
   attr_accessor :rc
   attr_accessor :org
-  attr_accessor :blocks
+  attr_accessor :blocks_head
+  attr_accessor :blocks_tail
   attr_accessor :curln
   attr_accessor :block_value
   attr_accessor :current_frame
@@ -222,6 +224,7 @@ class YarvTranslator<YarvVisitor
       end
     end
     gen_get_method_cfunc(@builder)
+    gen_get_method_cfunc_singleton(@builder)
     
     @generated_define_func.each do |klass, value|
       value.each do |name, gen|
@@ -376,7 +379,7 @@ class YarvTranslator<YarvVisitor
         :area => nil}
     end
     local_vars[0][:type] = RubyType.new(P_CHAR, info[3], "Parent frame")
-    local_vars[1][:type] = RubyType.new(MACHINE_WORD, info[3], 
+    local_vars[1][:type] = RubyType.new(Type::Int32Ty, info[3], 
                                         "Pointer to block")
     local_vars[2][:type] = RubyType.from_sym(info[0], info[3], "self")
     local_vars[3][:type] = RubyType.new(Type::Int32Ty, info[3], 
@@ -458,7 +461,7 @@ class YarvTranslator<YarvVisitor
 
       if ncnt = context.loop_cnt_alloca_size then
         ncnt.times do |i|
-          area =  b.alloca(Type::Int32Ty, 1)
+          area =  b.alloca(MACHINE_WORD, 1)
           context.loop_cnt_alloca_area.push area
         end
       end
@@ -740,9 +743,9 @@ class YarvTranslator<YarvVisitor
             RubyType.resolve
             rc = b.phi(phitype.type.llvm)
             commer_label.uniq.reverse.each do |lab|
-              if context.blocks[lab] then
+              if context.blocks_tail[lab] then
                 rc.add_incoming(context.block_value[lab][1], 
-                                context.blocks[lab])
+                                context.blocks_tail[lab])
               end
             end
           end
@@ -1166,7 +1169,7 @@ class YarvTranslator<YarvVisitor
     end
     eles.reverse!
     @expstack.push [rett, lambda {|b, context|
-      ftype = Type.function(VALUE, [P_CHAR, Type::Int32Ty])
+      ftype = Type.function(VALUE, [P_CHAR, MACHINE_WORD])
       funcnewstr = context.builder.external_function('rb_str_new', ftype)
       istr = b.int_to_ptr(0.llvm, P_CHAR)
       rs = b.call(funcnewstr, istr, 0.llvm)
@@ -1268,7 +1271,7 @@ class YarvTranslator<YarvVisitor
               b.store(rcvalue, sptr)
             end
           
-            ftype = Type.function(VALUE, [Type::Int32Ty, P_VALUE])
+            ftype = Type.function(VALUE, [MACHINE_WORD, P_VALUE])
             func = context.builder.external_function('rb_ary_new4', ftype)
             rc = b.call(func, initsize.llvm, initarea2)
             context.rc = rc
@@ -1302,7 +1305,7 @@ class YarvTranslator<YarvVisitor
           unless val then
             val = arr[1].call(b, context)
           end
-          ftype = Type.function(VALUE, [VALUE, Type::Int32Ty])
+          ftype = Type.function(VALUE, [VALUE, MACHINE_WORD])
           func = context.builder.external_function('rb_ary_entry', ftype)
           av = b.call(func, val, i.llvm)
           context.rc = av
@@ -1424,7 +1427,35 @@ class YarvTranslator<YarvVisitor
 
   # swap
   # reput
-  # topn
+
+  def visit_topn(code, ins, local_vars, ln, info)
+    n = ins[1] + 1
+    s1 = @expstack[-n]
+    stacktop_value = nil
+    @expstack[-n] = 
+        [s1[0],
+         lambda {|b, context|
+           if stacktop_value then
+             context.rc = stacktop_value
+           else
+             context = s1[1].call(b, context)
+             stacktop_value = context.rc
+           end
+           context
+         }]
+
+    @expstack.push [s1[0],
+      lambda {|b, context|
+        if stacktop_value then
+          context.rc = stacktop_value
+        else
+          context = s1[1].call(b, context)
+          stacktop_value = context.rc
+        end
+        context
+      }]
+  end
+
   # setn
   # adjuststack
   
@@ -1528,7 +1559,7 @@ class YarvTranslator<YarvVisitor
 
     RubyType.resolve
 
-    if do_function(receiver, info, ins, local_vars, args, mname) then
+    if do_function(receiver, info, ins, local_vars, args, mname, 0) then
       return
     end
 
@@ -1598,57 +1629,11 @@ class YarvTranslator<YarvVisitor
 
           gen_call(func, para, b, context)
         else
-          para.each do |ele|
-            RubyType.value.add_same_type ele[0]
-          end
           RubyType.value.add_same_type rett
           RubyType.resolve
 
-          ftype = Type.function(VALUE, [VALUE, VALUE])
-          fname = 'llvm_get_method_cfunc'
-          ggmc = context.builder.get_or_insert_function_raw(fname, ftype)
-          if rectype and rectype.klass then
-            reck = eval(rectype.klass.to_s)
-          else
-            reck = Object
-          end
-
-          mid = b.ashr(mname.llvm, 8.llvm)
-          fp = b.call(ggmc, reck.llvm, mid)
-          inst = YARV2LLVM::klass2instance(reck)
-          painfo =  inst.method(mname).parameters
-          if YARV2LLVM::variable_argument?(painfo) then
-            ftype = Type.function(VALUE, [LONG, P_VALUE, VALUE])
-            ftype = Type.pointer(ftype)
-            fp = b.int_to_ptr(fp, ftype)
-            initarea = context.array_alloca_area
-            initarea2 =  b.gep(initarea, curlevel.llvm)
-            slfexp = para.shift
-            context = slfexp[1].call(b, context)
-            slf = context.rc
-            para.each_with_index do |e, n|
-              context = e[1].call(b, context)
-              sptr = b.gep(initarea2, n.llvm)
-              if e[0].type then
-                rcvalue = e[0].type.to_value(context.rc, b, context)
-              else
-                rcvalue = context.rc
-              end
-              b.store(rcvalue, sptr)
-            end
-
-            context.rc = b.call(fp, para.size.llvm, initarea2, slf)
-            context
-          else
-            ftype = Type.function(VALUE, [VALUE] * para.size)
-            ftype = Type.pointer(ftype)
-            fp = b.int_to_ptr(fp, ftype)
-            gen_call(fp, para, b, context)
-          end
-          context.rc = rett.type.from_value(context.rc, b, context)
-          context
-          #          raise "Undefined method \"#{mname}\" in #{info[3]}"
-        end
+	  gen_call_from_ruby(rett, rectype, mname, para, curlevel, b, context)
+	end
       }]
 
     dst = MethodDefinition::RubyMethod[mname]
@@ -1818,14 +1803,17 @@ class YarvTranslator<YarvVisitor
 
       eblock = context.builder.create_block
       context.curln = (context.curln.to_s + "_1").to_sym
-      context.blocks[context.curln] = eblock
+      context.blocks_head[context.curln] = eblock
+      context.blocks_tail[context.curln] = eblock
       if valexp then
         bval = [valexp[0], valexp[1].call(b, context).rc]
         context.block_value[iflab] = bval
       end
       condval = cond[1].call(b, context).rc
-      if cond[0].type.llvm == VALUE then
-        condval = cond[0].type.from_value(condval, b, context)
+      if cond[0].type.llvm != Type::Int1Ty then
+        vcond = cond[0].type.to_value(condval, b, context)
+        vcond = b.and(vcond, (~4).llvm)
+        condval = b.icmp_ne(vcond, 0.llvm)
       end
       b.cond_br(condval, tblock, eblock)
       RubyType.clear_content
@@ -1859,7 +1847,8 @@ class YarvTranslator<YarvVisitor
       eblock = context.builder.create_block
       iflab = context.curln
       context.curln = (context.curln.to_s + "_1").to_sym
-      context.blocks[context.curln] = eblock
+      context.blocks_head[context.curln] = eblock
+      context.blocks_tail[context.curln] = eblock
       tblock = get_or_create_block(lab, b, context)
       if valexp then
         context = valexp[1].call(b, context)
@@ -1868,8 +1857,10 @@ class YarvTranslator<YarvVisitor
       end
 
       condval = cond[1].call(b, context).rc
-      if cond[0].type.llvm == VALUE then
-        condval = cond[0].type.from_value(condval, b, context)
+      if cond[0].type.llvm != Type::Int1Ty then
+        vcond = cond[0].type.to_value(condval, b, context)
+        vcond = b.and(vcond, (~4).llvm)
+        condval = b.icmp_ne(vcond, 0.llvm)
       end
       b.cond_br(condval, eblock, tblock)
       RubyType.clear_content
@@ -2455,7 +2446,7 @@ class YarvTranslator<YarvVisitor
           if OPTION[:array_range_check] then
             context = arr[1].call(b, context)
             arrp = context.rc
-            ftype = Type.function(VALUE, [VALUE, Type::Int32Ty])
+            ftype = Type.function(VALUE, [VALUE, MACHINE_WORD])
             func = context.builder.external_function('rb_ary_entry', ftype)
             av = b.call(func, arrp, idxp)
             arrelet = arr[0].type.element_type.type
@@ -2475,12 +2466,39 @@ class YarvTranslator<YarvVisitor
                 # Array body in register
                 abdy = arr[0].type.ptr
               else
+	        embed = context.builder.create_block
+                nonembed = context.builder.create_block
+                comm = context.builder.create_block
                 context = arr[1].call(b, context)
                 arrp = context.rc
                 arrp = b.int_to_ptr(arrp, P_RARRAY)
-                abdyp = b.struct_gep(arrp, 3)
-                abdy = b.load(abdyp)
+                arrhp = b.struct_gep(arrp, 0)
+                arrhp = b.struct_gep(arrhp, 0)
+                arrh = b.load(arrhp)
+                isemb = b.and(arrh, EMBEDER_FLAG.llvm)
+                isemb = b.icmp_ne(isemb, 0.llvm)
+                b.cond_br(isemb, embed, nonembed)
+
+                #  Embedded format
+                b.set_insert_point(embed)
+                eabdy = b.struct_gep(arrp, 1)
+                eabdy = b.int_to_ptr(eabdy, P_VALUE)
+
+                b.br(comm)
+
+		#  Not embedded format
+                b.set_insert_point(nonembed)
+                nabdyp = b.struct_gep(arrp, 3)
+                nabdy = b.load(nabdyp)
+                b.br(comm)
+
+                b.set_insert_point(comm)
+                abdy = b.phi(P_VALUE)
+                abdy.add_incoming(eabdy, embed)
+                abdy.add_incoming(nabdy, nonembed)
                 arr[0].type.ptr = abdy
+
+		context.blocks_tail[context.curln] = comm
               end
               avp = b.gep(abdy, idxp)
               av = b.load(avp)
@@ -2575,7 +2593,7 @@ class YarvTranslator<YarvVisitor
     type = local_vars[voff][:type]
     @expstack.push [type,
       lambda {|b, context|
-        if UNDEF.equal?(context.rc = type.type.content) or true  then
+        if UNDEF.equal?(context.rc = type.type.content) then
           context.rc = b.load(context.local_vars[voff][:area])
         end
         context.org = local_vars[voff][:name]

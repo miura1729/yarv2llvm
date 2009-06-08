@@ -1,13 +1,16 @@
+# -*- coding: utf-8 -*-
 module YARV2LLVM
 module LLVMUtil
   include LLVM
   include RubyHelpers
 
   def get_or_create_block(ln, b, context)
-    if context.blocks[ln] then
-      context.blocks[ln]
+    if context.blocks_head[ln] then
+      context.blocks_head[ln]
     else
-      context.blocks[ln] = context.builder.create_block
+      nb = context.builder.create_block
+      context.blocks_head[ln] = nb
+      context.blocks_tail[ln] = nb
     end
   end
   
@@ -262,7 +265,7 @@ module LLVMUtil
       
       # update blocks, because make blocks
       fmlab = context.curln
-      context.blocks[fmlab] = bexit
+      context.blocks_tail[fmlab] = bexit
       
       nclcnt = b.add(clcnt, 1.llvm)
       b.store(nclcnt, lcntp)
@@ -277,7 +280,7 @@ module LLVMUtil
   def gen_to_i_internal(recv, val, b, context)
     case recv[0].type.llvm
     when Type::DoubleTy
-      return b.fp_to_si(val, Type::Int32Ty)
+      return b.fp_to_si(val, MACHINE_WORD)
     when Type::Int32Ty
       return val
     else
@@ -421,9 +424,80 @@ module SendUtil
     context
   end
 
+  def gen_call_from_ruby(rett, rectype, mname, para, curlevel, b, context)
+    if rectype and rectype.klass then
+       reck = eval(rectype.klass.to_s)
+    else
+      reck = Object
+    end
+#    inst = YARV2LLVM::klass2instance(reck)
+
+    if reck.methods.include?(mname) then
+      mth = reck.method(mname)
+      issing = "_singleton"
+      painfo =  mth.parameters
+    else
+      mth = reck.instance_method(mname)
+      painfo =  mth.parameters
+      issing = ""
+    end
+
+    ftype = Type.function(VALUE, [VALUE, VALUE])
+    fname = 'llvm_get_method_cfunc' + issing
+    ggmc = context.builder.get_or_insert_function_raw(fname, ftype)
+    mid = b.ashr(mname.llvm, 8.llvm)
+    fp = b.call(ggmc, reck.llvm, mid)
+
+    if YARV2LLVM::variable_argument?(painfo) then
+      ftype = Type.function(VALUE, [LONG, P_VALUE, VALUE])
+      ftype = Type.pointer(ftype)
+      fp = b.int_to_ptr(fp, ftype)
+      initarea = context.array_alloca_area
+      initarea2 =  b.gep(initarea, curlevel.llvm)
+      slfexp = para.pop
+      if slfexp then
+        context = slfexp[1].call(b, context)
+      else
+        context.rc = Object.llvm
+      end
+      slf = context.rc
+      para.each_with_index do |e, n|
+        context = e[1].call(b, context)
+        sptr = b.gep(initarea2, n.llvm)
+        if e[0].type then
+          rcvalue = e[0].type.to_value(context.rc, b, context)
+        else
+          rcvalue = context.rc
+        end
+        b.store(rcvalue, sptr)
+      end
+
+      context.rc = b.call(fp, para.size.llvm, initarea2, slf)
+    else
+      ftype = Type.function(VALUE, [VALUE] * para.size)
+      ftype = Type.pointer(ftype)
+      fp = b.int_to_ptr(fp, ftype)
+      slf = para.pop
+      para.unshift slf
+      para2 = []
+      para.each do |e|
+      context = e[1].call(b, context)
+      if e[0].type then
+        rcvalue = e[0].type.to_value(context.rc, b, context)
+      else
+        rcvalue = context.rc
+      end
+      para2.push rcvalue
+    end
+    context.rc = b.call(fp, *para2)
+  end
+  context.rc = rett.type.from_value(context.rc, b, context)
+  context
+end
+
 =begin
   def gen_get_framaddress(fstruct, b, context)
-    ftype = Type.function(P_CHAR, [Type::Int32Ty])
+    ftype = Type.function(P_CHAR, [MACHINE_WORD])
     func = context.builder.external_function('llvm.frameaddress', ftype)
     fraw = b.call(func, 0.llvm)
 
@@ -549,7 +623,7 @@ module SendUtil
     para
   end
   
-  def do_function(receiver, info, ins, local_vars, args, mname)
+  def do_function(receiver, info, ins, local_vars, args, mname, curlevel)
     recklass = receiver ? receiver[0].klass : nil
     rectype = receiver ? receiver[0] : nil
     minfo, func = gen_method_select(rectype, info[0], mname)
@@ -564,9 +638,11 @@ module SendUtil
           if func then
             gen_call(func, para ,b, context)
           else
-            p mname
-            p recklass
-            raise "Undefined method \"#{mname}\" in #{info[3]}"
+#            p mname
+#            p recklass
+#            raise "Undefined method \"#{mname}\" in #{info[3]}"
+            rettype = minfo[:rettype]
+            gen_call_from_ruby(rettype, receiver[0], mname, para, curlevel, b, context)
           end
         }]
       return true
