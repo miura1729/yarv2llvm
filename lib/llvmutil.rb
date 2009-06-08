@@ -5,10 +5,12 @@ module LLVMUtil
   include RubyHelpers
 
   def get_or_create_block(ln, b, context)
-    if context.blocks[ln] then
-      context.blocks[ln]
+    if context.blocks_head[ln] then
+      context.blocks_head[ln]
     else
-      context.blocks[ln] = context.builder.create_block
+      nb = context.builder.create_block
+      context.blocks_head[ln] = nb
+      context.blocks_tail[ln] = nb
     end
   end
   
@@ -263,7 +265,7 @@ module LLVMUtil
       
       # update blocks, because make blocks
       fmlab = context.curln
-      context.blocks[fmlab] = bexit
+      context.blocks_tail[fmlab] = bexit
       
       nclcnt = b.add(clcnt, 1.llvm)
       b.store(nclcnt, lcntp)
@@ -439,8 +441,6 @@ module SendUtil
       painfo =  mth.parameters
       issing = ""
     end
-    print issing, " "
-    print "#{reck}##{mname}\n"
 
     ftype = Type.function(VALUE, [VALUE, VALUE])
     fname = 'llvm_get_method_cfunc' + issing

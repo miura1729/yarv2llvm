@@ -9,7 +9,8 @@ class Context
     @local_vars = local
     @rc = nil
     @org = nil
-    @blocks = {}
+    @blocks_head = {}
+    @blocks_tail = {}
     @block_value = {}
     @curln = nil
     @builder = builder
@@ -30,7 +31,8 @@ class Context
   attr_accessor :local_vars
   attr_accessor :rc
   attr_accessor :org
-  attr_accessor :blocks
+  attr_accessor :blocks_head
+  attr_accessor :blocks_tail
   attr_accessor :curln
   attr_accessor :block_value
   attr_accessor :current_frame
@@ -741,9 +743,9 @@ class YarvTranslator<YarvVisitor
             RubyType.resolve
             rc = b.phi(phitype.type.llvm)
             commer_label.uniq.reverse.each do |lab|
-              if context.blocks[lab] then
+              if context.blocks_tail[lab] then
                 rc.add_incoming(context.block_value[lab][1], 
-                                context.blocks[lab])
+                                context.blocks_tail[lab])
               end
             end
           end
@@ -1773,14 +1775,16 @@ class YarvTranslator<YarvVisitor
 
       eblock = context.builder.create_block
       context.curln = (context.curln.to_s + "_1").to_sym
-      context.blocks[context.curln] = eblock
+      context.blocks_head[context.curln] = eblock
+      context.blocks_tail[context.curln] = eblock
       if valexp then
         bval = [valexp[0], valexp[1].call(b, context).rc]
         context.block_value[iflab] = bval
       end
       condval = cond[1].call(b, context).rc
-      if cond[0].type.llvm == VALUE then
-        condval = cond[0].type.from_value(condval, b, context)
+      if cond[0].type.llvm != Type::Int1Ty then
+        vcond = cond[0].type.to_value(condval, b, context)
+        condval = b.icmp_eq(vcond, 4.llvm)
       end
       b.cond_br(condval, tblock, eblock)
       RubyType.clear_content
@@ -1814,7 +1818,8 @@ class YarvTranslator<YarvVisitor
       eblock = context.builder.create_block
       iflab = context.curln
       context.curln = (context.curln.to_s + "_1").to_sym
-      context.blocks[context.curln] = eblock
+      context.blocks_head[context.curln] = eblock
+      context.blocks_tail[context.curln] = eblock
       tblock = get_or_create_block(lab, b, context)
       if valexp then
         context = valexp[1].call(b, context)
@@ -1823,8 +1828,10 @@ class YarvTranslator<YarvVisitor
       end
 
       condval = cond[1].call(b, context).rc
-      if cond[0].type.llvm == VALUE then
-        condval = cond[0].type.from_value(condval, b, context)
+      if cond[0].type.llvm != Type::Int1Ty then
+        vcond = cond[0].type.to_value(condval, b, context)
+        vcond = b.and(vcond, (~4).llvm)
+        condval = b.icmp_ne(vcond, 0.llvm)
       end
       b.cond_br(condval, eblock, tblock)
       RubyType.clear_content
@@ -2462,7 +2469,7 @@ class YarvTranslator<YarvVisitor
                 abdy.add_incoming(nabdy, nonembed)
                 arr[0].type.ptr = abdy
 
-		context.blocks[context.curln] = comm
+		context.blocks_tail[context.curln] = comm
               end
               avp = b.gep(abdy, idxp)
               av = b.load(avp)
