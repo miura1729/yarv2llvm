@@ -464,6 +464,7 @@ EOS
   assert_equal(tembeddedstring, "Embedded string is #{n}, #{b} and #{c}")
 end
 #=end
+
 =begin
   def test_thread
     YARV2LLVM::compile(<<-EOS)
@@ -482,18 +483,42 @@ def tthread
   nil
 end
 EOS
-
    assert_equal(tthread, nil)
 end
+=end
+
+  def test_case
+    YARV2LLVM::compile(<<-EOS)
+  
+  def t_case(n)
+    case n
+    when :foo
+      1
+    when 2
+      2
+    when 2.2
+      3
+    else
+      4
+    end
+  end
+EOS
+
+    assert_equal(t_case(:foo), 1)
+    assert_equal(t_case(2), 2)
+    assert_equal(t_case(2.2), 3)
+    assert_equal(t_case("foo"), 4)
+  end
+
 
 # I can't pass this test yet.
 
-=begin
   def test_complex_type
-#    YARV2LLVM::compile(<<-EOS, {:optimize => false})
-    YARV2LLVM::compile(<<-EOS, {})
+    YARV2LLVM::compile(<<-EOS, {:optimize => false})
+#    YARV2LLVM::compile(<<-EOS, {})
         def t_complex_str(arr)
-          arr[0]
+#          arr[0]
+           arr
         end
 
         def t_complex_arr(arr)
@@ -514,5 +539,4 @@ end
 EOS
      assert_equal(t_complex(1), 1)
    end
-=end
 end

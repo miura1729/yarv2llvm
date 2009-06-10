@@ -119,7 +119,14 @@ class LLVMBuilder
     end
     ret = b.call(orgfunc, *argv)
 
-    x = rett.type.to_value(ret, b, context)
+    x = nil
+    if rett.type then
+      x = rett.type.to_value(ret, b, context)
+    else
+      x = ret
+      rett.type = PrimitiveType.new(VALUE, NilClass)
+    end
+
     b.return(x)
 
     MethodDefinition::RubyMethodStub[name][recklass] = {
@@ -134,7 +141,12 @@ class LLVMBuilder
 
   def define_function(recklass, name, rett, argt, is_mkstub)
     argtl = argt.map {|a| a.type.llvm}
-    rettl = rett.type.llvm
+    if rett.type then
+      rettl = rett.type.llvm
+    else
+      rettl = VALUE
+    end
+
     type = Type.function(rettl, argtl)
     fname = to_label(recklass.to_s, name)
     @func = @module.get_or_insert_function(fname, type)

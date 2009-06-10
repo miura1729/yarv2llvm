@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 module YARV2LLVM
 module LLVMUtil
   include LLVM
@@ -341,7 +340,7 @@ module SendUtil
           break
         end
       end
-    elsif lexklass then
+    elsif lexklass and rectype == nil then
       # Search lexcal class
       sup = Object.nested_const_get(lexklass)
       while sup do
@@ -372,7 +371,7 @@ module SendUtil
      return [nil, nil]
     end
 #=end
- 
+
     if candidatenum == 0 then
       return [nil, nil]
 
@@ -386,7 +385,7 @@ module SendUtil
 
     elsif candidatenum < MaxSmallPolymotphicNum then
       # TODO : Use inline hash function generation
-      raise("Not implimented polymorphic methed call yet '#{mname}'")
+      raise("Not implimented polymorphic methed call yet '#{mname}' #{lexklass}")
 
     else
       # TODO : Use cukko-hasing and inline hash function generation
@@ -432,14 +431,18 @@ module SendUtil
     end
 #    inst = YARV2LLVM::klass2instance(reck)
 
-    if reck.methods.include?(mname) then
+    if reck.singleton_methods.include?(mname) then
       mth = reck.method(mname)
       issing = "_singleton"
       painfo =  mth.parameters
     else
+      if rectype == nil or rectype.klass == rectype.klass2 then
+        issing = ""
+      else
+        issing = "_singleton"
+      end
       mth = reck.instance_method(mname)
       painfo =  mth.parameters
-      issing = ""
     end
 
     ftype = Type.function(VALUE, [VALUE, VALUE])
@@ -481,19 +484,19 @@ module SendUtil
       para.unshift slf
       para2 = []
       para.each do |e|
-      context = e[1].call(b, context)
-      if e[0].type then
-        rcvalue = e[0].type.to_value(context.rc, b, context)
-      else
-        rcvalue = context.rc
+        context = e[1].call(b, context)
+        if e[0].type then
+          rcvalue = e[0].type.to_value(context.rc, b, context)
+        else
+          rcvalue = context.rc
+        end
+        para2.push rcvalue
       end
-      para2.push rcvalue
+      context.rc = b.call(fp, *para2)
     end
-    context.rc = b.call(fp, *para2)
+    context.rc = rett.type.from_value(context.rc, b, context)
+    context
   end
-  context.rc = rett.type.from_value(context.rc, b, context)
-  context
-end
 
 =begin
   def gen_get_framaddress(fstruct, b, context)

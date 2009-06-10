@@ -1386,14 +1386,23 @@ class YarvTranslator<YarvVisitor
     stacktop_value = nil
     @expstack.push [s1[0],
       lambda {|b, context|
-        context.rc = stacktop_value
+        if stacktop_value then
+          context.rc = stacktop_value
+        else
+          context = s1[1].call(b, context)
+          stacktop_value = context.rc
+        end
         context
       }]
 
     @expstack.push [s1[0],
       lambda {|b, context|
-        context = s1[1].call(b, context)
-        stacktop_value = context.rc
+        if stacktop_value then
+          context.rc = stacktop_value
+        else
+          context = s1[1].call(b, context)
+          stacktop_value = context.rc
+        end
         context
       }]
   end
@@ -1427,7 +1436,35 @@ class YarvTranslator<YarvVisitor
 
   # swap
   # reput
-  # topn
+
+  def visit_topn(code, ins, local_vars, ln, info)
+    n = ins[1] + 1
+    s1 = @expstack[-n]
+    stacktop_value = nil
+    @expstack[-n] = 
+        [s1[0],
+         lambda {|b, context|
+           if stacktop_value then
+             context.rc = stacktop_value
+           else
+             context = s1[1].call(b, context)
+             stacktop_value = context.rc
+           end
+           context
+         }]
+
+    @expstack.push [s1[0],
+      lambda {|b, context|
+        if stacktop_value then
+          context.rc = stacktop_value
+        else
+          context = s1[1].call(b, context)
+          stacktop_value = context.rc
+        end
+        context
+      }]
+  end
+
   # setn
   # adjuststack
   
@@ -1784,7 +1821,8 @@ class YarvTranslator<YarvVisitor
       condval = cond[1].call(b, context).rc
       if cond[0].type.llvm != Type::Int1Ty then
         vcond = cond[0].type.to_value(condval, b, context)
-        condval = b.icmp_eq(vcond, 4.llvm)
+        vcond = b.and(vcond, (~4).llvm)
+        condval = b.icmp_ne(vcond, 0.llvm)
       end
       b.cond_br(condval, tblock, eblock)
       RubyType.clear_content
@@ -1851,7 +1889,11 @@ class YarvTranslator<YarvVisitor
   # getinlinecache
   # onceinlinecache
   # setinlinecache
-  # opt_case_dispatch
+
+  def visit_opt_case_dispatch(code, ins, local_vars, ln, info)
+    @expstack.pop
+  end
+
   # opt_checkenv
   
   def visit_opt_plus(code, ins, local_vars, ln, info)

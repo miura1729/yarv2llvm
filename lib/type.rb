@@ -72,6 +72,14 @@ class RubyType
     end
   end
 
+  def klass2
+    if @type then
+      @type.klass2
+    else
+      nil
+    end
+  end
+
   def content
     if @type and !UNDEF.equal?(@type.content) then
       return @type.content
@@ -379,10 +387,14 @@ class RubyType
       RubyType.range(fst, lst, exc, lno, obj)
 
     when ::Class
-      RubyType.value(lno, obj, obj)
+      cl = RubyType.value(lno, obj, obj)
+      cl.type.klass2 = obj.class
+      cl
 
     when ::Module
-      RubyType.value(lno, obj, obj)
+      cl = RubyType.value(lno, obj, obj)
+      cl.type.klass2 = obj.class
+      cl
 
     else
       RubyType.value(lno, obj, obj.class)
@@ -397,10 +409,13 @@ class PrimitiveType
   def initialize(type, klass)
     if klass.is_a?(Symbol) then
       @klass = klass
+      @klass2 = klass
     elsif klass then
       @klass = klass.name.to_sym
+      @klass2 = klass.name.to_sym
     else
       @klass = nil
+      @klass2 = nil
     end
     @type = type
     @content = UNDEF
@@ -408,11 +423,13 @@ class PrimitiveType
   end
 
   attr_accessor :klass
+  attr_accessor :klass2
   attr_accessor :content
   attr_accessor :constant
 
   def dup_type
     nt = self.class.new(@type, @klass)
+    nt.klass2 = @klass2
     nt
   end
 
@@ -528,6 +545,7 @@ class UnsafeType
   include RubyHelpers
   def initialize(type)
     @klass = :"YARV2LLVM::LLVMLIB::Unsafe"
+    @klass2 = :"YARV2LLVM::LLVMLIB::Unsafe"
     @type = type
     @content = UNDEF
     @constant = UNDEF
@@ -535,6 +553,7 @@ class UnsafeType
   end
 
   attr_accessor :klass
+  attr_accessor :klass2
   attr_accessor :type
   attr_accessor :content
   attr_accessor :constant
@@ -581,15 +600,19 @@ class ComplexType
   def set_klass(klass)
     if klass.is_a?(::Class) then
       @klass = klass.name.to_sym
+      @klass2 = klass.name.to_sym
     elsif klass.is_a?(Symbol) then
       @klass = klass.to_sym
+      @klass2 = klass.to_sym
     else
       @klass = nil
+      @klass2 = nil
     end
     @constant = UNDEF
   end
 
   attr_accessor :klass
+  attr_accessor :klass2
   attr_accessor :constant
 
   def dup_type
