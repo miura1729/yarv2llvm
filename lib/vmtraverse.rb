@@ -80,18 +80,31 @@ class YarvVisitor
         end
         
         local_vars = []
-        visit_block_start(code, nil, local_vars, nil, info)
+        isblkfst = true
         curln = nil
         code.lblock_list.each do |ln|
-          visit_local_block_start(code, ln, local_vars, ln, info)
           
           curln = ln
+          islocfst = true
           code.lblock[ln].each do |ins|
             if ins.is_a?(Fixnum) then
               curlinno = ins
               visit_number(code, ins, local_vars, curln, info)
+            elsif ins == nil then
+              # Do nothing
             else
               info[3] = "#{code.header['filename']}:#{curlinno}"
+
+              if isblkfst then
+                visit_block_start(code, nil, local_vars, nil, info)
+                isblkfst = false
+              end
+
+              if islocfst then
+                visit_local_block_start(code, ln, local_vars, ln, info)
+                islocfst = false
+              end
+
               opname = ins[0].to_s
               send(("visit_" + opname).to_sym, code, ins, local_vars, curln, info)
             end
@@ -1636,6 +1649,9 @@ class YarvTranslator<YarvVisitor
           minfo[:rettype].add_same_type rett
           RubyType.resolve
 
+          if !with_selfp(receiver, info[0], mname) then
+            para.pop
+          end
           gen_call(func, para, b, context)
         else
           RubyType.value.add_same_type rett

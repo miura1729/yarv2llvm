@@ -592,16 +592,16 @@ module SendUtil
           context.rc = b.load(context.local_vars[2][:area])
           context}]
     end
-    if with_selfp(receiver, info[0], mname) then
-      para.push [local_vars[2][:type], lambda {|b, context|
-          context = v[1].call(b, context)
-          if v[0].type then
-            rc = v[0].type.to_value(context.rc, b, context)
-            context.rc = rc
-          end
-          context
-        }]
-    end
+
+    para.push [local_vars[2][:type], lambda {|b, context|
+      context = v[1].call(b, context)
+      if v[0].type then
+        rc = v[0].type.to_value(context.rc, b, context)
+        context.rc = rc
+      end
+      context
+    }]
+
     if blk[0] then
       para.push [local_vars[0][:type], lambda {|b, context|
           #            gen_get_framaddress(@frame_struct[code], b, context)
@@ -638,6 +638,9 @@ module SendUtil
         lambda {|b, context|
           recklass = receiver ? receiver[0].klass : nil
           minfo, func = gen_method_select(rectype, info[0], mname)
+          if !with_selfp(receiver, info[0], mname) then
+            para.pop
+          end
           if func then
             gen_call(func, para ,b, context)
           else
@@ -685,12 +688,12 @@ module SendUtil
         ftype = Type.function(rettype.type.llvm, argtype2)
         func = @builder.external_function(cname, ftype)
 
+        para = gen_arg_eval(args, receiver, ins, local_vars, info, nil, mname)
         if send_self then
-          para = gen_arg_eval(args, receiver, ins, local_vars, info, nil, mname)
           slf = para.pop
           para.unshift slf
         else
-          para = gen_arg_eval(args, nil, ins, local_vars, info, nil, mname)
+          para.pop
         end
 
         args.each_with_index do |pe, n|
