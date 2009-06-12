@@ -795,6 +795,7 @@ class YarvTranslator<YarvVisitor
   end
   
   def visit_default(code, ins, local_vars, ln, info)
+    p ins
     pppp "Unprocessed instruction #{ins}"
   end
 
@@ -1158,7 +1159,8 @@ class YarvTranslator<YarvVisitor
       }]
   end
 
-  # putspecialobject
+  def visit_putspecialobject(code, ins, local_vars, ln, info)
+  end
 
   def visit_putiseq(code, ins, local_vars, ln, info)
   end

@@ -376,7 +376,12 @@ module SendUtil
       return [nil, nil]
 
     elsif candidatenum == 1 then
-      minfo = mtab.values[0]
+      minfo = nil
+      if recklass then
+        minfo = mtab[recklass]
+      else
+        minfo = mtab.values[0]
+      end
       if minfo.is_a?(Hash) then
         return [minfo, minfo[:func]]
       else
@@ -631,23 +636,27 @@ module SendUtil
     rectype = receiver ? receiver[0] : nil
     minfo, func = gen_method_select(rectype, info[0], mname)
     if minfo then
+      rettype = minfo[:rettype]
+      # rettype = RubyType.new(nil, info[3], "Return type of #{mname}")
       pppp "RubyMethod called #{mname.inspect}"
 
       para = gen_arg_eval(args, receiver, ins, local_vars, info, minfo, mname)
-      @expstack.push [minfo[:rettype],
+      @expstack.push [rettype,
         lambda {|b, context|
           recklass = receiver ? receiver[0].klass : nil
           minfo, func = gen_method_select(rectype, info[0], mname)
+
           if !with_selfp(receiver, info[0], mname) then
             para.pop
           end
+
           if func then
             gen_call(func, para ,b, context)
           else
 #            p mname
 #            p recklass
 #            raise "Undefined method \"#{mname}\" in #{info[3]}"
-            rettype = minfo[:rettype]
+#            rettype = minfo[:rettype]
             gen_call_from_ruby(rettype, receiver[0], mname, para, curlevel, b, context)
           end
         }]
