@@ -131,6 +131,7 @@ module MethodDefinition
             else
               # Todo: []= handler of other type
               p arr[0]
+              p para[:info]
               raise "Unkonw type #{arr[0].type.inspect2}"
             end
           }

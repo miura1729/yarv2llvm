@@ -261,12 +261,12 @@ class YarvTranslator<YarvVisitor
       @builder.write_bc(OPTION[:write_bc])
     end
 
-    if OPTION[:optimize] then
-      initfunc = @builder.optimize
+    if OPTION[:post_optimize] then
+      @builder.post_optimize
     end
 
-    if OPTION[:post_optimize] then
-      initfunc = @builder.post_optimize
+    if OPTION[:optimize] then
+      initfunc = @builder.optimize
     end
 
     deffunc = gen_define_ruby(@builder)
@@ -1480,7 +1480,36 @@ class YarvTranslator<YarvVisitor
       }]
   end
 
-  # setn
+  def visit_setn(code, ins, local_vars, ln, info)
+    n = ins[1] + 1
+    s1 = @expstack[-1]
+    stacktop_value = nil
+#    rettype = RubyType.new(nil, info[3])
+#    s1[0].add_same_type rettype
+    @expstack[-n] = 
+        [s1[0],
+         lambda {|b, context|
+           if stacktop_value then
+             context.rc = stacktop_value
+           else
+             context = s1[1].call(b, context)
+             stacktop_value = context.rc
+           end
+           context
+         }]
+
+    @expstack[-1] = [s1[0],
+      lambda {|b, context|
+        if stacktop_value then
+          context.rc = stacktop_value
+        else
+          context = s1[1].call(b, context)
+          stacktop_value = context.rc
+        end
+        context
+      }]
+  end
+
   # adjuststack
   
   # defined
@@ -1745,7 +1774,7 @@ class YarvTranslator<YarvVisitor
     if info[1] then
       rett2 = MethodDefinition::RubyMethod[info[1]][info[0]][:rettype]
       retexp[0].add_same_type rett2
-      RubyType.resolve
+      # RubyType.resolve
     end
 
     oldrescode = @rescode
@@ -1763,6 +1792,9 @@ class YarvTranslator<YarvVisitor
         context = retexp[1].call(b, context)
         context.is_live = false
         rc = context.rc
+        if rett2.type.llvm == VALUE then
+          rc = retexp[0].type.to_value(rc, b, context)
+        end
         if rc then
           b.return(rc)
         else

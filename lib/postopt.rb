@@ -4,6 +4,10 @@
 #
 module YARV2LLVM
   class PostOptimizer
+    DECL_FUNC_ATTR = {
+      "declare i32 @rb_float_new(double)\n" => " readonly nounwind"
+    }
+
     def optimize(llvmstr)
       res = ""
       funcstr = ""
@@ -15,7 +19,16 @@ module YARV2LLVM
           funcstr << fstr
           res << optimize_func(funcstr)
           funcstr = ""
+        elsif /^declare / =~ fstr then
+          attr = DECL_FUNC_ATTR[fstr].to_s
+          funcstr << (fstr + attr)
         else
+=begin
+          if /call i32 @rb_float_new\(/ =~ fstr then
+            fstr = fstr.sub(/call i32 @rb_float_new\(.*\)/, '\& nounwind readonly')
+            p fstr
+          end
+=end
           funcstr << fstr
         end
       end
@@ -46,6 +59,7 @@ module YARV2LLVM
       end
       res
     end
+
   end
 end
 
