@@ -239,6 +239,15 @@ class YarvTranslator<YarvVisitor
     gen_get_method_cfunc(@builder)
     gen_get_method_cfunc_singleton(@builder)
     
+    if OPTION[:func_signature] then
+      @instance_var_tab.each do |clname, ivtab|
+        print "#{clname}\n"
+        ivtab.each do |ivname, ivinfo|
+          print "  #{ivname} #{ivinfo[:type].inspect2}\n"
+        end
+        print "\n"
+      end
+    end
     @generated_define_func.each do |klass, value|
       value.each do |name, gen|
         if name then
@@ -261,11 +270,12 @@ class YarvTranslator<YarvVisitor
       @builder.write_bc(OPTION[:write_bc])
     end
 
-    if OPTION[:post_optimize] then
-      @builder.post_optimize
+    if OPTION[:optimize] then
+      initfunc = @builder.optimize
     end
 
-    if OPTION[:optimize] then
+    if OPTION[:post_optimize] then
+      @builder.post_optimize
       initfunc = @builder.optimize
     end
 
@@ -924,7 +934,6 @@ class YarvTranslator<YarvVisitor
       context = oldrescode.call(b, context)
       context = srcvalue.call(b, context)
       srcval = context.rc
-      srcval2 = srctype.type.to_value(srcval, b, context)
 
       RubyType.resolve
       dsttype.type = dsttype.type.dup_type
@@ -932,9 +941,18 @@ class YarvTranslator<YarvVisitor
 
       context.rc = srcval
       if vptr = context.instance_vars_local_area[ivname] then
-        b.store(srcval2, vptr)
+        if dsttype.type.llvm == Type::DoubleTy then
+          dbl = b.load(vptr)
+          dbl_val = b.int_to_ptr(dbl, P_RFLOAT)
+          dp = b.struct_gep(dbl_val, 1)
+          b.store(srcval, dp)
+        else
+          srcval2 = srctype.type.to_value(srcval, b, context)
+          b.store(srcval2, vptr)
+        end
 
       else
+        srcval2 = srctype.type.to_value(srcval, b, context)
         ftype = Type.function(VALUE, [VALUE, VALUE, VALUE])
         func = context.builder.external_function('rb_ivar_set', ftype)
         ivid = ((ivname.object_id << 1) / RVALUE_SIZE)

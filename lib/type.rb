@@ -406,7 +406,7 @@ class PrimitiveType
   include LLVM
   include RubyHelpers
 
-  @@val_cache = {}
+  # @@val_cache = {}
   def initialize(type, klass)
     if klass.is_a?(Symbol) then
       @klass = klass
@@ -521,11 +521,14 @@ class PrimitiveType
   }
 
   def to_value(val, b, context)
+=begin
     if @@val_cache[val] then
       @@val_cache[val]
     else
       @@val_cache[val] = TYPE_HANDLER[@type][:to_value].call(val, b, context)
     end
+=end
+    TYPE_HANDLER[@type][:to_value].call(val, b, context)
   end
 
   def from_value(val, b, context)
