@@ -60,9 +60,16 @@ class RubyType
     @same_value = []
     @@type_table.push self
     @conflicted_types = Hash.new
+
+    @extent = nil
+    @is_arg = false
+    @slf = nil
+    @extent_base = [self]
   end
   attr_accessor :type
   attr_accessor :conflicted_types
+  attr_accessor :is_arg
+  attr_accessor :slf
 
   def klass
     if @type then
@@ -99,7 +106,7 @@ class RubyType
 
   def inspect2
     if @type then
-      @type.inspect2
+      @type.inspect2 + " [#{real_extent}]"
     else
       'nil'
     end
@@ -107,6 +114,7 @@ class RubyType
 
   attr_accessor :type
   attr_accessor :resolveed
+  attr_accessor :extent
   attr :name
   attr :line_no
 
@@ -247,6 +255,53 @@ class RubyType
       rone_nodup = rone.call(false)
       @same_value.each(&rone_nodup)
     end
+  end
+
+  EXTENT_ORDER = {
+    nil => 0,
+    :block => 1,
+    :method => 2,
+    :instance => 3,
+    :global => 4
+  }
+
+  def add_extent_base(fty)
+    @extent_base.push fty
+  end
+
+  def extent_base
+    @extent_base.map do |e|
+      if e == self then
+        @extent_base
+      else
+        e.extent_base
+      end
+    end.flatten
+  end
+  
+  def extent2
+    aext = @extent_base.map {|e| e.extent_base}.flatten
+    aext.map {|e| e.extent}
+  end
+
+  def real_extent
+    ext_all = @extent_base.map {|e| e.extent_base}.flatten
+    extmax = ext_all.max_by {|e| EXTENT_ORDER[e.extent] }
+    if extmax.extent then
+      if extmax.extent == :instance then
+        slf = extmax.slf
+        if slf.is_arg then
+          p "foo"
+          return :global
+        else
+          return slf.real_extent
+        end
+      else
+        return extmax.extent
+      end
+    end
+  
+    return :local
   end
 
   def self.fixnum(lno = nil, name = nil, klass = Fixnum)

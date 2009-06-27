@@ -204,11 +204,14 @@ EOS
   def visit_getconstant(code, ins, local_vars, ln, info)
     const = ins[1]
     recv = @expstack.pop
-    if recv == "nil" then
-      @expstack.push lambda {|context| const.to_s}
-    else
-      @expstack.push lambda {|context| "#{recv}:#{const.to_s}"}
-    end
+    @expstack.push lambda {|context|
+      recvc = recv.call(context)
+      if recvc == "nil" then
+        const.to_s
+      else
+        "#{recvc}:#{const.to_s}"
+      end
+    }
   end
       
   def visit_setconstant(code, ins, local_vars, ln, info)
@@ -284,8 +287,8 @@ EOS
       
   def visit_pop(code, ins, local_vars, ln, info)
     oldcode = @generated_code[@curlln]
+    exp = @expstack.pop
     @generated_code[@curlln] = lambda {|context|
-      exp = @expstack.pop
       if exp then 
         exp = exp.call(context)
       else 
@@ -354,7 +357,7 @@ EOS
           blk = gen_block_call(blklab, context)
           args0 = args.map {|e| e.call(context)}
           argsstr = args0.reverse.join(',')
-          "#{recv}.#{mname}(#{argsstr}) #{blk}"
+          "#{recv.call(context)}.#{mname}(#{argsstr}) #{blk}"
         }
       end
     else
