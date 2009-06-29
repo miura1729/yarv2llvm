@@ -95,7 +95,7 @@ if __FILE__ == $0 then
   end
   YARV2LLVM::compile_file(ARGV[0], y2lopt, preload)
   if y2lopt[:gc_profile] then
-    GC::Profiler.report
+    GC::Profiler.report(STDERR)
   end
 end # __FILE__ == $0
 
