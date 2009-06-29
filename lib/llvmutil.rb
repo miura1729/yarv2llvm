@@ -583,6 +583,7 @@ module SendUtil
       if minfo then
         pe[0].add_same_type(minfo[:argtype][nargs - n - 1])
         minfo[:argtype][nargs - n - 1].add_same_value(pe[0])
+        pe[0].add_extent_base minfo[:argtype][nargs - n - 1]
       end
       para[n] = pe
     end
@@ -591,6 +592,9 @@ module SendUtil
     v = nil
     if receiver then
       v = receiver
+      args.each do |pe|
+        pe[0].slf = v[0]
+      end
     else
       v = [local_vars[2][:type], 
         lambda {|b, context|

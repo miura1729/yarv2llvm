@@ -420,6 +420,11 @@ class YarvTranslator<YarvVisitor
       end
     end
 
+    local_vars.each do |e|
+      e[:type].is_arg = true
+    end
+    local_vars[2][:type].is_arg = nil
+
     @locals[code] = local_vars
     numarg = code.header['misc'][:arg_size]
 
@@ -882,6 +887,9 @@ class YarvTranslator<YarvVisitor
       type = RubyType.new(nil, info[3], "#{info[0]}##{ivname}")
       @instance_var_tab[info[0]][ivname][:type] = type
     end
+    type.extent = :instance
+    type.slf = local_vars[2][:type]
+
     @expstack.push [type,
       lambda {|b, context|
         if vptr = context.instance_vars_local_area[ivname] then
@@ -927,6 +935,8 @@ class YarvTranslator<YarvVisitor
     
     srctype.add_same_value(dsttype)
     dsttype.add_same_value(srctype)
+    srctype.extent = :instance
+    srctype.slf = local_vars[2][:type]
 
     oldrescode = @rescode
     @rescode = lambda {|b, context|
@@ -1022,6 +1032,7 @@ class YarvTranslator<YarvVisitor
     else
       const_klass = Object
     end
+    val[0].extent = :global
     if !UNDEF.equal?(val[0].type.constant) then
       const_klass.const_set(ins[1], val[0].type.constant)
     else
@@ -1058,6 +1069,7 @@ class YarvTranslator<YarvVisitor
       @global_var_tab[glname][:type] = type
       areap = add_global_variable("glarea_ptr", VALUE, 4.llvm)
       @global_var_tab[glname][:area] = areap
+      type.extent = :global
     end
     areap = @global_var_tab[glname][:area]
     @expstack.push [type,
@@ -1099,6 +1111,7 @@ class YarvTranslator<YarvVisitor
     
     srctype.add_same_value(dsttype)
     dsttype.add_same_value(srctype)
+    srctype.extent = :global
 
     oldrescode = @rescode
     @rescode = lambda {|b, context|
@@ -1703,6 +1716,9 @@ class YarvTranslator<YarvVisitor
           end
           gen_call(func, para, b, context)
         else
+          para.each do |ele|
+            RubyType.value.add_same_type ele[0]
+          end 
           RubyType.value.add_same_type rett
           RubyType.resolve
 
@@ -1794,6 +1810,7 @@ class YarvTranslator<YarvVisitor
       retexp[0].add_same_type rett2
       # RubyType.resolve
     end
+    retexp[0].extent = :global
 
     oldrescode = @rescode
     @rescode = lambda {|b, context|
@@ -2690,6 +2707,7 @@ class YarvTranslator<YarvVisitor
 
     srctype.add_same_type(dsttype)
     dsttype.add_same_value(srctype)
+    srctype.add_extent_base dsttype
 
     oldrescode = @rescode
     @rescode = lambda {|b, context|
@@ -2750,6 +2768,7 @@ class YarvTranslator<YarvVisitor
 
     srctype.add_same_type(dsttype)
     dsttype.add_same_value(srctype)
+    srctype.add_extent_base dsttype
 
     oldrescode = @rescode
     @rescode = lambda {|b, context|

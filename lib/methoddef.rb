@@ -60,6 +60,7 @@ module MethodDefinition
             val[0].add_same_type(arr[0].type.element_type)
             arr[0].type.element_type.add_same_type(val[0])
           end
+          val[0].add_extent_base arr[0]
 
           oldrescode = @rescode
           v = nil
@@ -474,6 +475,8 @@ module MethodDefinition
              end
              minfo[:argtype][i].add_same_type ele[0]
              ele[0].add_same_type minfo[:argtype][i]
+             ele[0].add_extent_base minfo[:argtype][i]
+             ele[0].slf = rettype
            end
 #           minfo[:argtype][-1].add_same_type rec[0]
            rec[0].add_same_type minfo[:argtype][-1]
@@ -481,6 +484,7 @@ module MethodDefinition
 
            @expstack.push [rettype, 
              lambda {|b, context|
+             # print "#{para[:info][1]} #{rettype.name} -> #{rettype.real_extent}\n"
                cargs = []
                context = rec[1].call(b, context)
                recv = context.rc
