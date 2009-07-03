@@ -143,6 +143,10 @@ module LLVMUtil
     local_vars = para[:local]
     blk = ins[3]
     blab = (info[1].to_s + '+blk+' + blk[1].to_s).to_sym
+    if OPTION[:inline_block] then
+      blkcode = code.blockes[blk[1]]
+      @inline_code_tab[blkcode] = code
+    end
     recklass = rec ? rec[0].klass : nil
     
     loop_cnt_current = @loop_cnt_current
@@ -221,13 +225,13 @@ module LLVMUtil
       # invoke block
       func = minfo[:func]
       if func == nil then
-        if ispassidx then
-          argtype0 = minfo[:argtype][0]
-          recele = rec[0].type.element_type
-          argtype0.add_same_type recele
-          recele.add_same_type argtype0
-          RubyType.resolve
-        end
+#        if ispassidx then
+#          argtype0 = minfo[:argtype][0]
+#          recele = rec[0].type.element_type
+#          argtype0.add_same_type recele
+#          recele.add_same_type argtype0
+#          RubyType.resolve
+#        end
         
         argtype = minfo[:argtype].map {|ele|
           if ele.type == nil
@@ -249,11 +253,19 @@ module LLVMUtil
       fm = context.current_frame
       frame = b.bit_cast(fm, P_CHAR)
       slf = b.load(local_vars[2][:area])
-      blgenfnc = @generated_code[blab]
+      blgenfnc = nil
+      if tab = @generated_code[info[0]] then
+        blgenfnc = tab[blab]
+      end
       if OPTION[:inline_block] and blgenfnc then
-        args = [b, [bodyrc, slf, frame, 0.llvm]]
+        if argsize == 1 then
+          args = [[bodyrc, slf, frame, 0.llvm], code, b, context]
+        else
+          args = [[slf, frame, 0.llvm], code, b, context]
+        end
         blgenfnc.call(args)
-        @generated_code.delete(blab)
+        @generated_code[info[0]].delete(blab)
+        @generated_define_func[info[0]].delete(blab)
       else
         if argsize == 1 then
           b.call(func, bodyrc, slf, frame, 0.llvm)
