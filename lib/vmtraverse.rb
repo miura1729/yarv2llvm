@@ -1795,9 +1795,6 @@ class YarvTranslator<YarvVisitor
           end
           gen_call(func, para, b, context)
         else
-          para.each do |ele|
-            RubyType.value.add_same_type ele[0]
-          end 
           RubyType.value.add_same_type rett
           RubyType.resolve
 
