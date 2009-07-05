@@ -1919,7 +1919,6 @@ class YarvTranslator<YarvVisitor
           context.is_live = false
         end
       else
-        context = retexp[1].call(b, context)
         context.is_live = false
         b.return(rc)
       end
