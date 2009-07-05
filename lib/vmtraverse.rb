@@ -26,6 +26,7 @@ class Context
     @inline_caller_context = nil
     @inline_caller_code = nil
     @is_live = true
+    @exit_block = nil
 
     @user_defined = {}
   end
@@ -49,6 +50,8 @@ class Context
   attr_accessor :inline_caller_context
   attr_accessor :inline_caller_code
   attr_accessor :is_live
+  attr_accessor :exit_block
+
   attr :builder
   attr :frame_struct
   attr :user_defined
@@ -719,7 +722,6 @@ class YarvTranslator<YarvVisitor
       if inlineargs == nil and @inline_code_tab[code] == nil then
         b = @builder.define_function(info[0], info[1].to_s, 
                                      rett2, argtype, is_mkstub)
-      else
       end
     }
 
@@ -740,6 +742,7 @@ class YarvTranslator<YarvVisitor
       if inlineargs then
         b = inlineargs[2]
         @builder.select_func(b)
+        context.exit_block = get_or_create_block("__exit_block", b, context)
       end
 
       context.builder.select_func(b)
@@ -1890,27 +1893,35 @@ class YarvTranslator<YarvVisitor
 
     oldrescode = @rescode
     @rescode = lambda {|b, context|
-
       context = oldrescode.call(b, context)
-      if context.inline_args then
-        context = retexp[1].call(b, context)
-      else
-        if rett2.type == nil then
-          # raise "Return type is ambious #{info[1]} in #{info[3]}"
-          rett2.type = PrimitiveType.new(VALUE, nil)
-        end
+      if rett2 == nil then
+        rett2 = RubyType.new(nil)
+      end
 
+      if rett2.type == nil then
+        rett2.type = PrimitiveType.new(VALUE, nil)
+      end
+      context = retexp[1].call(b, context)
+      rc = context.rc
+      if rett2.type.llvm == VALUE then
+        rc = retexp[0].type.to_value(rc, b, context)
+      end
+      if rc == nil then
+        rc = 4.llvm
+      end
+
+      if context.inline_args then
+        context.block_value[ln] = [rett2, rc]
+        b.br(context.exit_block)
+        if code.lblock_list.last == ln then
+          b.set_insert_point(context.exit_block)
+        else
+          context.is_live = false
+        end
+      else
         context = retexp[1].call(b, context)
         context.is_live = false
-        rc = context.rc
-        if rett2.type.llvm == VALUE then
-          rc = retexp[0].type.to_value(rc, b, context)
-        end
-        if rc then
-          b.return(rc)
-        else
-          b.return(4.llvm)  # nil
-        end
+        b.return(rc)
       end
 
       context
@@ -1925,7 +1936,6 @@ class YarvTranslator<YarvVisitor
 
   def visit_throw(code, ins, local_vars, ln, info)
     oldrescode = @rescode
-    @is_live = false
     @rescode = lambda {|b, context|
       context = oldrescode.call(b, context)
       kind = EXCEPTION_KIND[ins[1]]
@@ -1937,6 +1947,8 @@ class YarvTranslator<YarvVisitor
             tolab = ele[4]
             context.block_value[tolab] = [RubyType.value, 4.llvm]
             b.br(lcontext.blocks_head[tolab])
+            blk = get_or_create_block("throw_dmy", b, context)
+            b.set_insert_point(blk)
             break
           end
         end
