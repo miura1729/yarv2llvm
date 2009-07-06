@@ -10,11 +10,21 @@ module YARV2LLVM
 class LLVM_Struct
   def initialize(type, member)
     @type = type
-    @member = member
+    @index_symbol = {}
+    @member = []
+    member.each_with_index do |ele, n|
+      if ele.is_a?(Array) then
+        @member[n] = ele[0]
+        @index_symbol[ele[1]] = n
+      else
+        @member[n] = ele
+      end
+    end
   end
   
   attr_accessor :type
   attr_accessor :member
+  attr_accessor :index_symbol
 end
   
 class LLVM_Pointer

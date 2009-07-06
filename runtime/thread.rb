@@ -7,9 +7,13 @@
 module LLVM::Runtime
   VALUE = RubyHelpers::VALUE
   LONG  = LLVM::Type::Int32Ty
-
+  VOID  = LLVM::Type::VoidTy
   P_VALUE = LLVM::pointer(VALUE)
-  RB_ISRQ_T = [
+
+  ROBJECT = LLVM::struct [VALUE, VALUE, LONG, LONG, P_VALUE]
+  RDATA = LLVM::struct [VALUE, VALUE, VALUE, VALUE, VALUE]
+
+  RB_ISEQ_T = LLVM::struct [
     VALUE,                      # TYPE instruction sequence type
     VALUE,                      # name Iseq Name
     P_VALUE,                    # iseq (insn number and operands)
@@ -31,7 +35,7 @@ module LLVM::Runtime
   ]
 
   RB_THREAD_T = LLVM::struct [
-   VALUE,                       # self
+   [VALUE, :self],               # self
    RB_VM_T,                     # VM
 
    P_VALUE,                     # stack
@@ -41,7 +45,7 @@ module LLVM::Runtime
    LONG,                        # raised_flag
    VALUE,                       # last_status
 
-   LONG,                        # state
+   [LONG, :state],              # state
 
    RB_BLOCK_T,                  # passed_block
    
@@ -53,12 +57,14 @@ module LLVM::Runtime
   ]
 
   def y2l_create_thread
-    type = LLVM::function(RB_THREAD_T, [VALUE])
+    type = LLVM::function(VALUE, [VALUE])
     YARV2LLVM::LLVMLIB::define_external_function(:rb_thread_alloc, 
                                                  'rb_thread_alloc', 
                                                  type)
-    tklass = YARV2LLVM::LLVMLIB::unsafe(Thread, VALUE)
-    rb_thread_alloc(tklass)
-    nil
+    thval = rb_thread_alloc(Thread)
+    thval2 = YARV2LLVM::LLVMLIB::unsafe(thval, RDATA)
+    th = YARV2LLVM::LLVMLIB::unsafe(thval2[4], RB_THREAD_T)
+    th[:state]
+    thval
   end
 end

@@ -118,7 +118,13 @@ module MethodDefinition
                 context.rc = v
 
               when LLVM_Struct
-                indx = idx[0].type.constant
+                rindx = idx[0].type.constant
+                indx = rindx
+                if rindx.is_a?(Symbol) then
+                  unless indx = arr[0].type.type.index_symbol[rindx]
+                    raise "Unkown tag #{rindx}"
+                  end
+                end
                 addr = b.struct_gep(arrp, indx)
                 b.store(v, addr)
                 context.rc = v

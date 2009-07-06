@@ -303,6 +303,8 @@ module LLVMUtil
     case e
     when LLVM_Struct, LLVM_Pointer, LLVM_Function
       e.type
+    when Array
+      get_raw_llvm_type(e[0])
     else
       e
     end

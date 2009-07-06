@@ -70,6 +70,7 @@ class YarvVisitor
     @frame_struct = {}
     @locals = {}
     @have_yield = false
+    @have_throw = false
 
     @array_alloca_size = nil
     @loop_cnt_alloca_size = 0
@@ -188,8 +189,12 @@ class YarvTranslator<YarvVisitor
     # Hash code object to local variable information.
     @locals = {}
 
-    # Trie means current method include 
+    # True means current method include 
     # invokeblock instruction (yield statement)
+    @have_yield = false
+
+    # True means current method include 
+    # throw instruction (break, next, continue, redo in block statement)
     @have_yield = false
 
     # Size of alloca area for call rb_ary_new4 and new
@@ -399,6 +404,7 @@ class YarvTranslator<YarvVisitor
 
   def visit_block_start(code, ins, local_vars, ln, info)
     @have_yield = false
+    @have_throw = false
 
     @array_alloca_size = nil
     @loop_cnt_alloca_size = 0
@@ -406,7 +412,6 @@ class YarvTranslator<YarvVisitor
 
     @instance_vars_local = {}
 
-    @have_yield = false
     lbase = ([nil, nil, nil, nil] + code.header['locals'].reverse)
     lbase.each_with_index do |n, i|
       local_vars[i] = {
@@ -637,9 +642,14 @@ class YarvTranslator<YarvVisitor
 
     rescode = @rescode
     have_yield = @have_yield
+    have_throw = @have_throw
     array_alloca_size = @array_alloca_size
     loop_cnt_alloca_size = @loop_cnt_alloca_size
     instance_vars_local = @instance_vars_local
+
+    if MethodDefinition::RubyMethod[info[1]][info[0]].is_a?(Hash) then
+      MethodDefinition::RubyMethod[info[1]][info[0]][:have_throw] = have_throw
+    end
 
     rett2 = nil
     if info[1] then
@@ -1934,11 +1944,13 @@ class YarvTranslator<YarvVisitor
   }
 
   def visit_throw(code, ins, local_vars, ln, info)
+    @have_throw = true
     oldrescode = @rescode
     @rescode = lambda {|b, context|
       context = oldrescode.call(b, context)
       kind = EXCEPTION_KIND[ins[1]]
       if lcontext = context.inline_caller_context then
+        # Can compile to br instruction because block is inlined.
         lcode = context.inline_caller_code
         et = lcode.header['exception_table']
         et.each do |ele|
@@ -1951,6 +1963,8 @@ class YarvTranslator<YarvVisitor
             break
           end
         end
+      else
+        # must compile unwind instruction because jump to caller function
       end
       context
     }
@@ -2760,7 +2774,13 @@ class YarvTranslator<YarvVisitor
             context.rc = b.load(addr)
 
           when LLVM_Struct
-            indx = idx[0].type.constant
+            rindx = idx[0].type.constant
+            indx = rindx
+            if rindx.is_a?(Symbol) then
+              unless indx = arr[0].type.type.index_symbol[rindx]
+                raise "Unkown tag #{rindx}"
+              end
+            end
             rettype.type.type = arr[0].type.type.member[indx]
             addr = b.struct_gep(arrp, indx)
             context.rc = b.load(addr)
