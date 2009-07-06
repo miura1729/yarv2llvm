@@ -743,7 +743,7 @@ module SendUtil
   def do_macro(mname, _sender_env)
     macroinfo = MethodDefinition::InlineMacro[mname]
     if macroinfo then
-      #      print macroinfo[:body]
+      # print macroinfo[:body]
       eval(macroinfo[:body])
       return true
     end

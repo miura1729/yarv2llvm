@@ -9,6 +9,14 @@ end
 
 module YARV2LLVM
 class YarvTranslatorToRuby<YarvVisitor
+  def call_or_join(val, context)
+    if val.is_a?(Array) then
+      val.map {|ele| ele.call(context)}.join('+')
+    else
+      val.call(context)
+    end
+  end
+
   def initialize(iseq, bind, preload)
     super(iseq, preload)
     @generated_code = Hash.new { |hash, val|
@@ -177,7 +185,7 @@ EOS
       oldcode = @generated_code[@curlln]
       @generated_code[@curlln] = lambda {|context|
         oc = oldcode.call(context)
-        val = val.call(context)
+        val = call_or_join(val, context)
         oc + "\n#{local_vars[voff][:name]} = #{val}\n"
       }
     else
@@ -186,7 +194,7 @@ EOS
       oldcode = @generated_code[@curlln]
       @generated_code[@curlln] = lamnda {|context|
         oc = oldcode.call(context)
-        val = val.call(context)
+        val = call_or_join(val, context)
         oc + "\n#{acode[voff][:name]} = #{val}\n"
       }
     end
@@ -352,7 +360,7 @@ EOS
       else
         @expstack.push lambda {|context|
           blk = gen_block_call(blklab, context)
-          args0 = args.map {|e| e.call(context)}
+          args0 = args.map {|e| call_or_join(e, context)}
           argsstr = args0.reverse.join(',')
           "#{recv}.#{mname}(#{argsstr}) #{blk}"
         }
@@ -395,7 +403,7 @@ EOS
           res += "__lOHash = {#{hashlit}}\n"
           res += "__lOStr = #{argstr.inspect}\n"
           arghash.each do |vn, val|
-            res += "if #{val}.is_a?(Symbol) then\n"
+            res += "if #{val}.is_a?(Symbol) or #{val}.is_a?(String) then\n"
             res += "__lOStr.gsub!(' #{vn} ', #{val}.to_s)\n"
             res += "__lOHash.delete(#{vn.inspect})\n"
             res += "end\n"

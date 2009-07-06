@@ -321,6 +321,7 @@ class YarvTranslator<YarvVisitor
         }
       }
     end
+
     is = RubyVM::InstructionSequence.compile(str, "macro", 0, 
             {  :peephole_optimization    => true,
                :inline_const_cache       => false,

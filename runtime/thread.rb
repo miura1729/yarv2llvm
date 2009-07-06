@@ -5,7 +5,15 @@
 #   This file uses Unsafe objects
 #
 module LLVM::Runtime
-  VALUE = RubyHelpers::VALUE
+  YARV2LLVM::define_macro :define_thread_structs do |system|
+
+    if system[0][0].type.constant == :WIN32 then
+      native_thread_t = "VALUE"
+    else
+      native_thread_t = "P_VALUE, VALUE"
+    end
+    
+    code = "VALUE = RubyHelpers::VALUE
   LONG  = LLVM::Type::Int32Ty
   VOID  = LLVM::Type::VoidTy
   P_VALUE = LLVM::pointer(VALUE)
@@ -34,6 +42,8 @@ module LLVM::Runtime
    VALUE,                     # self
   ]
 
+  RB_THREAD_ID_T = VALUE
+
   RB_THREAD_T = LLVM::struct [
    [VALUE, :self],               # self
    RB_VM_T,                     # VM
@@ -45,7 +55,7 @@ module LLVM::Runtime
    LONG,                        # raised_flag
    VALUE,                       # last_status
 
-   [LONG, :state],              # state
+   [LONG, :state],                        # state
 
    RB_BLOCK_T,                  # passed_block
    
@@ -54,7 +64,21 @@ module LLVM::Runtime
 
    P_VALUE,                     # *local_lfp
    VALUE,                       # local_svar
-  ]
+   
+   RB_THREAD_ID_T,              # thred_id
+   LONG,                        # status
+   LONG,                        # priority
+   LONG,                        # slice
+
+   #{native_thread_t},           # native_thread_data
+   P_VALUE,                     # blocking_region_buffer
+
+   [VALUE, :thgroup],           # thgroup
+  ]"
+    `#{code}`
+  end
+
+  define_thread_structs(:LINUX)
 
   def y2l_create_thread
     type = LLVM::function(VALUE, [VALUE])
