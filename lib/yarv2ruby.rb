@@ -401,7 +401,7 @@ EOS
           }
           res = ""
           res += "__lOHash = {#{hashlit}}\n"
-          res += "__lOStr = #{argstr.inspect}\n"
+          res += "__lOStr = \"#{argstr}\"\n"
           arghash.each do |vn, val|
             res += "if #{val}.is_a?(Symbol) or #{val}.is_a?(String) then\n"
             res += "__lOStr.gsub!(' #{vn} ', #{val}.to_s)\n"

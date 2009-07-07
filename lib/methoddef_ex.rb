@@ -248,6 +248,39 @@ module MethodDefinition
     },
   }
 
+  InlineMethod_Unsafe = {
+    :address_of => {
+      :inline_proc => lambda {|para|
+        info = para[:info]
+        idx = para[:args][0]
+        arr = para[:receiver]
+        rettype = RubyType.unsafe(info[3], "Result of address_of")
+
+        rindx = idx[0].type.constant
+        indx = rindx
+        if rindx.is_a?(Symbol) then
+          unless indx = arr[0].type.type.index_symbol[rindx]
+            raise "Unkown tag #{rindx}"
+          end
+        end
+        dstt = arr[0].type.type.member[indx]
+        ptr = Type.pointer(dstt)
+        rettype.type.type = LLVM_Pointer.new(ptr, dstt)
+
+        @expstack.push [rettype,
+          lambda {|b, context|
+            context = arr[1].call(b, context)
+            arrp = context.rc
+            context = idx[1].call(b, context)
+            addr = b.struct_gep(arrp, indx)
+            context.rc = addr
+            context
+          }
+        ]
+      }
+    }
+  }
+
   InlineMethod_Transaction = {
     :begin_transaction => {
       :inline_proc => lambda {|para|
@@ -401,6 +434,7 @@ module MethodDefinition
   InlineMethod[:YARV2LLVM] = InlineMethod_YARV2LLVM
   InlineMethod[:"YARV2LLVM::LLVMLIB"] = InlineMethod_LLVMLIB
   InlineMethod[:"LLVM"] = InlineMethod_LLVM
+  InlineMethod[:"YARV2LLVM::LLVMLIB::Unsafe"] = InlineMethod_Unsafe
   InlineMethod[:Transaction] = InlineMethod_Transaction
 end
 end

@@ -6,14 +6,17 @@
 #
 module LLVM::Runtime
   YARV2LLVM::define_macro :define_thread_structs do |system|
-
+    
     if system[0][0].type.constant == :WIN32 then
       native_thread_t = "VALUE"
+      rb_thread_lock_t = "VALUE"
     else
       native_thread_t = "P_VALUE, VALUE"
+      rb_thread_lock_t = "VALUE"
     end
-    
-    code = "VALUE = RubyHelpers::VALUE
+
+<<`EOS`
+  VALUE = RubyHelpers::VALUE
   LONG  = LLVM::Type::Int32Ty
   VOID  = LLVM::Type::VoidTy
   P_VALUE = LLVM::pointer(VALUE)
@@ -45,7 +48,7 @@ module LLVM::Runtime
   RB_THREAD_ID_T = VALUE
 
   RB_THREAD_T = LLVM::struct [
-   [VALUE, :self],               # self
+   VALUE,               # self
    RB_VM_T,                     # VM
 
    P_VALUE,                     # stack
@@ -70,12 +73,34 @@ module LLVM::Runtime
    LONG,                        # priority
    LONG,                        # slice
 
-   #{native_thread_t},           # native_thread_data
+   #{native_thread_t},          # native_thread_data
    P_VALUE,                     # blocking_region_buffer
 
-   [VALUE, :thgroup],           # thgroup
-  ]"
-    `#{code}`
+   VALUE,                       # thgroup
+   VALUE,                       # value
+
+   VALUE,                       # errinfo
+   VALUE,                       # thrown_errinfo
+   LONG,                        # exec_signal
+
+   LONG,                        # interrupt_flag
+   #{rb_thread_lock_t},         # interrupt_lock
+   VALUE,                       # unblock_func
+   VALUE,                       # unblock_arg
+   VALUE,                       # locking_mutex
+   VALUE,                       # keeping_mutexes
+   LONG,                        # transaction_for_lock
+
+   VALUE,                       # tag
+   VALUE,                       # trap_tag
+
+   LONG,                        # parse_in_eval
+   LONG,                        # mild_compile_error
+
+   VALUE,                       # local_strage
+   
+  ]
+EOS
   end
 
   define_thread_structs(:LINUX)
@@ -88,7 +113,9 @@ module LLVM::Runtime
     thval = rb_thread_alloc(Thread)
     thval2 = YARV2LLVM::LLVMLIB::unsafe(thval, RDATA)
     th = YARV2LLVM::LLVMLIB::unsafe(thval2[4], RB_THREAD_T)
-    th[:state]
+    st = th.address_of :state
+    st0 = th[:state]
+    st[0]
     thval
   end
 end

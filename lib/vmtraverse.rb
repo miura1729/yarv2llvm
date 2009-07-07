@@ -2642,6 +2642,7 @@ class YarvTranslator<YarvVisitor
     end
 
     rettype = nil
+    indx = nil
     case arr[0].klass
     when :Array #, :Object
       rettype = arr[0].type.element_type
@@ -2651,6 +2652,17 @@ class YarvTranslator<YarvVisitor
 
     when :"YARV2LLVM::LLVMLIB::Unsafe"
       rettype = RubyType.unsafe
+      case arr[0].type.type
+      when LLVM_Struct
+        rindx = idx[0].type.constant
+        indx = rindx
+        if rindx.is_a?(Symbol) then
+          unless indx = arr[0].type.type.index_symbol[rindx]
+            raise "Unkown tag #{rindx}"
+          end
+        end
+        rettype.type.type = arr[0].type.type.member[indx]
+      end
 
     when :Object
       rettype = arr[0].type.element_type
@@ -2775,14 +2787,6 @@ class YarvTranslator<YarvVisitor
             context.rc = b.load(addr)
 
           when LLVM_Struct
-            rindx = idx[0].type.constant
-            indx = rindx
-            if rindx.is_a?(Symbol) then
-              unless indx = arr[0].type.type.index_symbol[rindx]
-                raise "Unkown tag #{rindx}"
-              end
-            end
-            rettype.type.type = arr[0].type.type.member[indx]
             addr = b.struct_gep(arrp, indx)
             context.rc = b.load(addr)
 
