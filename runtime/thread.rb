@@ -10,9 +10,11 @@ module LLVM::Runtime
     if system[0][0].type.constant == :WIN32 then
       native_thread_t = "VALUE"
       rb_thread_lock_t = "VALUE"
+      jmp_buf = "VALUE, " * 52
     else
       native_thread_t = "P_VALUE, VALUE"
       rb_thread_lock_t = "VALUE"
+      jmp_buf = "VALUE, " * 52
     end
 
 <<`EOS`
@@ -70,13 +72,13 @@ module LLVM::Runtime
    
    RB_THREAD_ID_T,              # thred_id
    LONG,                        # status
-   LONG,                        # priority
+   [LONG, :priority],           # priority
    LONG,                        # slice
 
    #{native_thread_t},          # native_thread_data
    P_VALUE,                     # blocking_region_buffer
 
-   VALUE,                       # thgroup
+   [VALUE, :thgroup],           # thgroup
    VALUE,                       # value
 
    VALUE,                       # errinfo
@@ -98,24 +100,64 @@ module LLVM::Runtime
    LONG,                        # mild_compile_error
 
    VALUE,                       # local_strage
-   
+#   VALUE,                      # value_cahce
+#   P_VALUE,                      # value_cahce_ptr
+
+  VALUE,                        # join_list_next
+  VALUE,                        # join_list_head
+
+  [VALUE, :first_proc],           # first_proc
+  [VALUE, :first_args],           # first_args
+  [VALUE, :first_func],           # first_func
+
+  P_VALUE,                      # machine_stack_start
+  P_VALUE,                      # machine_stack_end
+  LONG,                         # machine_stack_maxsize
+
+  #{jmp_buf}                    # machine_regs
+  LONG,                         # mark_stack_len
+
+  VALUE,                        # start_insn_usage
+
+  VALUE,                        # event_hooks
+  LONG,                         # event_flags]
+  
+  VALUE,                        # fiber
+  VALUE,                        # root_fiber
+  #{jmp_buf}                    # root_jmpbuf
+
+  LONG,                         # method_missing_reason
+  LONG,                         # abort_on_exception
   ]
 EOS
   end
 
   define_thread_structs(:LINUX)
 
-  def y2l_create_thread
+  def get_thread(thobj)
+    thval2 = YARV2LLVM::LLVMLIB::unsafe(thobj, RDATA)
+    YARV2LLVM::LLVMLIB::unsafe(thval2[4], RB_THREAD_T)
+  end
+
+  def y2l_create_thread(fn, args)
     type = LLVM::function(VALUE, [VALUE])
     YARV2LLVM::LLVMLIB::define_external_function(:rb_thread_alloc, 
                                                  'rb_thread_alloc', 
                                                  type)
     thval = rb_thread_alloc(Thread)
-    thval2 = YARV2LLVM::LLVMLIB::unsafe(thval, RDATA)
-    th = YARV2LLVM::LLVMLIB::unsafe(thval2[4], RB_THREAD_T)
-    st = th.address_of :state
-    st0 = th[:state]
-    st[0]
+    th = get_thread(thval)
+    th[:first_func] = fn
+    th[:first_proc] = YARV2LLVM::LLVMLIB::unsafe(0, VALUE) # false
+    th[:first_args] = args
+
+    type = LLVM::function(VALUE, [])
+    YARV2LLVM::LLVMLIB::define_external_function(:rb_thread_current, 
+                                                 'rb_thread_current', 
+                                                 type)
+    curth = get_thread(rb_thread_current)
+    th[:priority] = curth[:priority]
+    th[:thgroup] = curth[:thgroup]
+
     thval
   end
 end

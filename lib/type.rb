@@ -90,7 +90,7 @@ class RubyType
     if @type and !UNDEF.equal?(@type.content) then
       return @type.content
     end
-    @same_value.each do |ty|
+    @same_value.reverse.each do |ty|
       cont = ty.type.content
       if !UNDEF.equal?(cont) then
         return cont
