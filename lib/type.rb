@@ -629,12 +629,15 @@ class UnsafeType
   end
 
   def to_value(val, b, context)
+=begin
     case @type
     when LLVM_Struct, LLVM_Pointer
       b.ptr_to_int(val, VALUE)
     else
       val
     end
+=end
+    raise "Can't convert Unsafe type to VALUE"
   end
 
   def from_value(val, b, context)

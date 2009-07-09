@@ -37,6 +37,21 @@ class LLVM_Pointer
   attr_accessor :member
 end
 
+class LLVM_Array
+  def initialize(type, member, size)
+    @type = type
+    @member = member
+    @size = size
+  end
+  
+  attr_accessor :type
+  attr_accessor :member
+  attr_accessor :size
+end
+
+class LLVM_Vector<LLVM_Array
+end
+
 class LLVM_Function
   include LLVMUtil
 
@@ -140,12 +155,54 @@ module MethodDefinition
         dstt = tarr[0].content
         ptr = Type.pointer(get_raw_llvm_type(dstt))
         ptr0 = LLVM_Pointer.new(ptr, dstt)
-        mess = "return type of LLVM_Pointer"
+        mess = "return type of LLVM::pointer"
         type = RubyType.value(info[3], mess, LLVM_Pointer)
         type.type.content =ptr0
         @expstack.push [type,
           lambda {|b, context|
             context.rc = ptr0.llvm
+            context
+          }
+        ]
+      }
+    },
+
+    :array => {
+      :inline_proc => lambda {|para|
+        info = para[:info]
+        tarr = para[:args][0]
+        tsiz = para[:args][1]
+        dstt = tarr[0].content
+        sizt = tsiz[0].content
+        arr = Type.array(sizt, dstt)
+        arr0 = LLVM_Array.new(arr, dstt, sizt)
+        mess = "return type of LLVM::array"
+        type = RubyType.value(info[3], mess, LLVM_Array)
+        type.type.content =arr0
+        @expstack.push [type,
+          lambda {|b, context|
+            context.rc = arr0.llvm
+            context
+          }
+        ]
+      }
+    },
+
+    :vector => {
+      :inline_proc => lambda {|para|
+        info = para[:info]
+        tarr = para[:args][0]
+        tsiz = para[:args][1]
+        dstt = tarr[0].content
+        sizt = tsiz[0].content
+        vec = Type.vector(sizt, dstt)
+        vec0 = LLVM_Vector.new(vec, dstt, sizt)
+        mess = "return type of LLVM::vector"
+        type = RubyType.value(info[3], mess, LLVM_Vector)
+        type.type.content =vec0
+        @expstack.push [type,
+          lambda {|b, context|
+            context.rc = vec0.llvm
             context
           }
         ]

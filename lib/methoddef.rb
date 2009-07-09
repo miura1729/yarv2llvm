@@ -111,7 +111,7 @@ module MethodDefinition
               arrp = context.rc
               context = idx[1].call(b, context)
               case arr[0].type.type
-              when LLVM_Pointer
+              when LLVM_Pointer, LLVM_Array, LLVM_Vector
                 idxp = context.rc
                 addr = b.gep(arrp, idxp)
                 b.store(v, addr)

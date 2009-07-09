@@ -725,6 +725,11 @@ class YarvTranslator<YarvVisitor
            info[0] == :YARV2LLVM then
           is_mkstub = false
         end
+
+        if rett2.type.is_a?(UnsafeType) or
+            argtype.any? {|e| e.type.is_a?(UnsafeType)} then
+          is_mkstub = false
+        end
       else
         argtype = []
         is_mkstub = false
@@ -1910,8 +1915,14 @@ class YarvTranslator<YarvVisitor
       end
 
       if rett2.type == nil then
-        rett2.type = PrimitiveType.new(VALUE, nil)
+        retexp[0].add_same_type rett2
+        RubyType.resolve
+        
+        if rett2.type == nil then
+          rett2.type = PrimitiveType.new(VALUE, nil)
+        end
       end
+
       context = retexp[1].call(b, context)
       rc = context.rc
       if rett2.type.llvm == VALUE then
@@ -2780,7 +2791,7 @@ class YarvTranslator<YarvVisitor
           arrp = context.rc
           context = idx[1].call(b, context)
           case arr[0].type.type
-          when LLVM_Pointer
+          when LLVM_Pointer, LLVM_Array, LLVM_Vector
             idxp = context.rc
             rettype.type.type = arr[0].type.type.member
             addr = b.gep(arrp, idxp)

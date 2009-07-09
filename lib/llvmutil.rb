@@ -301,7 +301,8 @@ module LLVMUtil
 
   def get_raw_llvm_type(e)
     case e
-    when LLVM_Struct, LLVM_Pointer, LLVM_Function
+    when LLVM_Struct, LLVM_Pointer, LLVM_Function,
+         LLVM_Array, LLVM_Vector
       e.type
     when Array
       get_raw_llvm_type(e[0])
