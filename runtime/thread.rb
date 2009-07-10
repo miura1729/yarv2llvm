@@ -127,7 +127,7 @@ module LLVM::Runtime
 
   P_VALUE,                      # machine_stack_start
   P_VALUE,                      # machine_stack_end
-  LONG,                         # machine_stack_maxsize
+  [LONG, :machine_stack_maxsize], # machine_stack_maxsize
 
   JMP_BUF,                      # machine_regs
   LONG,                         # mark_stack_len
@@ -144,6 +144,10 @@ module LLVM::Runtime
   LONG,                         # method_missing_reason
   LONG,                         # abort_on_exception
   ]
+
+  # pthread structure
+  PTHREAD_ATTR_T = LLVM::array(VALUE, 9) # 32bit 64bit is 7
+  PTHREAD_ATTR_PTR = LLVM::pointer(PTHREAD_ATTR_T)
 EOS
   end
 
@@ -166,9 +170,28 @@ EOS
                                                'st_insert',
                                                type)
 
+
+  # Pthread API
+  type = LLVM::function(LONG, [VALUE])
+  YARV2LLVM::LLVMLIB::define_external_function(:pthread_attr_init,
+                                               'pthread_attr_init',
+                                               type)
+
+
   def get_thread(thobj)
     thval2 = YARV2LLVM::LLVMLIB::unsafe(thobj, RDATA)
     YARV2LLVM::LLVMLIB::unsafe(thval2[4], RB_THREAD_T)
+  end
+
+  def native_thread_create(th)
+    stack_size = 64 * 1024
+    space = stack_size / 5
+    th[:machine_stack_maxsize] = stack_size - space
+    attr = YARV2LLVM::LLVMLIB::alloca(PTHREAD_ATTR_T)
+
+    attr2 = YARV2LLVM::LLVMLIB::unsafe(attr, VALUE)
+    pthread_attr_init(attr2)
+    th
   end
 
   def y2l_create_thread(fn, args)
@@ -185,7 +208,7 @@ EOS
     th[:thgroup] = curth[:thgroup]
 
     st_insert(th[:vm][:living_threads], thval, th[:thread_id])
-
+    native_thread_create(th)
     thval
   end
 end

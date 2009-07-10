@@ -244,8 +244,15 @@ module MethodDefinition
         unsafetype = RubyType.unsafe(info[3], mess, objtype)
         @expstack.push [unsafetype,
           lambda {|b, context|
-            ptr0 = ptr[1].call(b, context).rc
-            newptr = unsafetype.type.from_value(ptr0, b, context)
+            ptrrc = ptr[1].call(b, context).rc
+            ptrrc2 = ptrrc
+            if ptr[0].type.is_a?(UnsafeType) then
+              case ptr[0].type.type
+              when LLVM_Pointer, LLVM_Struct
+                ptrrc2 = b.ptr_to_int(ptrrc, VALUE)
+              end
+            end
+            newptr = unsafetype.type.from_value(ptrrc2, b, context)
             context.rc = newptr
             context
           }
@@ -320,6 +327,26 @@ module MethodDefinition
             add = MethodDefinition::RubyMethod[mtsym][rec][:func]
             addval = b.ptr_to_int(add, VALUE)
             context.rc = addval
+            context
+          }
+        ]
+      }
+    },
+
+    :alloca => {
+      :inline_proc => lambda {|para|
+        info = para[:info]
+        typeobj = para[:args][0]
+        
+        type = get_raw_llvm_type(typeobj[0].content)
+        typtr = Type.pointer(type)
+        type2 = LLVM_Pointer.new(typtr, type)
+
+        mess = "Result of alloca"
+        rectype = RubyType.unsafe(info[3], mess, type2)
+        @expstack.push [rectype,
+          lambda {|b, context|
+            context.rc = b.alloca(type, 1)
             context
           }
         ]

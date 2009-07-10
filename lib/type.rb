@@ -642,7 +642,7 @@ class UnsafeType
 
   def from_value(val, b, context)
     case @type
-    when LLVM_Struct, LLVM_Pointer
+    when LLVM_Struct, LLVM_Pointer, LLVM_Array, LLVM_Vector
       b.int_to_ptr(val, @type.type)
     else
       val
@@ -654,7 +654,8 @@ class UnsafeType
   end
   def llvm
     case @type
-    when LLVM_Struct, LLVM_Pointer, LLVM_Function
+    when LLVM_Struct, LLVM_Pointer, LLVM_Function, 
+         LLVM_Array, LLVM_Vector
       @type.type
     else
       @type
