@@ -9,11 +9,11 @@ module LLVM::Runtime
     
     if system[0][0].type.constant == :WIN32 then
       native_thread_t = "VALUE"
-      rb_thread_lock_t = "VALUE"
+      def_rb_thread_lock_t = "RB_THREAD_LOCK_T = VALUE"
       def_jmp_buf = "JMP_BUF = LLVM::array(VALUE, 52)"
     else
       native_thread_t = "P_VALUE, VALUE"
-      rb_thread_lock_t = "VALUE"
+      def_rb_thread_lock_t = "RB_THREAD_LOCK_T = LLVM::array(VALUE, 6)"
       def_jmp_buf = "JMP_BUF = LLVM::array(VALUE, 52)"
     end
 
@@ -23,6 +23,7 @@ module LLVM::Runtime
   VOID  = LLVM::Type::VoidTy
   P_VALUE = LLVM::pointer(VALUE)
   #{def_jmp_buf}
+  #{def_rb_thread_lock_t}
 
   ROBJECT = LLVM::struct [VALUE, VALUE, LONG, LONG, P_VALUE]
   RDATA = LLVM::struct [VALUE, VALUE, VALUE, VALUE, VALUE]
@@ -46,7 +47,7 @@ module LLVM::Runtime
 
   RB_VM_T = LLVM::struct [
    VALUE,                       # self
-   #{rb_thread_lock_t},         # global_vm_lock
+   RB_THREAD_LOCK_T,            # global_vm_lock
 
    VALUE,                       # main_thread
    VALUE,                       # running_thread
@@ -100,7 +101,7 @@ module LLVM::Runtime
    LONG,                        # exec_signal
 
    LONG,                        # interrupt_flag
-   #{rb_thread_lock_t},         # interrupt_lock
+   RB_THREAD_LOCK_T,            # interrupt_lock
    VALUE,                       # unblock_func
    VALUE,                       # unblock_arg
    VALUE,                       # locking_mutex
@@ -175,7 +176,7 @@ EOS
     thval = YARV2LLVM::LLVMLIB::safe(thval0)
 
     th = get_thread(thval)
-    th[:first_func] = fn
+    th[:first_func] = YARV2LLVM::LLVMLIB::get_address_of_method(:Runtime, :get_thread) # fn
     th[:first_proc] = YARV2LLVM::LLVMLIB::unsafe(0, VALUE) # false
     th[:first_args] = args
 

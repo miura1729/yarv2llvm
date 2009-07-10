@@ -664,6 +664,7 @@ class YarvTranslator<YarvVisitor
     b = nil
     inlineargs = nil
     @generated_define_func[info[0]] ||= {}
+    orggen_deffunc = @generated_define_func[info[0]][info[1]]
     @generated_define_func[info[0]][info[1]] = lambda {|iargs|
       inlineargs = iargs
       if OPTION[:func_signature] then
@@ -739,6 +740,10 @@ class YarvTranslator<YarvVisitor
         b = @builder.define_function(info[0], info[1].to_s, 
                                      rett2, argtype, is_mkstub)
       end
+
+      if orggen_deffunc then
+        orggen_deffunc.call(iargs)
+      end
     }
 
     context = Context.new(local_vars, @builder)
@@ -750,6 +755,7 @@ class YarvTranslator<YarvVisitor
     @context_tab[code] = context
 
     @generated_code[info[0]] ||= {}
+    orggen_code = @generated_code[info[0]][info[1]]
     @generated_code[info[0]][info[1]] = lambda { |iargs|
       if iargs then
         inlineargs = iargs
@@ -760,7 +766,6 @@ class YarvTranslator<YarvVisitor
         @builder.select_func(b)
         context.exit_block = get_or_create_block("__exit_block", b, context)
       end
-
       context.builder.select_func(b)
 
       if iargs then
@@ -782,6 +787,10 @@ class YarvTranslator<YarvVisitor
       pppp "end"
 
       context = rescode.call(b, context)
+      if orggen_code then
+        orggen_code.call(iargs)
+      end
+
       context
     }
 

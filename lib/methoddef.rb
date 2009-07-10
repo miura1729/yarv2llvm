@@ -574,15 +574,17 @@ module MethodDefinition
              context = gen_get_block_ptr(info[0], info, blk, b, context)
              blkptr = context.rc
 
-             ftype = Type.function(VALUE, [VALUE, P_VALUE])
-             fname = 'rb_thread_create'
+             ftype = Type.function(VALUE, [VALUE, VALUE, VALUE])
+             fname = 'y2l_create_thread'
              builder = context.builder
-             func = builder.external_function(fname, ftype)
+             func = builder.get_or_insert_function(:Runtime, fname, ftype)
              blab = (info[1].to_s + '+blk+' + blk[1].to_s).to_sym
              stfubc = builder.make_callbackstub(
                        info[0], blab.to_s, rettype, para[:args], blkptr)
              stfubc = b.ptr_to_int(stfubc, VALUE)
-             context.rc = b.call(func, stfubc, initarea2)
+             stfubc = b.ptr_to_int(stfubc, VALUE)
+             argv = b.ptr_to_int(initarea2, VALUE)
+             context.rc = b.call(func, nil.llvm, stfubc, argv)
 
              context}]
       }
@@ -677,7 +679,7 @@ module MethodDefinition
   }
 
   # definition by yarv2llvm and arg/return type is C type (int, float, ...)
-  RubyMethod =Hash.new {|hash, key| hash[key] = {}}
+  RubyMethod = Hash.new {|hash, key| hash[key] = {}}
 
   # stub for RubyCMethod. arg/return type is always VALUE
   RubyMethodStub = Hash.new {|hash, key| hash[key] = {}}

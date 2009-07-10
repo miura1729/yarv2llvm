@@ -303,6 +303,28 @@ module MethodDefinition
         ]
       }
     },
+
+    :get_address_of_method => {
+      :inline_proc => lambda {|para|
+        info = para[:info]
+        recobj = para[:args][1]
+        mtsymobj = para[:args][0]
+        
+        mtsym = mtsymobj[0].content
+        rec = recobj[0].content.to_sym
+
+        mess = "Address of #{mtsym}"
+        rectype = RubyType.unsafe(info[3], mess, VALUE)
+        @expstack.push [rectype,
+          lambda {|b, context|
+            add = MethodDefinition::RubyMethod[mtsym][rec][:func]
+            addval = b.ptr_to_int(add, VALUE)
+            context.rc = addval
+            context
+          }
+        ]
+      }
+    },
   }
 
   InlineMethod_Unsafe = {
