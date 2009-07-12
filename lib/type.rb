@@ -202,7 +202,7 @@ class RubyType
           end
             
           if @type.is_a?(ty.type.class) then
-            if ty.type != @type then
+            if ty.type.class != @type.class then
               if dupp then
                 ty.type = @type.dup_type
               else
@@ -603,66 +603,6 @@ class PrimitiveType
   end
 end
 
-class UnsafeType
-  include LLVM
-  include RubyHelpers
-  def initialize(type)
-    @klass = :"YARV2LLVM::LLVMLIB::Unsafe"
-    @klass2 = :"YARV2LLVM::LLVMLIB::Unsafe"
-    @type = type
-    @content = UNDEF
-    @constant = UNDEF
-    @element_type = nil
-  end
-
-  attr_accessor :klass
-  attr_accessor :klass2
-  attr_accessor :type
-  attr_accessor :content
-  attr_accessor :constant
-  attr_accessor :element_type
-
-  def dup_type
-    nt = self.class.new(@type)
-
-    nt
-  end
-
-  def to_value(val, b, context)
-=begin
-    case @type
-    when LLVM_Struct, LLVM_Pointer
-      b.ptr_to_int(val, VALUE)
-    else
-      val
-    end
-=end
-    raise "Can't convert Unsafe type to VALUE"
-  end
-
-  def from_value(val, b, context)
-    case @type
-    when LLVM_Struct, LLVM_Pointer, LLVM_Array, LLVM_Vector
-      b.int_to_ptr(val, @type.type)
-    else
-      val
-    end
-  end
-
-  def inspect2
-    self.inspect
-  end
-  def llvm
-    case @type
-    when LLVM_Struct, LLVM_Pointer, LLVM_Function, 
-         LLVM_Array, LLVM_Vector
-      @type.type
-    else
-      @type
-    end
-  end
-end  
-
 class ComplexType
   def set_klass(klass)
     if klass.is_a?(::Class) then
@@ -972,5 +912,71 @@ class StructType<AbstructContainerType
     VALUE
   end
 end
-end
 
+class UnsafeType<AbstructContainerType
+  include LLVM
+  include RubyHelpers
+
+  def deref_type
+    case @type
+    when LLVM_Struct, LLVM_Pointer, LLVM_Function, 
+         LLVM_Array, LLVM_Vector
+      ty = @type.type
+    else
+      @type
+    end
+  end
+
+  def initialize(type)
+    @klass = :"YARV2LLVM::LLVMLIB::Unsafe"
+    @klass2 = :"YARV2LLVM::LLVMLIB::Unsafe"
+    @type = type
+    @content = UNDEF
+    @constant = UNDEF
+    @element_type = RubyType.new(VALUE, nil, nil, Object)
+  end
+
+  attr_accessor :klass
+  attr_accessor :klass2
+  attr_accessor :type
+  attr_accessor :content
+  attr_accessor :constant
+  attr_accessor :element_type
+
+  def dup_type
+    nt = self.class.new(@type)
+
+    nt
+  end
+
+  def to_value(val, b, context)
+=begin
+    case @type
+    when LLVM_Struct, LLVM_Pointer
+      b.ptr_to_int(val, VALUE)
+    else
+      val
+    end
+=end
+    raise "Can't convert Unsafe type to VALUE"
+  end
+
+  def from_value(val, b, context)
+    case @type
+    when LLVM_Struct, LLVM_Pointer, LLVM_Array, LLVM_Vector
+      b.int_to_ptr(val, @type.type)
+    else
+      val
+    end
+  end
+
+  def inspect2
+    self.inspect
+  end
+
+  def llvm
+    deref_type
+  end
+end  
+
+end

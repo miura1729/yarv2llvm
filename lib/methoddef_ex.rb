@@ -290,9 +290,16 @@ module MethodDefinition
         cfuncname = cfnobj[0].content
         rfuncname = rfnobj[0].content
         mess = "External function: #{cfuncname}"
-        functype = RubyType.unsafe(info[3], mess, sig)
-        argtype = sig.arg_type_raw.map do |e|
-          RubyType.unsafe(info[3], nil, e)
+        functype = RubyType.value(info[3], "Return type of define_external_function")
+        i = 0
+        argtype = sig.arg_type.map do |e|
+            i = i + 1
+            case e
+            when UnsafeType
+              e
+            else
+              RubyType.unsafe(info[3], "Arg #{i} of #{rfuncname}", e)
+            end
         end
         mess = "ret type of #{rfuncname}"
         rettype = RubyType.unsafe(info[3], mess, sig.ret_type)
@@ -360,7 +367,7 @@ module MethodDefinition
         info = para[:info]
         idx = para[:args][0]
         arr = para[:receiver]
-        rettype = RubyType.unsafe(info[3], "Result of address_of")
+        rettype = RubyType.unsafe(info[3], "Result of address_of", VALUE)
 
         rindx = idx[0].type.constant
         indx = rindx

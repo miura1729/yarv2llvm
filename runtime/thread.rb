@@ -18,8 +18,8 @@ module LLVM::Runtime
     end
 
 <<`EOS`
-  VALUE = RubyHelpers::VALUE
-  LONG  = LLVM::Type::Int32Ty
+  VALUE = LLVM::MACHINE_WORD
+  LONG  = LLVM::MACHINE_WORD
   VOID  = LLVM::Type::VoidTy
   P_VALUE = LLVM::pointer(VALUE)
   #{def_jmp_buf}
@@ -177,21 +177,33 @@ EOS
                                                'pthread_attr_init',
                                                type)
 
+  type = LLVM::function(LONG, [VALUE, LONG])
+  YARV2LLVM::LLVMLIB::define_external_function(:pthread_attr_setstacksize,
+                                               'pthread_attr_setstacksize',
+                                               type)
+
+
+  type = LLVM::function(LONG, [VALUE, LONG])
+  YARV2LLVM::LLVMLIB::define_external_function(:pthread_attr_setdetachstate,
+                                               'pthread_attr_setdetachstate',
+                                               type)
+
+  type = LLVM::function(LONG, [RB_THREAD_ID_T, VALUE, VALUE, RB_THREAD_T])
+  YARV2LLVM::LLVMLIB::define_external_function(:pthread_create,
+                                               'pthread_create',
+                                               type)
+
+  PTHREAD_CREATE_JOINABLE = 0
+  PTHREAD_CREATE_DETACHED = 1
+
+
+  def thread_start_func_2(th, stack_start, register_stack_start)
+    
+  end
 
   def get_thread(thobj)
     thval2 = YARV2LLVM::LLVMLIB::unsafe(thobj, RDATA)
     YARV2LLVM::LLVMLIB::unsafe(thval2[4], RB_THREAD_T)
-  end
-
-  def native_thread_create(th)
-    stack_size = 64 * 1024
-    space = stack_size / 5
-    th[:machine_stack_maxsize] = stack_size - space
-    attr = YARV2LLVM::LLVMLIB::alloca(PTHREAD_ATTR_T)
-
-    attr2 = YARV2LLVM::LLVMLIB::unsafe(attr, VALUE)
-    pthread_attr_init(attr2)
-    th
   end
 
   def y2l_create_thread(fn, args)
@@ -199,7 +211,7 @@ EOS
     thval = YARV2LLVM::LLVMLIB::safe(thval0)
 
     th = get_thread(thval)
-    th[:first_func] = YARV2LLVM::LLVMLIB::get_address_of_method(:Runtime, :get_thread) # fn
+    th[:first_func] = fn
     th[:first_proc] = YARV2LLVM::LLVMLIB::unsafe(0, VALUE) # false
     th[:first_args] = args
 
@@ -210,5 +222,33 @@ EOS
     st_insert(th[:vm][:living_threads], thval, th[:thread_id])
     native_thread_create(th)
     thval
+  end
+
+  def thread_start_func_1(th_ptr)
+    stack_start = YARV2LLVM::LLVMLIB::alloca(LONG)
+    thread_start_func_2(th_ptr, stack_start, nil)
+  end
+
+  def native_thread_create(th)
+    stack_size = 64 * 1024
+    space = stack_size / 5
+    th[:machine_stack_maxsize] = stack_size - space
+    attr = YARV2LLVM::LLVMLIB::alloca(PTHREAD_ATTR_T)
+
+    attrus = YARV2LLVM::LLVMLIB::unsafe(attr, VALUE)
+    stack_sizeus = YARV2LLVM::LLVMLIB::unsafe(stack_size, LONG)
+    pthread_attr_init(attrus)
+
+    # PTHREAD_CREATE_DETACHED = 1
+    pthread_attr_setdetachstate(attrus, 
+                                YARV2LLVM::LLVMLIB::unsafe(1, LONG))
+
+    pthread_create(th[:thread_id], 
+                   attrus, 
+                   YARV2LLVM::LLVMLIB::get_address_of_method(:Runtime, 
+                                                             :thread_start_func_1), 
+                   th)
+
+    th
   end
 end

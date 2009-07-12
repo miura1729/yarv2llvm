@@ -130,7 +130,9 @@ module MethodDefinition
                 context.rc = v
                 
               else
-                p arr[0].type.type.class
+                p arr[0].type
+                p para[:info]
+                p idx[0].type.constant
                 raise "Unsupport type #{arr[0].type.type}"
               end
               context
@@ -139,6 +141,7 @@ module MethodDefinition
               # Todo: []= handler of other type
               p arr[0]
               p para[:info]
+              p idx[0].type.constant
               raise "Unkonw type #{arr[0].type.inspect2}"
             end
           }

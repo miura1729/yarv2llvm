@@ -728,7 +728,7 @@ module SendUtil
           pe[0].add_same_type argtype[n]
           argtype[n].add_same_value pe[0]
         end
-          
+
         @expstack.push [rettype,
           lambda {|b, context|
             gen_call(func, para, b, context)
