@@ -28,6 +28,8 @@ module LLVM::Runtime
   ROBJECT = LLVM::struct [VALUE, VALUE, LONG, LONG, P_VALUE]
   RDATA = LLVM::struct [VALUE, VALUE, VALUE, VALUE, VALUE]
 
+  THREAD_FUNC = LLVM::pointer(LLVM::function(VALUE, [VALUE]))
+
   RB_ISEQ_T = LLVM::struct [
     VALUE,                      # TYPE instruction sequence type
     VALUE,                      # name Iseq Name
@@ -63,6 +65,7 @@ module LLVM::Runtime
   ]
 
   RB_THREAD_ID_T = VALUE
+  RB_THREAD_ID_PTR = P_VALUE
 
   RB_THREAD_T = LLVM::struct [
    VALUE,               # self
@@ -94,7 +97,7 @@ module LLVM::Runtime
    P_VALUE,                     # blocking_region_buffer
 
    [VALUE, :thgroup],           # thgroup
-   VALUE,                       # value
+   [VALUE, :value],             # value
 
    VALUE,                       # errinfo
    VALUE,                       # thrown_errinfo
@@ -123,9 +126,9 @@ module LLVM::Runtime
 
   [VALUE, :first_proc],           # first_proc
   [VALUE, :first_args],           # first_args
-  [VALUE, :first_func],           # first_func
+  [THREAD_FUNC, :first_func],     # first_func
 
-  P_VALUE,                      # machine_stack_start
+  [P_VALUE, :machine_stack_start], # machine_stack_start
   P_VALUE,                      # machine_stack_end
   [LONG, :machine_stack_maxsize], # machine_stack_maxsize
 
@@ -188,7 +191,7 @@ EOS
                                                'pthread_attr_setdetachstate',
                                                type)
 
-  type = LLVM::function(LONG, [RB_THREAD_ID_T, VALUE, VALUE, RB_THREAD_T])
+  type = LLVM::function(LONG, [RB_THREAD_ID_PTR, VALUE, VALUE, RB_THREAD_T])
   YARV2LLVM::LLVMLIB::define_external_function(:pthread_create,
                                                'pthread_create',
                                                type)
@@ -197,8 +200,11 @@ EOS
   PTHREAD_CREATE_DETACHED = 1
 
 
-  def thread_start_func_2(th, stack_start, register_stack_start)
-    
+  def thread_start_func_2(thobj, stack_start, register_stack_start)
+    th = YARV2LLVM::LLVMLIB::unsafe(thobj, RB_THREAD_T)
+    th[:machine_stack_start] = stack_start
+    th[:value] = th[:first_func].call(th[:first_args])
+    nil
   end
 
   def get_thread(thobj)
@@ -211,7 +217,7 @@ EOS
     thval = YARV2LLVM::LLVMLIB::safe(thval0)
 
     th = get_thread(thval)
-    th[:first_func] = fn
+    th[:first_func] = YARV2LLVM::LLVMLIB::unsafe(fn, THREAD_FUNC)
     th[:first_proc] = YARV2LLVM::LLVMLIB::unsafe(0, VALUE) # false
     th[:first_args] = args
 
@@ -222,11 +228,6 @@ EOS
     st_insert(th[:vm][:living_threads], thval, th[:thread_id])
     native_thread_create(th)
     thval
-  end
-
-  def thread_start_func_1(th_ptr)
-    stack_start = YARV2LLVM::LLVMLIB::alloca(LONG)
-    thread_start_func_2(th_ptr, stack_start, nil)
   end
 
   def native_thread_create(th)
@@ -243,12 +244,17 @@ EOS
     pthread_attr_setdetachstate(attrus, 
                                 YARV2LLVM::LLVMLIB::unsafe(1, LONG))
 
-    pthread_create(th[:thread_id], 
+    pthread_create(th.address_of(:thread_id), 
                    attrus, 
                    YARV2LLVM::LLVMLIB::get_address_of_method(:Runtime, 
                                                              :thread_start_func_1), 
                    th)
 
     th
+  end
+
+  def thread_start_func_1(th_ptr)
+    stack_start = YARV2LLVM::LLVMLIB::alloca(LONG)
+    thread_start_func_2(th_ptr, stack_start, nil)
   end
 end

@@ -587,7 +587,7 @@ module MethodDefinition
              stfubc = b.ptr_to_int(stfubc, VALUE)
              stfubc = b.ptr_to_int(stfubc, VALUE)
              argv = b.ptr_to_int(initarea2, VALUE)
-             context.rc = b.call(func, nil.llvm, stfubc, argv)
+             context.rc = b.call(func, stfubc, argv, nil.llvm)
 
              context}]
       }

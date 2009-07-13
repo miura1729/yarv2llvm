@@ -362,6 +362,30 @@ module MethodDefinition
   }
 
   InlineMethod_Unsafe = {
+    :call => {
+      :inline_proc => lambda {|para|
+        info = para[:info]
+        args = para[:args]
+        func = para[:receiver]
+        functype = func[0].type.type.member
+        rettype = RubyType.unsafe(info[3], "Return type of call", functype.ret_type)
+        @expstack.push [rettype,
+          lambda {|b, context|
+            type = functype.type
+            argsv = []
+            args.each do |ele|
+              context = ele[1].call(b, context)
+              argsv.push context.rc
+            end
+            context = func[1].call(b, context)
+            funcptr = context.rc
+            context.rc = b.call(funcptr, *argsv)
+            context
+          }
+        ]
+      }
+    },
+
     :address_of => {
       :inline_proc => lambda {|para|
         info = para[:info]
