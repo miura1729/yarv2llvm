@@ -7,7 +7,10 @@ end
 
 module YARV2LLVM
 
-class LLVM_Struct
+class LLVM_Type
+end
+
+class LLVM_Struct<LLVM_Type
   def initialize(type, member)
     @type = type
     @index_symbol = {}
@@ -27,7 +30,7 @@ class LLVM_Struct
   attr_accessor :index_symbol
 end
   
-class LLVM_Pointer
+class LLVM_Pointer<LLVM_Type
   def initialize(type, member)
     @type = type
     @member = member
@@ -37,7 +40,7 @@ class LLVM_Pointer
   attr_accessor :member
 end
 
-class LLVM_Array
+class LLVM_Array<LLVM_Type
   def initialize(type, member, size)
     @type = type
     @member = member
@@ -52,7 +55,7 @@ end
 class LLVM_Vector<LLVM_Array
 end
 
-class LLVM_Function
+class LLVM_Function<LLVM_Type
   include LLVMUtil
 
   def initialize(type, ret, arga)
@@ -340,6 +343,36 @@ module MethodDefinition
       }
     },
 
+    :get_address_of_cmethod => {
+      :inline_proc => lambda {|para|
+        info = para[:info]
+        recobj = para[:args][1]
+        mtsymobj = para[:args][0]
+        
+        mtsym = mtsymobj[0].content
+        rec = recobj[0].content
+        if rec == UNDEF then
+          rec = nil
+        else
+          rec = rec.to_sym
+        end
+        cname = MethodDefinition::CMethod[rec][mtsym][:cname]
+
+        mess = "Address of #{mtsym}"
+        rectype = RubyType.unsafe(info[3], mess, VALUE)
+        @expstack.push [rectype,
+          lambda {|b, context|
+            ftype = Type.function(VALUE, [])
+            builder = context.builder
+            add = builder.external_function(cname, ftype)
+            addval = b.ptr_to_int(add, VALUE)
+            context.rc = addval
+            context
+          }
+        ]
+      }
+    },
+
     :alloca => {
       :inline_proc => lambda {|para|
         info = para[:info]
@@ -401,6 +434,9 @@ module MethodDefinition
           end
         end
         dstt = arr[0].type.type.member[indx]
+        if dstt.is_a?(LLVM_Type) then
+          dstt = dstt.type
+        end
         ptr = Type.pointer(dstt)
         rettype.type.type = LLVM_Pointer.new(ptr, dstt)
 

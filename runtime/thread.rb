@@ -24,11 +24,13 @@ module LLVM::Runtime
   P_VALUE = LLVM::pointer(VALUE)
   #{def_jmp_buf}
   #{def_rb_thread_lock_t}
+  RB_THREAD_LOCK_PTR = LLVM::pointer(RB_THREAD_LOCK_T)
 
   ROBJECT = LLVM::struct [VALUE, VALUE, LONG, LONG, P_VALUE]
   RDATA = LLVM::struct [VALUE, VALUE, VALUE, VALUE, VALUE]
 
   THREAD_FUNC = LLVM::pointer(LLVM::function(VALUE, [VALUE]))
+  UNBLOCK_FUNC = LLVM::pointer(LLVM::function(VALUE, [VALUE]))
 
   RB_ISEQ_T = LLVM::struct [
     VALUE,                      # TYPE instruction sequence type
@@ -49,9 +51,9 @@ module LLVM::Runtime
 
   RB_VM_T = LLVM::struct [
    VALUE,                       # self
-   RB_THREAD_LOCK_T,            # global_vm_lock
+   [RB_THREAD_LOCK_T, :global_vm_lock], # global_vm_lock
 
-   VALUE,                       # main_thread
+   [VALUE, :main_thread],       # main_thread
    VALUE,                       # running_thread
    
    [VALUE, :living_threads],     # living_threads
@@ -68,7 +70,7 @@ module LLVM::Runtime
   RB_THREAD_ID_PTR = P_VALUE
 
   RB_THREAD_T = LLVM::struct [
-   VALUE,               # self
+   [VALUE, :self],              # self
    [RB_VM_T, :vm],                     # VM
 
    P_VALUE,                     # stack
@@ -104,9 +106,9 @@ module LLVM::Runtime
    LONG,                        # exec_signal
 
    LONG,                        # interrupt_flag
-   RB_THREAD_LOCK_T,            # interrupt_lock
-   VALUE,                       # unblock_func
-   VALUE,                       # unblock_arg
+   [RB_THREAD_LOCK_T, :interrupt_lock], # interrupt_lock
+   [UNBLOCK_FUNC, :unblock_func],       # unblock_func
+   [VALUE, :unblock_arg],               # unblock_arg
    VALUE,                       # locking_mutex
    VALUE,                       # keeping_mutexes
    LONG,                        # transaction_for_lock
@@ -121,8 +123,8 @@ module LLVM::Runtime
 #   VALUE,                      # value_cahce
 #   P_VALUE,                      # value_cahce_ptr
 
-  VALUE,                        # join_list_next
-  VALUE,                        # join_list_head
+  [VALUE, :join_list_next],     # join_list_next
+  [VALUE, :join_list_head],     # join_list_head
 
   [VALUE, :first_proc],           # first_proc
   [VALUE, :first_args],           # first_args
@@ -147,6 +149,7 @@ module LLVM::Runtime
   LONG,                         # method_missing_reason
   LONG,                         # abort_on_exception
   ]
+  RB_THREAD_PTR = LLVM::pointer(RB_THREAD_T)
 
   # pthread structure
   PTHREAD_ATTR_T = LLVM::array(VALUE, 9) # 32bit 64bit is 7
@@ -168,9 +171,28 @@ EOS
                                                type)
 
 
+  type = LLVM::function(VOID, [RB_THREAD_PTR])
+  YARV2LLVM::LLVMLIB::define_external_function(:rb_thread_interrupt, 
+                                               'rb_thread_interrupt', 
+                                               type)
+
+
   type = LLVM::function(VOID, [VALUE, VALUE, VALUE])
   YARV2LLVM::LLVMLIB::define_external_function(:st_insert, 
                                                'st_insert',
+                                               type)
+
+  type = LLVM::function(VOID, [VALUE, VALUE, VALUE])
+  YARV2LLVM::LLVMLIB::define_external_function(:st_delete, 
+                                               'st_delete',
+                                               type)
+
+
+  # This is not variable
+  # RUBY_EXTERN rb_thread_t *ruby_current_thread;
+  type = LLVM::function(VOID, [])
+  YARV2LLVM::LLVMLIB::define_external_function(:ruby_current_thread, 
+                                               'ruby_current_thread',
                                                type)
 
 
@@ -196,6 +218,22 @@ EOS
                                                'pthread_create',
                                                type)
 
+  type = LLVM::function(LONG, [RB_THREAD_LOCK_PTR, LONG])
+  YARV2LLVM::LLVMLIB::define_external_function(:pthread_mutex_init,
+                                               'pthread_mutex_init',
+                                               type)
+
+
+  type = LLVM::function(LONG, [RB_THREAD_LOCK_PTR])
+  YARV2LLVM::LLVMLIB::define_external_function(:pthread_mutex_lock,
+                                               'pthread_mutex_lock',
+                                               type)
+
+  type = LLVM::function(LONG, [RB_THREAD_LOCK_PTR])
+  YARV2LLVM::LLVMLIB::define_external_function(:pthread_mutex_unlock,
+                                               'pthread_mutex_unlock',
+                                               type)
+
   PTHREAD_CREATE_JOINABLE = 0
   PTHREAD_CREATE_DETACHED = 1
 
@@ -203,7 +241,35 @@ EOS
   def thread_start_func_2(thobj, stack_start, register_stack_start)
     th = YARV2LLVM::LLVMLIB::unsafe(thobj, RB_THREAD_T)
     th[:machine_stack_start] = stack_start
+    
+
+    pthread_mutex_lock(th[:vm].address_of(:global_vm_lock))
+
+    add = YARV2LLVM::LLVMLIB::get_address_of_cmethod(nil, :ruby_current_thread)
+    add2 = YARV2LLVM::LLVMLIB::unsafe(add, RB_THREAD_PTR)
+    add2[0] = th
+
     th[:value] = th[:first_func].call(th[:first_args])
+
+
+    zero = YARV2LLVM::LLVMLIB::unsafe(0, VALUE)
+    st_delete(th[:vm][:living_threads], th[:self], zero)
+
+    # wake up joinning threads
+    jt = th[:join_list_head]
+    join_th = YARV2LLVM::LLVMLIB::unsafe(jt, RB_THREAD_T)
+    jtv = YARV2LLVM::LLVMLIB::safe(jt)
+    while jtv do
+#      rb_thread_interrupt(join_th)
+      join_th[:unblock_func].call(join_th[:unblock_arg])
+      
+      jt = th[:join_list_head]
+      join_th = YARV2LLVM::LLVMLIB::unsafe(jt, RB_THREAD_T)
+      jtv = YARV2LLVM::LLVMLIB::safe(jt)
+    end
+
+    pthread_mutex_unlock(th[:vm].address_of(:global_vm_lock))
+
     nil
   end
 
@@ -225,7 +291,10 @@ EOS
     th[:priority] = curth[:priority]
     th[:thgroup] = curth[:thgroup]
 
+    native_mutex_initialize(th.address_of(:interrupt_lock))
+
     st_insert(th[:vm][:living_threads], thval, th[:thread_id])
+
     native_thread_create(th)
     thval
   end
@@ -251,6 +320,13 @@ EOS
                    th)
 
     th
+  end
+
+  def native_mutex_initialize(lock)
+    lockptr = YARV2LLVM::LLVMLIB::unsafe(lock, RB_THREAD_LOCK_PTR)
+    pthread_mutex_init(lock, 
+                       YARV2LLVM::LLVMLIB::unsafe(0, LONG))
+    nil
   end
 
   def thread_start_func_1(th_ptr)
