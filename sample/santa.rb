@@ -1,3 +1,4 @@
+require 'runtime/thread.rb'
 # santa claus probrem from Beautiful Code 
 # orignal program in Haskell
 

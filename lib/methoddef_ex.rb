@@ -293,7 +293,7 @@ module MethodDefinition
         cfuncname = cfnobj[0].content
         rfuncname = rfnobj[0].content
         mess = "External function: #{cfuncname}"
-        functype = RubyType.value(info[3], "Return type of define_external_function")
+        functype = RubyType.value(info[3], mess)
         i = 0
         argtype = sig.arg_type.map do |e|
             i = i + 1
@@ -315,6 +315,35 @@ module MethodDefinition
         @expstack.push [functype,
           lambda {|b, context|
             context.rc = 4.llvm
+            context
+          }
+        ]
+      }
+    },
+
+
+    :external_variable => {
+      :inline_proc => lambda {|para|
+        info = para[:info]
+        sigobj = para[:args][0]
+        cobj = para[:args][1]
+        
+        type = sigobj[0].content
+        cvarname = cobj[0].content
+
+        mess = "ret type of external_variable(#{cvarname})"
+        vartype = RubyType.unsafe(info[3], mess, type)
+        @expstack.push [vartype,
+          lambda {|b, context|
+            builder = context.builder
+            add = builder.external_variable(cvarname, type.llvm)
+            add2 = add
+            case vartype.type.type
+            when LLVM_Pointer, LLVM_Struct
+              add2 = b.ptr_to_int(add, VALUE)
+            end
+            newptr = vartype.type.from_value(add2, b, context)
+            context.rc = newptr
             context
           }
         ]

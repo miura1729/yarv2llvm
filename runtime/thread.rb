@@ -49,12 +49,13 @@ module LLVM::Runtime
     VALUE,
   ]
 
+
   RB_VM_T = LLVM::struct [
    VALUE,                       # self
    [RB_THREAD_LOCK_T, :global_vm_lock], # global_vm_lock
 
    [VALUE, :main_thread],       # main_thread
-   VALUE,                       # running_thread
+   [VALUE, :running_thread],    # running_thread
    
    [VALUE, :living_threads],     # living_threads
    VALUE,                        # thgroup_default
@@ -64,6 +65,7 @@ module LLVM::Runtime
    LONG,                        # trace_flag
    LONG,                        # sleeper
 
+   VALUE,                       # mark_object_ary
   ]
 
   RB_THREAD_ID_T = VALUE
@@ -91,7 +93,7 @@ module LLVM::Runtime
    VALUE,                       # local_svar
    
    [RB_THREAD_ID_T, :thread_id], # thred_id
-   LONG,                        # status
+   [LONG, :status],              # status
    [LONG, :priority],           # priority
    LONG,                        # slice
 
@@ -150,6 +152,7 @@ module LLVM::Runtime
   LONG,                         # abort_on_exception
   ]
   RB_THREAD_PTR = LLVM::pointer(RB_THREAD_T)
+  RB_THREAD_PTRPTR = LLVM::pointer(RB_THREAD_PTR)
 
   # pthread structure
   PTHREAD_ATTR_T = LLVM::array(VALUE, 9) # 32bit 64bit is 7
@@ -182,19 +185,17 @@ EOS
                                                'st_insert',
                                                type)
 
-  type = LLVM::function(VOID, [VALUE, VALUE, VALUE])
+  type = LLVM::function(VOID, [VALUE, P_VALUE, VALUE])
   YARV2LLVM::LLVMLIB::define_external_function(:st_delete, 
                                                'st_delete',
                                                type)
 
 
-  # This is not variable
-  # RUBY_EXTERN rb_thread_t *ruby_current_thread;
-  type = LLVM::function(VOID, [])
-  YARV2LLVM::LLVMLIB::define_external_function(:ruby_current_thread, 
-                                               'ruby_current_thread',
-                                               type)
-
+  THREAD_TO_KILL = 0
+  THREAD_RUNNABLE = 1
+  THREAD_STOPPED = 2
+  THREAD_STOPPED_FOREVER = 3
+  THREAD_KILLED = 4
 
   # Pthread API
   type = LLVM::function(LONG, [VALUE])
@@ -234,26 +235,38 @@ EOS
                                                'pthread_mutex_unlock',
                                                type)
 
+
+  type = LLVM::function(LONG, [VALUE])
+  YARV2LLVM::LLVMLIB::define_external_function(:pthread_setspecific,
+                                               'pthread_setspecific',
+                                               type)
+
   PTHREAD_CREATE_JOINABLE = 0
   PTHREAD_CREATE_DETACHED = 1
 
 
   def thread_start_func_2(thobj, stack_start, register_stack_start)
+    pthread_setspecific(thobj)
+
     th = YARV2LLVM::LLVMLIB::unsafe(thobj, RB_THREAD_T)
+
     th[:machine_stack_start] = stack_start
     
 
     pthread_mutex_lock(th[:vm].address_of(:global_vm_lock))
 
-    add = YARV2LLVM::LLVMLIB::get_address_of_cmethod(nil, :ruby_current_thread)
-    add2 = YARV2LLVM::LLVMLIB::unsafe(add, RB_THREAD_PTR)
-    add2[0] = th
+    rct_add = YARV2LLVM::LLVMLIB::external_variable("ruby_current_thread", RB_THREAD_PTR)
+    rct_add[0] = th
+    th[:vm][:running_thread] = YARV2LLVM::LLVMLIB::unsafe(th, VALUE)
+
 
     th[:value] = th[:first_func].call(th[:first_args])
 
 
+    th[:status] = Runtime::THREAD_KILLED
+
     zero = YARV2LLVM::LLVMLIB::unsafe(0, VALUE)
-    st_delete(th[:vm][:living_threads], th[:self], zero)
+    st_delete(th[:vm][:living_threads], th.address_of(:self), zero)
 
     # wake up joinning threads
     jt = th[:join_list_head]
@@ -269,7 +282,6 @@ EOS
     end
 
     pthread_mutex_unlock(th[:vm].address_of(:global_vm_lock))
-
     nil
   end
 
@@ -296,6 +308,7 @@ EOS
     st_insert(th[:vm][:living_threads], thval, th[:thread_id])
 
     native_thread_create(th)
+
     thval
   end
 
@@ -309,7 +322,7 @@ EOS
     stack_sizeus = YARV2LLVM::LLVMLIB::unsafe(stack_size, LONG)
     pthread_attr_init(attrus)
 
-    # PTHREAD_CREATE_DETACHED = 1
+    # p Runtime::PTHREAD_CREATE_DETACHED
     pthread_attr_setdetachstate(attrus, 
                                 YARV2LLVM::LLVMLIB::unsafe(1, LONG))
 
@@ -331,6 +344,7 @@ EOS
 
   def thread_start_func_1(th_ptr)
     stack_start = YARV2LLVM::LLVMLIB::alloca(LONG)
+
     thread_start_func_2(th_ptr, stack_start, nil)
   end
 end
