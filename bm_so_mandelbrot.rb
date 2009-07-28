@@ -60,6 +60,8 @@ for y in 0..count_size
       printf "%c", byte_acc # .chr
       byte_acc = 0
       bit_num = 0
+    else
+      0
     end
  #   nil
   end

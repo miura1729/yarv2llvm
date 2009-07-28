@@ -144,12 +144,34 @@ EOS
 def ari(n)
   ((n + n) * n - n) % ((n + n * n) / n) + 0
 end
+
 def arf(n)
   ((n + n) * n - n) % ((n + n * n) / n) + 0.0
 end
 EOS
    assert_equal(ari(10), arru(10))
    assert_equal(arf(10.0), arru(10.0))
+ end
+
+  def arru2(n)
+    (n ** 2)
+  end
+
+  def test_arithmetic2
+    YARV2LLVM::compile(<<-EOS, {})
+#def ari2(n)
+#  n = n + 0
+#  (n.to_f ** 2.0)
+#end
+
+def arf2(n)
+   n = n + 0.0
+  (n ** 2.0)
+end
+EOS
+
+#   assert_equal(ari2(10), arru2(10))
+   assert_equal(arf2(10.0), arru2(10.0))
  end
 
  def test_compare
@@ -464,6 +486,7 @@ EOS
   assert_equal(tembeddedstring, "Embedded string is #{n}, #{b} and #{c}")
 end
 #=end
+
 =begin
   def test_thread
     YARV2LLVM::compile(<<-EOS)
@@ -482,18 +505,42 @@ def tthread
   nil
 end
 EOS
-
    assert_equal(tthread, nil)
 end
+=end
+
+  def test_case
+    YARV2LLVM::compile(<<-EOS)
+  
+  def t_case(n)
+    case n
+    when :foo
+      1
+    when 2
+      2
+    when 2.2
+      3
+    else
+      4
+    end
+  end
+EOS
+
+    assert_equal(t_case(:foo), 1)
+    assert_equal(t_case(2), 2)
+    assert_equal(t_case(2.2), 3)
+    assert_equal(t_case("foo"), 4)
+  end
+
 
 # I can't pass this test yet.
 
-=begin
   def test_complex_type
-#    YARV2LLVM::compile(<<-EOS, {:optimize => false})
-    YARV2LLVM::compile(<<-EOS, {})
+    YARV2LLVM::compile(<<-EOS, {:optimize => false})
+#    YARV2LLVM::compile(<<-EOS, {})
         def t_complex_str(arr)
-          arr[0]
+#          arr[0]
+           arr
         end
 
         def t_complex_arr(arr)
@@ -514,5 +561,4 @@ end
 EOS
      assert_equal(t_complex(1), 1)
    end
-=end
 end

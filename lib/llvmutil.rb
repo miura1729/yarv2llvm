@@ -341,7 +341,7 @@ module SendUtil
           break
         end
       end
-    elsif lexklass then
+    elsif lexklass and rectype == nil then
       # Search lexcal class
       sup = Object.nested_const_get(lexklass)
       while sup do
@@ -372,12 +372,17 @@ module SendUtil
      return [nil, nil]
     end
 #=end
- 
+
     if candidatenum == 0 then
       return [nil, nil]
 
     elsif candidatenum == 1 then
-      minfo = mtab.values[0]
+      minfo = nil
+      if recklass then
+        minfo = mtab[recklass]
+      else
+        minfo = mtab.values[0]
+      end
       if minfo.is_a?(Hash) then
         return [minfo, minfo[:func]]
       else
@@ -386,7 +391,7 @@ module SendUtil
 
     elsif candidatenum < MaxSmallPolymotphicNum then
       # TODO : Use inline hash function generation
-      raise("Not implimented polymorphic methed call yet '#{mname}'")
+      raise("Not implimented polymorphic methed call yet '#{mname}' #{lexklass}")
 
     else
       # TODO : Use cukko-hasing and inline hash function generation
@@ -411,15 +416,18 @@ module SendUtil
   def gen_call(func, arg, b, context)
     args = []
     arg.each do |pe|
-      args.push pe[1].call(b, context).rc
+      aval = pe[1].call(b, context).rc
+      args.push aval
     end
+
     begin
       context.rc = b.call(func, *args)
-    rescue
+    rescue => e
       p func
       p args
       p args.size
-      raise
+      p e
+      raise e
     end
     context
   end
@@ -432,14 +440,18 @@ module SendUtil
     end
 #    inst = YARV2LLVM::klass2instance(reck)
 
-    if reck.methods.include?(mname) then
+    if reck.singleton_methods.include?(mname) then
       mth = reck.method(mname)
       issing = "_singleton"
       painfo =  mth.parameters
     else
+      if rectype == nil or rectype.klass == rectype.klass2 then
+        issing = ""
+      else
+        issing = "_singleton"
+      end
       mth = reck.instance_method(mname)
       painfo =  mth.parameters
-      issing = ""
     end
 
     ftype = Type.function(VALUE, [VALUE, VALUE])
@@ -481,19 +493,19 @@ module SendUtil
       para.unshift slf
       para2 = []
       para.each do |e|
-      context = e[1].call(b, context)
-      if e[0].type then
-        rcvalue = e[0].type.to_value(context.rc, b, context)
-      else
-        rcvalue = context.rc
+        context = e[1].call(b, context)
+        if e[0].type then
+          rcvalue = e[0].type.to_value(context.rc, b, context)
+        else
+          rcvalue = context.rc
+        end
+        para2.push rcvalue
       end
-      para2.push rcvalue
+      context.rc = b.call(fp, *para2)
     end
-    context.rc = b.call(fp, *para2)
+    context.rc = rett.type.from_value(context.rc, b, context)
+    context
   end
-  context.rc = rett.type.from_value(context.rc, b, context)
-  context
-end
 
 =begin
   def gen_get_framaddress(fstruct, b, context)
@@ -575,7 +587,6 @@ end
       if minfo then
         pe[0].add_same_type(minfo[:argtype][nargs - n - 1])
         minfo[:argtype][nargs - n - 1].add_same_value(pe[0])
-        pe[0].add_extent_base minfo[:argtype][nargs - n - 1]
       end
       para[n] = pe
     end
@@ -584,27 +595,22 @@ end
     v = nil
     if receiver then
       v = receiver
-      args.each do |pe|
-        pe[0].slf = v[0]
-      end
-#      p info
-#      p v[0].name
     else
       v = [local_vars[2][:type], 
         lambda {|b, context|
           context.rc = b.load(context.local_vars[2][:area])
           context}]
     end
-    if with_selfp(receiver, info[0], mname) then
-      para.push [local_vars[2][:type], lambda {|b, context|
-          context = v[1].call(b, context)
-          if v[0].type then
-            rc = v[0].type.to_value(context.rc, b, context)
-            context.rc = rc
-          end
-          context
-        }]
-    end
+
+    para.push [local_vars[2][:type], lambda {|b, context|
+      context = v[1].call(b, context)
+      if v[0].type then
+        rc = v[0].type.to_value(context.rc, b, context)
+        context.rc = rc
+      end
+      context
+    }]
+
     if blk[0] then
       para.push [local_vars[0][:type], lambda {|b, context|
           #            gen_get_framaddress(@frame_struct[code], b, context)
@@ -634,20 +640,27 @@ end
     rectype = receiver ? receiver[0] : nil
     minfo, func = gen_method_select(rectype, info[0], mname)
     if minfo then
+      rettype = minfo[:rettype]
+      # rettype = RubyType.new(nil, info[3], "Return type of #{mname}")
       pppp "RubyMethod called #{mname.inspect}"
 
       para = gen_arg_eval(args, receiver, ins, local_vars, info, minfo, mname)
-      @expstack.push [minfo[:rettype],
+      @expstack.push [rettype,
         lambda {|b, context|
           recklass = receiver ? receiver[0].klass : nil
           minfo, func = gen_method_select(rectype, info[0], mname)
+
+          if !with_selfp(receiver, info[0], mname) then
+            para.pop
+          end
+
           if func then
             gen_call(func, para ,b, context)
           else
 #            p mname
 #            p recklass
 #            raise "Undefined method \"#{mname}\" in #{info[3]}"
-            rettype = minfo[:rettype]
+#            rettype = minfo[:rettype]
             gen_call_from_ruby(rettype, receiver[0], mname, para, curlevel, b, context)
           end
         }]
@@ -673,7 +686,7 @@ end
       unless rettype.is_a?(RubyType) then
         rettype = RubyType.new(rettype, 
                                info[3], 
-                               "return type of #{mname} in forward call")
+                               "return type of #{mname} in c call")
         argtype = funcinfo[:argtype].map {|ts| RubyType.new(ts, info[3])}
       end
       cname = funcinfo[:cname]
@@ -688,22 +701,38 @@ end
         ftype = Type.function(rettype.type.llvm, argtype2)
         func = @builder.external_function(cname, ftype)
 
+        para = gen_arg_eval(args, receiver, ins, local_vars, info, nil, mname)
         if send_self then
-          para = gen_arg_eval(args, receiver, ins, local_vars, info, nil, mname)
           slf = para.pop
+          # Type of 'self' is unkown.
+          # Here is do_cfunction, Not ruby method.
+          # This is 1st argument of c function.
+          slf = [RubyType.new(nil, info[3], "1st arg of #{mname}"),
+                 receiver[1]]
           para.unshift slf
         else
-          para = gen_arg_eval(args, nil, ins, local_vars, info, nil, mname)
+          para.pop
         end
 
-        args.each_with_index do |pe, n|
-          pe[0].add_same_type argtype[n]
+        para.each_with_index do |pe, n|
           argtype[n].add_same_value pe[0]
         end
-          
+
         @expstack.push [rettype,
           lambda {|b, context|
-            gen_call(func, para, b, context)
+            targs = []
+            para.each_with_index do |pe, n|
+              aval = pe[1].call(b, context).rc
+              if argtype[n].type.llvm != pe[0].type.llvm then
+                aval1 = pe[0].type.to_value(aval, b, context)
+                aval2 = argtype[n].type.from_value(aval1, b, context)
+                aval = aval2
+              end
+              targs.push aval
+            end
+
+            context.rc = b.call(func, *targs)
+            context
           }
         ]
         return true

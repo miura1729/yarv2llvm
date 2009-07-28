@@ -60,20 +60,21 @@ class RubyType
     @same_value = []
     @@type_table.push self
     @conflicted_types = Hash.new
-
-    @extent = nil
-    @is_arg = false
-    @slf = nil
-    @extent_base = [self]
   end
   attr_accessor :type
   attr_accessor :conflicted_types
-  attr_accessor :is_arg
-  attr_accessor :slf
 
   def klass
     if @type then
       @type.klass
+    else
+      nil
+    end
+  end
+
+  def klass2
+    if @type then
+      @type.klass2
     else
       nil
     end
@@ -106,7 +107,7 @@ class RubyType
 
   def inspect2
     if @type then
-      @type.inspect2 + " [#{real_extent}]"
+      @type.inspect2
     else
       'nil'
     end
@@ -114,7 +115,6 @@ class RubyType
 
   attr_accessor :type
   attr_accessor :resolveed
-  attr_accessor :extent
   attr :name
   attr :line_no
 
@@ -257,53 +257,6 @@ class RubyType
     end
   end
 
-  EXTENT_ORDER = {
-    nil => 0,
-    :block => 1,
-    :method => 2,
-    :instance => 3,
-    :global => 4
-  }
-
-  def add_extent_base(fty)
-    @extent_base.push fty
-  end
-
-  def extent_base
-    @extent_base.map do |e|
-      if e == self then
-        @extent_base
-      else
-        e.extent_base
-      end
-    end.flatten
-  end
-  
-  def extent2
-    aext = @extent_base.map {|e| e.extent_base}.flatten
-    aext.map {|e| e.extent}
-  end
-
-  def real_extent
-    ext_all = @extent_base.map {|e| e.extent_base}.flatten
-    extmax = ext_all.max_by {|e| EXTENT_ORDER[e.extent] }
-    if extmax.extent then
-      if extmax.extent == :instance then
-        slf = extmax.slf
-        if slf.is_arg then
-          p "foo"
-          return :global
-        else
-          return slf.real_extent
-        end
-      else
-        return extmax.extent
-      end
-    end
-  
-    return :local
-  end
-
   def self.fixnum(lno = nil, name = nil, klass = Fixnum)
     RubyType.new(Type::Int32Ty, lno, name, klass)
   end
@@ -434,10 +387,14 @@ class RubyType
       RubyType.range(fst, lst, exc, lno, obj)
 
     when ::Class
-      RubyType.value(lno, obj, obj)
+      cl = RubyType.value(lno, obj, obj)
+      cl.type.klass2 = obj.class
+      cl
 
     when ::Module
-      RubyType.value(lno, obj, obj)
+      cl = RubyType.value(lno, obj, obj)
+      cl.type.klass2 = obj.class
+      cl
 
     else
       RubyType.value(lno, obj, obj.class)
@@ -449,13 +406,17 @@ class PrimitiveType
   include LLVM
   include RubyHelpers
 
+  # @@val_cache = {}
   def initialize(type, klass)
     if klass.is_a?(Symbol) then
       @klass = klass
+      @klass2 = klass
     elsif klass then
       @klass = klass.name.to_sym
+      @klass2 = klass.name.to_sym
     else
       @klass = nil
+      @klass2 = nil
     end
     @type = type
     @content = UNDEF
@@ -463,11 +424,13 @@ class PrimitiveType
   end
 
   attr_accessor :klass
+  attr_accessor :klass2
   attr_accessor :content
   attr_accessor :constant
 
   def dup_type
     nt = self.class.new(@type, @klass)
+    nt.klass2 = @klass2
     nt
   end
 
@@ -558,6 +521,13 @@ class PrimitiveType
   }
 
   def to_value(val, b, context)
+=begin
+    if @@val_cache[val] then
+      @@val_cache[val]
+    else
+      @@val_cache[val] = TYPE_HANDLER[@type][:to_value].call(val, b, context)
+    end
+=end
     TYPE_HANDLER[@type][:to_value].call(val, b, context)
   end
 
@@ -583,6 +553,7 @@ class UnsafeType
   include RubyHelpers
   def initialize(type)
     @klass = :"YARV2LLVM::LLVMLIB::Unsafe"
+    @klass2 = :"YARV2LLVM::LLVMLIB::Unsafe"
     @type = type
     @content = UNDEF
     @constant = UNDEF
@@ -590,6 +561,7 @@ class UnsafeType
   end
 
   attr_accessor :klass
+  attr_accessor :klass2
   attr_accessor :type
   attr_accessor :content
   attr_accessor :constant
@@ -636,15 +608,19 @@ class ComplexType
   def set_klass(klass)
     if klass.is_a?(::Class) then
       @klass = klass.name.to_sym
+      @klass2 = klass.name.to_sym
     elsif klass.is_a?(Symbol) then
       @klass = klass.to_sym
+      @klass2 = klass.to_sym
     else
       @klass = nil
+      @klass2 = nil
     end
     @constant = UNDEF
   end
 
   attr_accessor :klass
+  attr_accessor :klass2
   attr_accessor :constant
 
   def dup_type
