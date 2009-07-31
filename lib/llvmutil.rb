@@ -19,37 +19,73 @@ module LLVMUtil
     p2[0].add_same_type(p1[0])
   end
   
-  def check_same_type_2arg_gencode(b, context, p1, p2)
+  def primitive_value?(type)
+    type.type.llvm == VALUE and
+    type.conflicted_types.size == 1    
+  end
+
+  def convert_type_for_2arg_op(b, context, p1, p2)
     RubyType.resolve
-    if p1[0].type == nil then
-      if p2[0].type == nil then
-        print "ambious type #{p2[1].call(b, context).org}\n"
-      else
-        p1[0].type = p2[0].type.dup_type
-      end
-    else
-      if p2[0].type and p1[0].type.llvm != p2[0].type.llvm then
-        print "diff type #{p1[1].call(b, context).org}(#{p1[0].inspect2}) and #{p2[1].call(b, context).org}(#{p2[0].inspect2}) \n"
-      else
-        p2[0].type = p1[0].type.dup_type
-      end
+    int2dbl = lambda {|val, type| 
+      rtype = RubyType.float
+      [b.si_to_fp(val, Type::DoubleTy), rtype]
+    }
+    nop = lambda {|val, type| [val, type]}
+    val2prim = lambda {|val, type| 
+      rval = type.type.from_value(val, b, context)
+      ctype = type.conflicted_types.to_a[0]
+      rtype = RubyType.new(nil)
+      rtype.type = ctype[1]
+        p type.conflicted_types.keys
+      [rval, rtype]
+    }
+
+    convinfo = nil
+
+    if p1[0].type.llvm == Type::Int32Ty and
+       p2[0].type.llvm == Type::DoubleTy then
+      return [int2dbl, nop]
     end
+
+    if p1[0].type.llvm == Type::DoubleTy and
+       p2[0].type.llvm == Type::Int32Ty then
+      return [nop, int2dbl]
+    end
+
+    res = [nop, nop]
+    if primitive_value?(p1[0]) then
+      res[0] = val2prim
+    end
+
+    if primitive_value?(p2[0]) then
+      res[0] = val2prim
+    end
+
+    return res
   end
 
   def gen_common_opt_2arg(b, context, s1, s2)
     if !UNDEF.equal?(s1[0].type.constant) and 
        !UNDEF.equal?(s2[0].type.constant) then
-      return [s1[0].type.constant, s2[0].type.constant, context, true]
+      val = [s1[0].type.constant, s2[0].type.constant]
+      type = [s1[0], s2[0]]
+      return [val, type, context, true]
     end
 
-    check_same_type_2arg_gencode(b, context, s1, s2)
+    convinfo = convert_type_for_2arg_op(b, context, s1, s2)
     context = s1[1].call(b, context)
     s1val = context.rc
-    #        pppp s1[0]
+    s1type = s1[0]
+    s1val, s1type = convinfo[0].call(s1val, s1type)
+
     context = s2[1].call(b, context)
     s2val = context.rc
+    s2type = s1[0]
+    s2val, s2type = convinfo[1].call(s2val, s2type)
+    val = [s1val, s2val]
+    type = [s1type, s2type]
 
-    [[s1val, s2val], context, false]
+    [val, type, context, false]
   end
 
   def make_frame_struct(local_vars)

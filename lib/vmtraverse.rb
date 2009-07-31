@@ -1999,7 +1999,7 @@ class YarvTranslator<YarvVisitor
     @expstack.push [rettype,
       lambda {|b, context|
         sval = []
-        sval, context, constp = gen_common_opt_2arg(b, context, s[0], s[1])
+        sval, stype, context, constp = gen_common_opt_2arg(b, context, s[0], s[1])
         if constp then
           rc = sval[0] + sval[1]
           rettype.type.constant = rc
@@ -2007,7 +2007,7 @@ class YarvTranslator<YarvVisitor
           return context
         end
 
-        case s[0][0].type.llvm
+        case stype[0].type.llvm
         when Type::DoubleTy, Type::Int32Ty
           context.rc = b.add(sval[0], sval[1])
 
@@ -2027,6 +2027,7 @@ class YarvTranslator<YarvVisitor
           funcapp = context.builder.external_function('rb_str_append', ftype)
           context.rc = b.call(funcapp, rs0, rs1)
 
+=begin
         when VALUE
           if s[0][0].conflicted_types.size == 1 and
              s[1][0].conflicted_types.size == 1 then
@@ -2049,12 +2050,14 @@ class YarvTranslator<YarvVisitor
             else
               # Generic + dispatch
             end
+=end
           else
-            # Generic + dispatch
-          end
-
-        else
+            # Generic + dispatch        else
           raise "Unkown Type #{s[0][0].type.llvm}"
+        end
+
+        if rettype.type.llvm == VALUE then
+          context.rc = rettype.type.to_value(context.rc, b, context)
         end
 
         context
@@ -2067,11 +2070,12 @@ class YarvTranslator<YarvVisitor
     s[1] = @expstack.pop
     s[0] = @expstack.pop
     check_same_type_2arg_static(s[0], s[1])
-    
-    @expstack.push [s[0][0].dup_type,
+
+    rettype = s[0][0].dup_type
+    @expstack.push [rettype,
       lambda {|b, context|
         sval = []
-        sval, context, constp = gen_common_opt_2arg(b, context, s[0], s[1])
+        sval, stype, context, constp = gen_common_opt_2arg(b, context, s[0], s[1])
         if constp then
           rc = sval[0] - sval[1]
           rettype.type.constant = rc
@@ -2079,10 +2083,10 @@ class YarvTranslator<YarvVisitor
           return context
         end
 
-        case s[0][0].type.llvm
+        case stype[0].type.llvm
         when Type::DoubleTy, Type::Int32Ty
           context.rc = b.sub(sval[0], sval[1])
-          
+=begin          
         when VALUE
           if s[0][0].conflicted_types.size == 1 and
              s[1][0].conflicted_types.size == 1 then
@@ -2103,9 +2107,14 @@ class YarvTranslator<YarvVisitor
             else
               # Generic + dispatch
             end
-          else
-            # Generic + dispatch
-          end
+=end
+        else
+          # Generic + dispatch
+          raise "Unkown Type #{s[0][0].type.llvm}"
+        end
+
+        if rettype.type.llvm == VALUE then
+          context.rc = rettype.type.to_value(context.rc, b, context)
         end
 
         context
@@ -2117,11 +2126,12 @@ class YarvTranslator<YarvVisitor
     s2 = @expstack.pop
     s1 = @expstack.pop
     check_same_type_2arg_static(s1, s2)
-    
-    @expstack.push [s1[0].dup_type,
+
+    rettype = s1[0].dup_type
+    @expstack.push [rettype,
       lambda {|b, context|
         sval = []
-        sval, context, constp = gen_common_opt_2arg(b, context, s1, s2)
+        sval, stype, context, constp = gen_common_opt_2arg(b, context, s1, s2)
         if constp then
           rc = sval[0] * sval[1]
           rettype.type.constant = rc
@@ -2129,20 +2139,27 @@ class YarvTranslator<YarvVisitor
           return context
         end
 
-        case s1[0].type.llvm
+        case stype[0].type.llvm
         when Type::DoubleTy, Type::Int32Ty
           context.rc = b.mul(sval[0], sval[1])
-          
+
+=begin          
         when VALUE
           s1int = b.ashr(sval[0], 1.llvm)
           s2int = b.ashr(sval[1], 1.llvm)
           mulint = b.mul(sval[0], sval[1])
           x = b.shl(mulint, 1.llvm)
           context.rc = b.or(FIXNUM_FLAG, x)
+=end
 
         else
           raise "Unsupported type #{s1[0].inspect2}"
         end
+
+        if rettype.type.llvm == VALUE then
+          context.rc = rettype.type.to_value(context.rc, b, context)
+        end
+
         context
       }
     ]
@@ -2153,10 +2170,11 @@ class YarvTranslator<YarvVisitor
     s1 = @expstack.pop
     check_same_type_2arg_static(s1, s2)
     
-    @expstack.push [s1[0].dup_type,
+    rettype = s1[0].dup_type
+    @expstack.push [rettype,
       lambda {|b, context|
         sval = []
-        sval, context, constp = gen_common_opt_2arg(b, context, s1, s2)
+        sval, stype, context, constp = gen_common_opt_2arg(b, context, s1, s2)
         if constp then
           rc = sval[0] / sval[1]
           rettype.type.constant = rc
@@ -2164,7 +2182,7 @@ class YarvTranslator<YarvVisitor
           return context
         end
 
-        case s1[0].type.llvm
+        case stype[0].type.llvm
         when Type::DoubleTy
           context.rc = b.fdiv(sval[0], sval[1])
 
@@ -2174,6 +2192,11 @@ class YarvTranslator<YarvVisitor
         else
           raise "Unsupported type #{s1[0].inspect2}"
         end
+
+        if rettype.type.llvm == VALUE then
+          context.rc = rettype.type.to_value(context.rc, b, context)
+        end
+
         context
       }
     ]
@@ -2220,7 +2243,7 @@ class YarvTranslator<YarvVisitor
           return context
         end
 
-        sval, context, constp = gen_common_opt_2arg(b, context, s1, s2)
+        sval, stype, context, constp = gen_common_opt_2arg(b, context, s1, s2)
 
         if constp then
           rc = sval[0] % sval[1]
@@ -2231,7 +2254,7 @@ class YarvTranslator<YarvVisitor
 
         # It is right only s1 and s2 is possitive.
         # It must generate more complex code when s1 and s2 are negative.
-        case s1[0].type.llvm
+        case stype[0].type.llvm
         when Type::DoubleTy
           context.rc = b.frem(sval[0], sval[1])
 
@@ -2241,6 +2264,10 @@ class YarvTranslator<YarvVisitor
         else
           p s1[0].type.klass
           raise "Unsupported type #{s1[0].inspect2}"
+        end
+
+        if rettype.type.llvm == VALUE then
+          context.rc = rettype.type.to_value(context.rc, b, context)
         end
 
         context
@@ -2255,7 +2282,7 @@ class YarvTranslator<YarvVisitor
     @expstack.push [RubyType.boolean(info[3]), 
       lambda {|b, context|
         sval = []
-        sval, context, constp = gen_common_opt_2arg(b, context, s1, s2)
+        sval, stype, context, constp = gen_common_opt_2arg(b, context, s1, s2)
         if constp then
           rc = (sval[0] == sval[1])
           rettype.type.constant = rc
@@ -2267,7 +2294,7 @@ class YarvTranslator<YarvVisitor
           return context
         end
 
-        case s1[0].type.llvm
+        case stype[0].type.llvm
         when Type::DoubleTy
           context.rc = b.fcmp_ueq(sval[0], sval[1])
 
@@ -2279,6 +2306,7 @@ class YarvTranslator<YarvVisitor
           vv2 = s2[0].type.to_value(sval[0], b, context)
           context.rc = b.icmp_eq(vv1, vv2)
         end
+
         context
       }
     ]
@@ -2292,7 +2320,7 @@ class YarvTranslator<YarvVisitor
     @expstack.push [RubyType.boolean(info[3]), 
       lambda {|b, context|
         sval = []
-        sval, context, constp = gen_common_opt_2arg(b, context, s1, s2)
+        sval, stype, context, constp = gen_common_opt_2arg(b, context, s1, s2)
         if constp then
           rc = (sval[0] != sval[1])
           rettype.type.constant = rc
@@ -2304,7 +2332,7 @@ class YarvTranslator<YarvVisitor
           return context
         end
 
-        case s1[0].type.llvm
+        case stype[0].type.llvm
         when Type::DoubleTy
           context.rc = b.fcmp_une(sval[0], sval[1])
 
@@ -2316,6 +2344,7 @@ class YarvTranslator<YarvVisitor
           vv2 = s2[0].type.to_value(sval[0], b, context)
           context.rc = b.icmp_ne(vv1, vv2)
         end
+
         context
       }
     ]
@@ -2329,7 +2358,7 @@ class YarvTranslator<YarvVisitor
     @expstack.push [RubyType.boolean(info[3]), 
       lambda {|b, context|
         sval = []
-        sval, context, constp = gen_common_opt_2arg(b, context, s1, s2)
+        sval, stype, context, constp = gen_common_opt_2arg(b, context, s1, s2)
         if constp then
           rc = (sval[0] < sval[1])
           rettype.type.constant = rc
@@ -2341,7 +2370,7 @@ class YarvTranslator<YarvVisitor
           return context
         end
 
-        case s1[0].type.llvm
+        case stype[0].type.llvm
         when Type::DoubleTy
           context.rc = b.fcmp_ult(sval[0], sval[1])
 
@@ -2351,6 +2380,7 @@ class YarvTranslator<YarvVisitor
         else
           raise "Unsupported type #{s1[0].inspect2}"
         end
+
         context
       }
     ]
@@ -2364,7 +2394,7 @@ class YarvTranslator<YarvVisitor
     @expstack.push [RubyType.boolean(info[3]), 
       lambda {|b, context|
         sval = []
-        sval, context, constp = gen_common_opt_2arg(b, context, s1, s2)
+        sval, stype, context, constp = gen_common_opt_2arg(b, context, s1, s2)
         if constp then
           rc = (sval[0] <= sval[1])
           rettype.type.constant = rc
@@ -2376,7 +2406,7 @@ class YarvTranslator<YarvVisitor
           return context
         end
 
-        case s1[0].type.llvm
+        case stype[0].type.llvm
         when Type::DoubleTy
           context.rc = b.fcmp_ule(sval[0], sval[1])
 
@@ -2386,6 +2416,7 @@ class YarvTranslator<YarvVisitor
         else
           raise "Unsupported type #{s1[0].inspect2}"
         end
+
         context
       }
     ]
@@ -2399,7 +2430,7 @@ class YarvTranslator<YarvVisitor
     @expstack.push [RubyType.boolean(info[3]), 
       lambda {|b, context|
         sval = []
-        sval, context, constp = gen_common_opt_2arg(b, context, s1, s2)
+        sval, stype, context, constp = gen_common_opt_2arg(b, context, s1, s2)
         if constp then
           rc = (sval[0] > sval[1])
           rettype.type.constant = rc
@@ -2411,7 +2442,7 @@ class YarvTranslator<YarvVisitor
           return context
         end
 
-        case s1[0].type.llvm
+        case stype[0].type.llvm
         when Type::DoubleTy
           context.rc = b.fcmp_ugt(sval[0], sval[1])
 
@@ -2421,6 +2452,7 @@ class YarvTranslator<YarvVisitor
         else
           raise "Unsupported type #{s1[0].inspect2}"
         end
+
         context
       }
     ]
@@ -2434,7 +2466,7 @@ class YarvTranslator<YarvVisitor
     @expstack.push [RubyType.boolean(info[3]), 
       lambda {|b, context|
         sval = []
-        sval, context, constp = gen_common_opt_2arg(b, context, s1, s2)
+        sval, stype, context, constp = gen_common_opt_2arg(b, context, s1, s2)
         if constp then
           rc = (sval[0] >= sval[1])
           rettype.type.constant = rc
@@ -2446,7 +2478,7 @@ class YarvTranslator<YarvVisitor
           return context
         end
 
-        case s1[0].type.llvm
+        case stype[0].type.llvm
         when Type::DoubleTy
           context.rc = b.fcmp_uge(sval[0], sval[1])
 
@@ -2456,6 +2488,7 @@ class YarvTranslator<YarvVisitor
         else
           raise "Unsupported type #{s1[0].inspect2}"
         end
+
         context
       }
     ]
@@ -2473,7 +2506,7 @@ class YarvTranslator<YarvVisitor
     @expstack.push [rettype,
       lambda {|b, context|
         sval = []
-        sval, context, constp = gen_common_opt_2arg(b, context, s1, s2)
+        sval, stype, context, constp = gen_common_opt_2arg(b, context, s1, s2)
         if constp then
           rc = sval[0] << sval[1]
           rettype.type.constant = rc
@@ -2483,7 +2516,7 @@ class YarvTranslator<YarvVisitor
 
         # It is right only s1 and s2 is possitive.
         # It must generate more complex code when s1 and s2 are negative.
-        case s1[0].type.klass
+        case stype[0].type.klass
         when :Fixnum
           context.rc = b.shl(sval[0], sval[1])
 

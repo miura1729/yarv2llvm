@@ -224,7 +224,7 @@ class RubyType
 
             ty.conflicted_types[ty.type.klass] = ty.type
             ty.type = PrimitiveType.new(VALUE, Object)
-         end
+          end
 
         elsif ty.type then
           if dupp then
