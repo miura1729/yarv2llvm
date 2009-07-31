@@ -7,17 +7,30 @@ end
 
 module YARV2LLVM
 
-class LLVM_Struct
+class LLVM_Type
+end
+
+class LLVM_Struct<LLVM_Type
   def initialize(type, member)
     @type = type
-    @member = member
+    @index_symbol = {}
+    @member = []
+    member.each_with_index do |ele, n|
+      if ele.is_a?(Array) then
+        @member[n] = ele[0]
+        @index_symbol[ele[1]] = n
+      else
+        @member[n] = ele
+      end
+    end
   end
   
   attr_accessor :type
   attr_accessor :member
+  attr_accessor :index_symbol
 end
   
-class LLVM_Pointer
+class LLVM_Pointer<LLVM_Type
   def initialize(type, member)
     @type = type
     @member = member
@@ -27,7 +40,22 @@ class LLVM_Pointer
   attr_accessor :member
 end
 
-class LLVM_Function
+class LLVM_Array<LLVM_Type
+  def initialize(type, member, size)
+    @type = type
+    @member = member
+    @size = size
+  end
+  
+  attr_accessor :type
+  attr_accessor :member
+  attr_accessor :size
+end
+
+class LLVM_Vector<LLVM_Array
+end
+
+class LLVM_Function<LLVM_Type
   include LLVMUtil
 
   def initialize(type, ret, arga)
@@ -130,12 +158,54 @@ module MethodDefinition
         dstt = tarr[0].content
         ptr = Type.pointer(get_raw_llvm_type(dstt))
         ptr0 = LLVM_Pointer.new(ptr, dstt)
-        mess = "return type of LLVM_Pointer"
+        mess = "return type of LLVM::pointer"
         type = RubyType.value(info[3], mess, LLVM_Pointer)
         type.type.content =ptr0
         @expstack.push [type,
           lambda {|b, context|
             context.rc = ptr0.llvm
+            context
+          }
+        ]
+      }
+    },
+
+    :array => {
+      :inline_proc => lambda {|para|
+        info = para[:info]
+        tarr = para[:args][0]
+        tsiz = para[:args][1]
+        dstt = tarr[0].content
+        sizt = tsiz[0].content
+        arr = Type.array(sizt, dstt)
+        arr0 = LLVM_Array.new(arr, dstt, sizt)
+        mess = "return type of LLVM::array"
+        type = RubyType.value(info[3], mess, LLVM_Array)
+        type.type.content =arr0
+        @expstack.push [type,
+          lambda {|b, context|
+            context.rc = arr0.llvm
+            context
+          }
+        ]
+      }
+    },
+
+    :vector => {
+      :inline_proc => lambda {|para|
+        info = para[:info]
+        tarr = para[:args][0]
+        tsiz = para[:args][1]
+        dstt = tarr[0].content
+        sizt = tsiz[0].content
+        vec = Type.vector(sizt, dstt)
+        vec0 = LLVM_Vector.new(vec, dstt, sizt)
+        mess = "return type of LLVM::vector"
+        type = RubyType.value(info[3], mess, LLVM_Vector)
+        type.type.content =vec0
+        @expstack.push [type,
+          lambda {|b, context|
+            context.rc = vec0.llvm
             context
           }
         ]
@@ -177,8 +247,15 @@ module MethodDefinition
         unsafetype = RubyType.unsafe(info[3], mess, objtype)
         @expstack.push [unsafetype,
           lambda {|b, context|
-            ptr0 = ptr[1].call(b, context).rc
-            newptr = unsafetype.type.from_value(ptr0, b, context)
+            ptrrc = ptr[1].call(b, context).rc
+            ptrrc2 = ptrrc
+            if ptr[0].type.is_a?(UnsafeType) then
+              case ptr[0].type.type
+              when LLVM_Pointer, LLVM_Struct
+                ptrrc2 = b.ptr_to_int(ptrrc, VALUE)
+              end
+            end
+            newptr = unsafetype.type.from_value(ptrrc2, b, context)
             context.rc = newptr
             context
           }
@@ -216,9 +293,16 @@ module MethodDefinition
         cfuncname = cfnobj[0].content
         rfuncname = rfnobj[0].content
         mess = "External function: #{cfuncname}"
-        functype = RubyType.unsafe(info[3], mess, sig)
-        argtype = sig.arg_type_raw.map do |e|
-          RubyType.unsafe(info[3], nil, e)
+        functype = RubyType.value(info[3], mess)
+        i = 0
+        argtype = sig.arg_type.map do |e|
+            i = i + 1
+            case e
+            when UnsafeType
+              e
+            else
+              RubyType.unsafe(info[3], "Arg #{i} of #{rfuncname}", e)
+            end
         end
         mess = "ret type of #{rfuncname}"
         rettype = RubyType.unsafe(info[3], mess, sig.ret_type)
@@ -236,6 +320,167 @@ module MethodDefinition
         ]
       }
     },
+
+
+    :external_variable => {
+      :inline_proc => lambda {|para|
+        info = para[:info]
+        sigobj = para[:args][0]
+        cobj = para[:args][1]
+        
+        type = sigobj[0].content
+        cvarname = cobj[0].content
+
+        mess = "ret type of external_variable(#{cvarname})"
+        vartype = RubyType.unsafe(info[3], mess, type)
+        @expstack.push [vartype,
+          lambda {|b, context|
+            builder = context.builder
+            add = builder.external_variable(cvarname, type.llvm)
+            add2 = add
+            case vartype.type.type
+            when LLVM_Pointer, LLVM_Struct
+              add2 = b.ptr_to_int(add, VALUE)
+            end
+            newptr = vartype.type.from_value(add2, b, context)
+            context.rc = newptr
+            context
+          }
+        ]
+      }
+    },
+
+    :get_address_of_method => {
+      :inline_proc => lambda {|para|
+        info = para[:info]
+        recobj = para[:args][1]
+        mtsymobj = para[:args][0]
+        
+        mtsym = mtsymobj[0].content
+        rec = recobj[0].content.to_sym
+
+        mess = "Address of #{mtsym}"
+        rectype = RubyType.unsafe(info[3], mess, VALUE)
+        @expstack.push [rectype,
+          lambda {|b, context|
+            add = MethodDefinition::RubyMethod[mtsym][rec][:func]
+            addval = b.ptr_to_int(add, VALUE)
+            context.rc = addval
+            context
+          }
+        ]
+      }
+    },
+
+    :get_address_of_cmethod => {
+      :inline_proc => lambda {|para|
+        info = para[:info]
+        recobj = para[:args][1]
+        mtsymobj = para[:args][0]
+        
+        mtsym = mtsymobj[0].content
+        rec = recobj[0].content
+        if rec == UNDEF then
+          rec = nil
+        else
+          rec = rec.to_sym
+        end
+        cname = MethodDefinition::CMethod[rec][mtsym][:cname]
+
+        mess = "Address of #{mtsym}"
+        rectype = RubyType.unsafe(info[3], mess, VALUE)
+        @expstack.push [rectype,
+          lambda {|b, context|
+            ftype = Type.function(VALUE, [])
+            builder = context.builder
+            add = builder.external_function(cname, ftype)
+            addval = b.ptr_to_int(add, VALUE)
+            context.rc = addval
+            context
+          }
+        ]
+      }
+    },
+
+    :alloca => {
+      :inline_proc => lambda {|para|
+        info = para[:info]
+        typeobj = para[:args][0]
+        
+        type = get_raw_llvm_type(typeobj[0].content)
+        typtr = Type.pointer(type)
+        type2 = LLVM_Pointer.new(typtr, type)
+
+        mess = "Result of alloca"
+        rectype = RubyType.unsafe(info[3], mess, type2)
+        @expstack.push [rectype,
+          lambda {|b, context|
+            context.rc = b.alloca(type, 1)
+            context
+          }
+        ]
+      }
+    },
+  }
+
+  InlineMethod_Unsafe = {
+    :call => {
+      :inline_proc => lambda {|para|
+        info = para[:info]
+        args = para[:args]
+        func = para[:receiver]
+        functype = func[0].type.type.member
+        rettype = RubyType.unsafe(info[3], "Return type of call", functype.ret_type)
+        @expstack.push [rettype,
+          lambda {|b, context|
+            type = functype.type
+            argsv = []
+            args.each do |ele|
+              context = ele[1].call(b, context)
+              argsv.push context.rc
+            end
+            context = func[1].call(b, context)
+            funcptr = context.rc
+            context.rc = b.call(funcptr, *argsv)
+            context
+          }
+        ]
+      }
+    },
+
+    :address_of => {
+      :inline_proc => lambda {|para|
+        info = para[:info]
+        idx = para[:args][0]
+        arr = para[:receiver]
+        rettype = RubyType.unsafe(info[3], "Result of address_of", VALUE)
+
+        rindx = idx[0].type.constant
+        indx = rindx
+        if rindx.is_a?(Symbol) then
+          unless indx = arr[0].type.type.index_symbol[rindx]
+            raise "Unkown tag #{rindx}"
+          end
+        end
+        dstt = arr[0].type.type.member[indx]
+        if dstt.is_a?(LLVM_Type) then
+          dstt = dstt.type
+        end
+        ptr = Type.pointer(dstt)
+        rettype.type.type = LLVM_Pointer.new(ptr, dstt)
+
+        @expstack.push [rettype,
+          lambda {|b, context|
+            context = arr[1].call(b, context)
+            arrp = context.rc
+            context = idx[1].call(b, context)
+            addr = b.struct_gep(arrp, indx)
+            context.rc = addr
+            context
+          }
+        ]
+      }
+    }
   }
 
   InlineMethod_Transaction = {
@@ -391,6 +636,7 @@ module MethodDefinition
   InlineMethod[:YARV2LLVM] = InlineMethod_YARV2LLVM
   InlineMethod[:"YARV2LLVM::LLVMLIB"] = InlineMethod_LLVMLIB
   InlineMethod[:"LLVM"] = InlineMethod_LLVM
+  InlineMethod[:"YARV2LLVM::LLVMLIB::Unsafe"] = InlineMethod_Unsafe
   InlineMethod[:Transaction] = InlineMethod_Transaction
 end
 end

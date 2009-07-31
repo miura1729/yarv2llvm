@@ -211,6 +211,10 @@ class LLVMBuilder
     end
   end
 
+  def external_variable(name, type)
+    @module.external_variable(name, type)
+  end
+
   def optimize
     bitout =  Tempfile.new('bit')
     @module.write_bitcode("#{bitout.path}")

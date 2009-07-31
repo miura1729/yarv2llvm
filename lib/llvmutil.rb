@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 module YARV2LLVM
 module LLVMUtil
   include LLVM
@@ -180,6 +179,10 @@ module LLVMUtil
     local_vars = para[:local]
     blk = ins[3]
     blab = (info[1].to_s + '+blk+' + blk[1].to_s).to_sym
+    if OPTION[:inline_block] then
+      blkcode = code.blockes[blk[1]]
+      @inline_code_tab[blkcode] = code
+    end
     recklass = rec ? rec[0].klass : nil
     
     loop_cnt_current = @loop_cnt_current
@@ -258,13 +261,13 @@ module LLVMUtil
       # invoke block
       func = minfo[:func]
       if func == nil then
-        if ispassidx then
-          argtype0 = minfo[:argtype][0]
-          recele = rec[0].type.element_type
-          argtype0.add_same_type recele
-          recele.add_same_type argtype0
-          RubyType.resolve
-        end
+#        if ispassidx then
+#          argtype0 = minfo[:argtype][0]
+#          recele = rec[0].type.element_type
+#          argtype0.add_same_type recele
+#          recele.add_same_type argtype0
+#          RubyType.resolve
+#        end
         
         argtype = minfo[:argtype].map {|ele|
           if ele.type == nil
@@ -286,11 +289,19 @@ module LLVMUtil
       fm = context.current_frame
       frame = b.bit_cast(fm, P_CHAR)
       slf = b.load(local_vars[2][:area])
-      blgenfnc = @generated_code[blab]
+      blgenfnc = nil
+      if tab = @generated_code[info[0]] then
+        blgenfnc = tab[blab]
+      end
       if OPTION[:inline_block] and blgenfnc then
-        args = [b, [bodyrc, slf, frame, 0.llvm]]
+        if argsize == 1 then
+          args = [[bodyrc, slf, frame, 0.llvm], code, b, context]
+        else
+          args = [[slf, frame, 0.llvm], code, b, context]
+        end
         blgenfnc.call(args)
-        @generated_code.delete(blab)
+        @generated_code[info[0]].delete(blab)
+        @generated_define_func[info[0]].delete(blab)
       else
         if argsize == 1 then
           b.call(func, bodyrc, slf, frame, 0.llvm)
@@ -326,8 +337,11 @@ module LLVMUtil
 
   def get_raw_llvm_type(e)
     case e
-    when LLVM_Struct, LLVM_Pointer, LLVM_Function
+    when LLVM_Struct, LLVM_Pointer, LLVM_Function,
+         LLVM_Array, LLVM_Vector
       e.type
+    when Array
+      get_raw_llvm_type(e[0])
     else
       e
     end
@@ -623,6 +637,7 @@ module SendUtil
       if minfo then
         pe[0].add_same_type(minfo[:argtype][nargs - n - 1])
         minfo[:argtype][nargs - n - 1].add_same_value(pe[0])
+        pe[0].add_extent_base minfo[:argtype][nargs - n - 1]
       end
       para[n] = pe
     end
@@ -631,6 +646,9 @@ module SendUtil
     v = nil
     if receiver then
       v = receiver
+      args.each do |pe|
+        pe[0].slf = v[0]
+      end
     else
       v = [local_vars[2][:type], 
         lambda {|b, context|
@@ -781,7 +799,7 @@ module SendUtil
   def do_macro(mname, _sender_env)
     macroinfo = MethodDefinition::InlineMacro[mname]
     if macroinfo then
-      #      print macroinfo[:body]
+      # print macroinfo[:body]
       eval(macroinfo[:body])
       return true
     end

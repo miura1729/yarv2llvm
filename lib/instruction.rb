@@ -240,6 +240,14 @@ module VMLib
       end
     end
 
+    def traverse_code_block(info, action)
+      action.call(self, info)
+
+      @blockes.each do |sno, cont|
+        cont.traverse_code([info[0], info[1], sno, nil], action)
+      end
+    end
+
   end
 end
 

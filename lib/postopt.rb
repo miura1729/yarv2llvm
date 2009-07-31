@@ -5,13 +5,18 @@
 module YARV2LLVM
   class PostOptimizer
     DECL_FUNC_ATTR = {
-      "declare i32 @rb_float_new(double)\n" => " readonly nounwind"
+      "declare i32 @rb_float_new(double)\n" => "declare i32 @rb_float_new(double) readonly nounwind\n",
+      "define i32* @llvm_ivar_ptr(i32, i32, i32*) {\n" => "define i32* @llvm_ivar_ptr(i32, i32, i32*) readonly nounwind {\n"
     }
 
     def optimize(llvmstr)
       res = ""
       funcstr = ""
       llvmstr.scan(/.*\n/).each do |fstr|
+        if (newfstr = DECL_FUNC_ATTR[fstr]) then
+          p newfstr
+          fstr = newfstr
+        end
         if /^define/ =~ fstr then
           res << funcstr
           funcstr = fstr
@@ -19,9 +24,9 @@ module YARV2LLVM
           funcstr << fstr
           res << optimize_func(funcstr)
           funcstr = ""
-        elsif /^declare / =~ fstr then
-          attr = DECL_FUNC_ATTR[fstr].to_s
-          funcstr << (fstr + attr)
+#        elsif (newfstr = DECL_FUNC_ATTR[fstr]) then
+#          p newfstr
+#          funcstr << newfstr
         else
 =begin
           if /call i32 @rb_float_new\(/ =~ fstr then

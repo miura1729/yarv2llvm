@@ -60,6 +60,7 @@ module MethodDefinition
             val[0].add_same_type(arr[0].type.element_type)
             arr[0].type.element_type.add_same_type(val[0])
           end
+          val[0].add_extent_base arr[0]
 
           oldrescode = @rescode
           v = nil
@@ -110,20 +111,28 @@ module MethodDefinition
               arrp = context.rc
               context = idx[1].call(b, context)
               case arr[0].type.type
-              when LLVM_Pointer
+              when LLVM_Pointer, LLVM_Array, LLVM_Vector
                 idxp = context.rc
                 addr = b.gep(arrp, idxp)
                 b.store(v, addr)
                 context.rc = v
 
               when LLVM_Struct
-                indx = idx[0].type.constant
+                rindx = idx[0].type.constant
+                indx = rindx
+                if rindx.is_a?(Symbol) then
+                  unless indx = arr[0].type.type.index_symbol[rindx]
+                    raise "Unkown tag #{rindx}"
+                  end
+                end
                 addr = b.struct_gep(arrp, indx)
                 b.store(v, addr)
                 context.rc = v
                 
               else
-                p arr[0].type.type.class
+                p arr[0].type
+                p para[:info]
+                p idx[0].type.constant
                 raise "Unsupport type #{arr[0].type.type}"
               end
               context
@@ -132,6 +141,7 @@ module MethodDefinition
               # Todo: []= handler of other type
               p arr[0]
               p para[:info]
+              p idx[0].type.constant
               raise "Unkonw type #{arr[0].type.inspect2}"
             end
           }
@@ -474,6 +484,8 @@ module MethodDefinition
              end
              minfo[:argtype][i].add_same_type ele[0]
              ele[0].add_same_type minfo[:argtype][i]
+             ele[0].add_extent_base minfo[:argtype][i]
+             ele[0].slf = rettype
            end
 #           minfo[:argtype][-1].add_same_type rec[0]
            rec[0].add_same_type minfo[:argtype][-1]
@@ -481,6 +493,7 @@ module MethodDefinition
 
            @expstack.push [rettype, 
              lambda {|b, context|
+             # print "#{para[:info][1]} #{rettype.name} -> #{rettype.real_extent}\n"
                cargs = []
                context = rec[1].call(b, context)
                recv = context.rc
@@ -564,15 +577,23 @@ module MethodDefinition
              context = gen_get_block_ptr(info[0], info, blk, b, context)
              blkptr = context.rc
 
-             ftype = Type.function(VALUE, [VALUE, P_VALUE])
+             ftype = Type.function(VALUE, [VALUE, VALUE, VALUE])
+
+#             fname = 'y2l_create_thread'
              fname = 'rb_thread_create'
+
              builder = context.builder
+
+#             func = builder.get_or_insert_function(:Runtime, fname, ftype)
              func = builder.external_function(fname, ftype)
+
              blab = (info[1].to_s + '+blk+' + blk[1].to_s).to_sym
              stfubc = builder.make_callbackstub(
                        info[0], blab.to_s, rettype, para[:args], blkptr)
              stfubc = b.ptr_to_int(stfubc, VALUE)
-             context.rc = b.call(func, stfubc, initarea2)
+             stfubc = b.ptr_to_int(stfubc, VALUE)
+             argv = b.ptr_to_int(initarea2, VALUE)
+             context.rc = b.call(func, stfubc, argv, nil.llvm)
 
              context}]
       }
@@ -667,7 +688,7 @@ module MethodDefinition
   }
 
   # definition by yarv2llvm and arg/return type is C type (int, float, ...)
-  RubyMethod =Hash.new {|hash, key| hash[key] = {}}
+  RubyMethod = Hash.new {|hash, key| hash[key] = {}}
 
   # stub for RubyCMethod. arg/return type is always VALUE
   RubyMethodStub = Hash.new {|hash, key| hash[key] = {}}
