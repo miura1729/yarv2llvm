@@ -35,7 +35,6 @@ module LLVMUtil
       ctype = type.conflicted_types.to_a[0]
       rtype = RubyType.new(nil)
       rtype.type = ctype[1]
-        p type.conflicted_types.keys
       [rval, rtype]
     }
 

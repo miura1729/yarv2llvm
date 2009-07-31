@@ -1123,7 +1123,8 @@ class YarvTranslator<YarvVisitor
 
           ftype = Type.function(VALUE, [VALUE, VALUE])
           func = context.builder.external_function('rb_const_get', ftype)
-          context.rc = b.call(func, slf, coid.llvm)
+          val = b.call(func, slf, coid.llvm)
+          context.rc = type.type.from_value(val, b, context)
         end
 
         context.org = ins[1]
