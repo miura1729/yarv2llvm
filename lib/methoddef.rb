@@ -364,6 +364,11 @@ module MethodDefinition
                led = lambda {|b, context|
                  context = rec[1].call(b, context)
                  rc = context.rc
+                 if rec[0].type.llvm == VALUE then
+                   rc = b.ashr(rc, 1.llvm)
+                   context.rc = rc
+                 end
+                 rc
                }
                body = lambda {|b, context|
                  lcntp = context.loop_cnt_alloca_area[loop_cnt_current]

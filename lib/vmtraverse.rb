@@ -1153,6 +1153,7 @@ class YarvTranslator<YarvVisitor
 
         context = val[1].call(b, context)
         srcval = context.rc
+        srcval = implicit_type_conversion(b, context, srcval, val[0])
         srcval2 = val[0].type.to_value(srcval, b, context)
         
         ftype = Type.function(VALUE, [VALUE, VALUE, VALUE])
@@ -2925,6 +2926,8 @@ class YarvTranslator<YarvVisitor
       dsttype.type = dsttype.type.dup_type
       dsttype.type.content = srcval
 
+        p lvar[:name]
+        p lvar[:type].type
       context.rc = b.store(srcval, lvar[:area])
       context.org = lvar[:name]
       pppp "Setlocal end"

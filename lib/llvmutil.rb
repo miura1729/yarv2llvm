@@ -23,12 +23,17 @@ module LLVMUtil
     type.conflicted_types.size == 1    
   end
 
+  def implicit_type_conversion(b, context, val, type)
+    if type.src_type and 
+       type.src_type.llvm == Type::Int32Ty and
+       type.type.llvm == Type::DoubleTy then
+      val = b.si_to_fp(val, Type::DoubleTy)
+    end
+    val
+  end
+
   def convert_type_for_2arg_op(b, context, p1, p2)
     RubyType.resolve
-    int2dbl = lambda {|val, type| 
-      rtype = RubyType.float
-      [b.si_to_fp(val, Type::DoubleTy), rtype]
-    }
     nop = lambda {|val, type| [val, type]}
     val2prim = lambda {|val, type| 
       rval = type.type.from_value(val, b, context)
@@ -39,16 +44,6 @@ module LLVMUtil
     }
 
     convinfo = nil
-
-    if p1[0].type.llvm == Type::Int32Ty and
-       p2[0].type.llvm == Type::DoubleTy then
-      return [int2dbl, nop]
-    end
-
-    if p1[0].type.llvm == Type::DoubleTy and
-       p2[0].type.llvm == Type::Int32Ty then
-      return [nop, int2dbl]
-    end
 
     res = [nop, nop]
     if primitive_value?(p1[0]) then
@@ -75,11 +70,13 @@ module LLVMUtil
     s1val = context.rc
     s1type = s1[0]
     s1val, s1type = convinfo[0].call(s1val, s1type)
+    s1val = implicit_type_conversion(b, context, s1val, s1type)
 
     context = s2[1].call(b, context)
     s2val = context.rc
     s2type = s1[0]
     s2val, s2type = convinfo[1].call(s2val, s2type)
+    s2val = implicit_type_conversion(b, context, s2val, s2type)
     val = [s1val, s2val]
     type = [s1type, s2type]
 
@@ -776,6 +773,7 @@ module SendUtil
             targs = []
             para.each_with_index do |pe, n|
               aval = pe[1].call(b, context).rc
+              aval = implicit_type_conversion(b, context, aval, pe[0])
               if argtype[n].type.llvm != pe[0].type.llvm then
                 aval1 = pe[0].type.to_value(aval, b, context)
                 aval2 = argtype[n].type.from_value(aval1, b, context)

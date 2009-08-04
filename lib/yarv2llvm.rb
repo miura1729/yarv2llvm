@@ -39,6 +39,7 @@ DEF_OPTION = {
 
   :cache_instance_variable => true,
   :strict_type_inference => false,
+  :implicit_numeric_type_conversion => true,
 
   :inline_block => false,
 

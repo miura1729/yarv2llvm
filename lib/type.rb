@@ -34,6 +34,8 @@ def variable_argument?(para)
 end
 module_function :variable_argument?
 
+NUMERIC_TYPES = [LLVM::Type::Int32Ty, LLVM::Type::DoubleTy]
+
 class RubyType
   include LLVM
   include RubyHelpers
@@ -43,6 +45,7 @@ class RubyType
   def initialize(type, lno = nil, name = nil, klass = nil)
     @name = name
     @line_no = lno
+    @type = nil
     if type == nil 
       @type = nil
     elsif type.is_a?(UnsafeType) then
@@ -52,6 +55,7 @@ class RubyType
     else
       @type = PrimitiveType.new(type, klass)
     end
+    @src_type = nil
 
 #      @klass = klass.name.to_sym
 
@@ -66,6 +70,7 @@ class RubyType
     @extent_base = [self]
   end
   attr_accessor :type
+  attr_accessor :src_type
   attr_accessor :conflicted_types
   attr_accessor :is_arg
   attr_accessor :slf
@@ -220,20 +225,34 @@ class RubyType
 
         ty.conflicted_types.merge!(@conflicted_types)
         if ty.type and ty.type.llvm != @type.llvm then
-          mess = "Type conflict \n"
-          mess += "  #{ty.name}(#{ty.type.inspect2}) defined in #{ty.line_no} \n"
-          mess += "  #{@name}(#{@type.inspect2}) define in #{@line_no} \n"
-          if OPTION[:strict_type_inference] then
-            raise mess
-          else
-            if OPTION[:type_message] then
-              print mess
+          if !OPTION[:implicit_numeric_type_conversion] or
+             !(NUMERIC_TYPES.include?(ty.type.llvm) and
+               NUMERIC_TYPES.include?(@type.llvm)) then
+            mess = "Type conflict \n"
+            mess += "  #{ty.name}(#{ty.type.inspect2}) defined in #{ty.line_no} \n"
+            mess += "  #{@name}(#{@type.inspect2}) define in #{@line_no} \n"
+            if OPTION[:strict_type_inference] then
+              raise mess
+            else
+              if OPTION[:type_message] then
+                print mess
+              end
+
+              ty.conflicted_types[ty.type.klass] = ty.type
+              ty.type = PrimitiveType.new(VALUE, Object)
             end
-
-            ty.conflicted_types[ty.type.klass] = ty.type
-            ty.type = PrimitiveType.new(VALUE, Object)
+          else
+            dstidx = NUMERIC_TYPES.index(ty.type.llvm)
+            srcidx = NUMERIC_TYPES.index(@type.llvm)
+            if  dstidx < srcidx then
+              ntype = PrimitiveType.new(@type.llvm, @type.klass)
+              if !UNDEF.equal?(ty.type.constant) then
+                ntype.constant = ty.type.constant.to_f
+              end
+              ty.src_type = ty.type
+              ty.type = ntype
+            end
           end
-
         elsif ty.type then
           if dupp then
             contorg = ty.type.content
