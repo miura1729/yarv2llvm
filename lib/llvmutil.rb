@@ -16,6 +16,14 @@ module LLVMUtil
   def check_same_type_2arg_static(p1, p2)
     p1[0].add_same_type(p2[0])
     p2[0].add_same_type(p1[0])
+    rettype = p1[0].dup_type
+    p2[0].add_same_type rettype
+
+    RubyType.resolve
+    if rettype.dst_type
+      rettype.type = rettype.dst_type
+    end
+    rettype
   end
   
   def primitive_value?(type)
@@ -24,9 +32,10 @@ module LLVMUtil
   end
 
   def implicit_type_conversion(b, context, val, type)
-    if type.src_type and 
-       type.src_type.llvm == Type::Int32Ty and
-       type.type.llvm == Type::DoubleTy then
+    if type.dst_type and 
+       type.dst_type.llvm == Type::DoubleTy and
+       type.type.llvm == Type::Int32Ty then
+
       val = b.si_to_fp(val, Type::DoubleTy)
     end
     val
@@ -70,13 +79,17 @@ module LLVMUtil
     s1val = context.rc
     s1type = s1[0]
     s1val, s1type = convinfo[0].call(s1val, s1type)
-    s1val = implicit_type_conversion(b, context, s1val, s1type)
 
     context = s2[1].call(b, context)
     s2val = context.rc
-    s2type = s1[0]
+    s2type = s2[0]
     s2val, s2type = convinfo[1].call(s2val, s2type)
-    s2val = implicit_type_conversion(b, context, s2val, s2type)
+
+    if s1type.type.llvm != s2type.type.llvm then
+      s1val = implicit_type_conversion(b, context, s1val, s1type)
+      s2val = implicit_type_conversion(b, context, s2val, s2type)
+    end
+
     val = [s1val, s2val]
     type = [s1type, s2type]
 
@@ -773,11 +786,15 @@ module SendUtil
             targs = []
             para.each_with_index do |pe, n|
               aval = pe[1].call(b, context).rc
-              aval = implicit_type_conversion(b, context, aval, pe[0])
               if argtype[n].type.llvm != pe[0].type.llvm then
-                aval1 = pe[0].type.to_value(aval, b, context)
-                aval2 = argtype[n].type.from_value(aval1, b, context)
-                aval = aval2
+                if pe[0].dst_type and
+                   argtype[n].type.llvm == pe[0].dst_type.llvm then
+                  aval = implicit_type_conversion(b, context, aval, pe[0])
+                else
+                  aval1 = pe[0].type.to_value(aval, b, context)
+                  aval2 = argtype[n].type.from_value(aval1, b, context)
+                  aval = aval2
+                end
               end
               targs.push aval
             end

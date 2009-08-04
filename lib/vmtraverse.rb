@@ -1153,7 +1153,6 @@ class YarvTranslator<YarvVisitor
 
         context = val[1].call(b, context)
         srcval = context.rc
-        srcval = implicit_type_conversion(b, context, srcval, val[0])
         srcval2 = val[0].type.to_value(srcval, b, context)
         
         ftype = Type.function(VALUE, [VALUE, VALUE, VALUE])
@@ -2148,7 +2147,7 @@ class YarvTranslator<YarvVisitor
     s = []
     s[1] = @expstack.pop
     s[0] = @expstack.pop
-    check_same_type_2arg_static(s[0], s[1])
+    rettype = check_same_type_2arg_static(s[0], s[1])
     case s[0][0].type.llvm
     when Type::DoubleTy, Type::Int32Ty
       rettype = s[0][0].dup_type
@@ -2234,9 +2233,8 @@ class YarvTranslator<YarvVisitor
     s = []
     s[1] = @expstack.pop
     s[0] = @expstack.pop
-    check_same_type_2arg_static(s[0], s[1])
+    rettype = check_same_type_2arg_static(s[0], s[1])
 
-    rettype = s[0][0].dup_type
     @expstack.push [rettype,
       lambda {|b, context|
         sval = []
@@ -2290,9 +2288,8 @@ class YarvTranslator<YarvVisitor
   def visit_opt_mult(code, ins, local_vars, ln, info)
     s2 = @expstack.pop
     s1 = @expstack.pop
-    check_same_type_2arg_static(s1, s2)
+    rettype = check_same_type_2arg_static(s1, s2)
 
-    rettype = s1[0].dup_type
     @expstack.push [rettype,
       lambda {|b, context|
         sval = []
@@ -2333,9 +2330,8 @@ class YarvTranslator<YarvVisitor
   def visit_opt_div(code, ins, local_vars, ln, info)
     s2 = @expstack.pop
     s1 = @expstack.pop
-    check_same_type_2arg_static(s1, s2)
+    rettype = check_same_type_2arg_static(s1, s2)
     
-    rettype = s1[0].dup_type
     @expstack.push [rettype,
       lambda {|b, context|
         sval = []
@@ -2377,8 +2373,7 @@ class YarvTranslator<YarvVisitor
       end
       rettype = RubyType.value(info[3], "return type of %")
     else
-      check_same_type_2arg_static(s1, s2)
-      rettype = s1[0].dup_type
+      rettype = check_same_type_2arg_static(s1, s2)
     end
 
     @expstack.push [rettype,
@@ -2665,7 +2660,7 @@ class YarvTranslator<YarvVisitor
     s1 = @expstack.pop
     rettype = s1[0].dup_type
     if s1[0].type and s1[0].type.klass != Array then
-      check_same_type_2arg_static(s1, s2)
+      rettype = check_same_type_2arg_static(s1, s2)
     end
 
     @expstack.push [rettype,
@@ -2926,8 +2921,6 @@ class YarvTranslator<YarvVisitor
       dsttype.type = dsttype.type.dup_type
       dsttype.type.content = srcval
 
-        p lvar[:name]
-        p lvar[:type].type
       context.rc = b.store(srcval, lvar[:area])
       context.org = lvar[:name]
       pppp "Setlocal end"

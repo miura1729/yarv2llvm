@@ -55,7 +55,7 @@ class RubyType
     else
       @type = PrimitiveType.new(type, klass)
     end
-    @src_type = nil
+    @dst_type = nil
 
 #      @klass = klass.name.to_sym
 
@@ -70,7 +70,7 @@ class RubyType
     @extent_base = [self]
   end
   attr_accessor :type
-  attr_accessor :src_type
+  attr_accessor :dst_type
   attr_accessor :conflicted_types
   attr_accessor :is_arg
   attr_accessor :slf
@@ -246,11 +246,7 @@ class RubyType
             srcidx = NUMERIC_TYPES.index(@type.llvm)
             if  dstidx < srcidx then
               ntype = PrimitiveType.new(@type.llvm, @type.klass)
-              if !UNDEF.equal?(ty.type.constant) then
-                ntype.constant = ty.type.constant.to_f
-              end
-              ty.src_type = ty.type
-              ty.type = ntype
+              ty.dst_type = ntype
             end
           end
         elsif ty.type then
