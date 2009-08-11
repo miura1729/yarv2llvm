@@ -213,6 +213,16 @@ class RubyType
               else
                 ty.type = @type
               end
+            elsif @type.is_a?(AbstructContainerType) then
+              # resolve element of container(Array, Hash)
+              if @type.element_type.klass != ty.type.element_type.klass then
+                if dupp then
+                  ty.type.element_type.type = @type.element_type.type.dup_type
+                else
+                  ty.type.element_type.type = @type.element_type.type
+                end
+                return
+              end
             end
             ty.resolve
             next

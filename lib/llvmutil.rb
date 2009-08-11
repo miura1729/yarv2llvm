@@ -60,14 +60,15 @@ module LLVMUtil
     end
 
     if primitive_value?(p2[0]) then
-      res[0] = val2prim
+      res[1] = val2prim
     end
 
     return res
   end
 
   def gen_common_opt_2arg(b, context, s1, s2)
-    if !UNDEF.equal?(s1[0].type.constant) and 
+    if s1[0].type and s2[0].type and
+       !UNDEF.equal?(s1[0].type.constant) and 
        !UNDEF.equal?(s2[0].type.constant) then
       val = [s1[0].type.constant, s2[0].type.constant]
       type = [s1[0], s2[0]]
@@ -657,6 +658,9 @@ module SendUtil
       v = receiver
       args.each do |pe|
         pe[0].slf = v[0]
+      end
+      if minfo and minfo[:self] then
+        v[0].add_same_type minfo[:self]
       end
     else
       v = [local_vars[2][:type], 

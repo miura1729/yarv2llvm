@@ -413,6 +413,17 @@ class YarvTranslator<YarvVisitor
 
     @instance_vars_local = {}
 
+    minfo = nil
+    if info[1] then
+      minfo = MethodDefinition::RubyMethod[info[1]][info[0]]
+      if minfo == nil then
+        minfo = MethodDefinition::RubyMethod[info[1]][nil]
+        if minfo then
+          MethodDefinition::RubyMethod[info[1]][info[0]] = minfo
+        end
+      end
+    end
+
     lbase = ([nil, nil, nil, nil] + code.header['locals'].reverse)
     lbase.each_with_index do |n, i|
       local_vars[i] = {
@@ -423,7 +434,12 @@ class YarvTranslator<YarvVisitor
     local_vars[0][:type] = RubyType.new(P_CHAR, info[3], "Parent frame")
     local_vars[1][:type] = RubyType.new(Type::Int32Ty, info[3], 
                                         "Pointer to block")
-    local_vars[2][:type] = RubyType.from_sym(info[0], info[3], "self")
+    sty = nil
+    if minfo.is_a?(Hash) and sty = minfo[:self] then
+      local_vars[2][:type] = sty
+    else
+      local_vars[2][:type] = RubyType.from_sym(info[0], info[3], "self")
+    end
     local_vars[3][:type] = RubyType.new(Type::Int32Ty, info[3], 
                                         "Exception Status")
 
@@ -449,13 +465,6 @@ class YarvTranslator<YarvVisitor
 
     # regist function to RubyMthhod for recursive call
     if info[1] then
-      minfo = MethodDefinition::RubyMethod[info[1]][info[0]]
-      if minfo == nil then
-        minfo = MethodDefinition::RubyMethod[info[1]][nil]
-        if minfo then
-          MethodDefinition::RubyMethod[info[1]][info[0]] = minfo
-        end
-      end
       if !minfo.is_a?(Hash) then
         argt = []
         1.upto(numarg) do |n|
@@ -474,6 +483,7 @@ class YarvTranslator<YarvVisitor
         MethodDefinition::RubyMethod[info[1]][info[0]]= {
           :defined => true,
           :argtype => argt,
+          :self    => local_vars[2][:type],
           :rettype => RubyType.new(nil, info[3], "Return type of #{info[1]}")
         }
       elsif minfo[:defined] then
@@ -1471,7 +1481,27 @@ class YarvTranslator<YarvVisitor
   # concatarray
   # splatarray
   # checkincludearray
-  # newhash
+
+  def visit_newhash(code, ins, local_vars, ln, info)
+    nele = ins[1]
+    inits = []
+    htype = RubyType.value(info[3], "Return type of newhash", Hash)
+
+    nele.times do |n|
+      k = @expstack.pop
+      v = @expstack.pop
+      inits.push [k, v]
+    end
+
+    @expstack.push [htype,
+      lambda {|b, context|
+        ftype = Type.function(VALUE, [])
+        func = context.builder.external_function('rb_hash_new', ftype)
+        rc = b.call(func)
+        context.rc = rc
+        context
+    }]
+  end
 
   def visit_newrange(code, ins, local_vars, ln, info)
     lst = @expstack.pop
@@ -2217,6 +2247,7 @@ class YarvTranslator<YarvVisitor
 =end
           else
             # Generic + dispatch        else
+          p info
           raise "Unkown Type #{s[0][0].type.llvm}"
         end
 

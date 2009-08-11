@@ -441,7 +441,7 @@ module MethodDefinition
                   context
                   
                 else
-                  raise "Do not supported #{rec[0].inspect}"
+                  raise "Do not supported #{rec[0].inspect2}"
                 end
             }]
       }
