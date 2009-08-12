@@ -1506,7 +1506,7 @@ class YarvTranslator<YarvVisitor
   def visit_newrange(code, ins, local_vars, ln, info)
     lst = @expstack.pop
     fst = @expstack.pop
-    flg = ins[1]
+    flg = (ins[1] == 0)
     rtype = RubyType.range(fst[0], lst[0], flg, info[3])
     @expstack.push [rtype,
        lambda {|b, context|
@@ -2764,6 +2764,7 @@ class YarvTranslator<YarvVisitor
       rettype = arr[0].type.element_type
 
     else
+      p info
       p arr[0]
       raise "Unkown Type #{arr[0].klass}"
     end

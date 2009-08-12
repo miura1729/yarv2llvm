@@ -236,7 +236,7 @@ module LLVMUtil
       end
     end
     
-    lambda {|b, context, lst, led, body, recval|
+    lambda {|b, context, lst, led, body, recval, excl|
       if argsize == 1 then
         if rec[0].type.is_a?(ComplexType) then
           rec[0].type.element_type.add_same_type atype
@@ -259,8 +259,14 @@ module LLVMUtil
       
       # loop branch
       b.set_insert_point(bcond)
+
       clcnt = b.load(lcntp)
-      cnd = b.icmp_slt(clcnt, ledval)
+      cnd = nil
+      if excl then
+        cnd = b.icmp_sle(clcnt, ledval)
+      else
+        cnd = b.icmp_slt(clcnt, ledval)
+      end
       b.cond_br(cnd, bbody, bexit)
       
       b.set_insert_point(bbody)

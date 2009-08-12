@@ -374,7 +374,7 @@ module MethodDefinition
                  lcntp = context.loop_cnt_alloca_area[loop_cnt_current]
                  rc = b.load(lcntp)
                }
-               context = loopproc.call(b, context, lst, led, body, rcval)
+               context = loopproc.call(b, context, lst, led, body, rcval, false)
              }]
       }
     },
@@ -410,7 +410,8 @@ module MethodDefinition
                       av
                     end
                   }
-                  context = loopproc.call(b, context, lst, led, body, rcval)
+                  context = loopproc.call(b, context, 
+                                          lst, led, body, rcval, false)
                   context
 
                 when :Range
@@ -426,18 +427,23 @@ module MethodDefinition
                   }
                   led = lambda {|b, context|
                     lstt = rec[0].type.last
+                    res = nil
                     if !UNDEF.equal?(lstt.type.constant) then
-                      lstt.type.constant
+                      res = lstt.type.constant
                     else
-                      lstt.name.llvm
+                      res = lstt.name.llvm
                     end
+
+                    res
                   }
                   body = lambda {|b, context|
                     lcntp = context.loop_cnt_alloca_area[loop_cnt_current]
                     b.load(lcntp)
                   }
 
-                  context = loopproc.call(b, context, lst, led, body, rcval)
+                  excl = rec[0].type.excl
+                  context = loopproc.call(b, context, 
+                                          lst, led, body, rcval, excl)
                   context
                   
                 else

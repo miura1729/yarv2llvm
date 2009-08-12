@@ -29,16 +29,24 @@ end
 class Fixnum
   def step(ed, st)
     i = self
-    while i * st < ed * st do
-      yield i
-      i = i + st
+    if st > 0 then
+      while i <= ed do
+        yield i
+        i = i + st
+      end
+    else
+      while ed <= i do
+        yield i
+        i = i + st
+      end
     end
   end
 end
 
 class Array
   def at(i)
-    self[i]
+    s = self
+    s[i]
   end
 end
 =end
