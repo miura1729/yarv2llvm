@@ -25,6 +25,7 @@ end
 YARV2LLVM::define_macro :foobar do |arg|
 end
 
+=begin
 class Fixnum
   def step(ed, st)
     i = self
@@ -40,9 +41,17 @@ class Fixnum
       end
     end
   end
+
+  def **(n)
+    i = self
+    r = 1
+    n.times do
+     r = r * i
+    end
+    r
+  end
 end
 
-=begin
 class Array
   def at(i)
     s = self

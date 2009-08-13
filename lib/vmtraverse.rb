@@ -2722,6 +2722,148 @@ class YarvTranslator<YarvVisitor
       }]
   end
 
+  def opt_aref_aux(b, context, arr, idx, rettype, level)
+    case arr[0].klass
+    when :Array
+      context = idx[1].call(b, context)
+      idxp = context.rc
+      if OPTION[:array_range_check] then
+        context = arr[1].call(b, context)
+        arrp = context.rc
+        ftype = Type.function(VALUE, [VALUE, MACHINE_WORD])
+        func = context.builder.external_function('rb_ary_entry', ftype)
+        av = b.call(func, arrp, idxp)
+        arrelet = arr[0].type.element_type.type
+        if arrelet then
+          context.rc = arrelet.from_value(av, b, context)
+        else
+          context.rc = av
+        end
+        context
+        
+      else
+        if cont = arr[0].type.element_content[idxp] then
+          # Content of array corresponding index exists
+          context.rc = cont
+        else
+          if arr[0].type.ptr then
+            # Array body in register
+            abdy = arr[0].type.ptr
+          else
+            embed = context.builder.create_block
+            nonembed = context.builder.create_block
+            comm = context.builder.create_block
+            context = arr[1].call(b, context)
+            arrp = context.rc
+            arrp = b.int_to_ptr(arrp, P_RARRAY)
+            arrhp = b.struct_gep(arrp, 0)
+            arrhp = b.struct_gep(arrhp, 0)
+            arrh = b.load(arrhp)
+            isemb = b.and(arrh, EMBEDER_FLAG.llvm)
+            isemb = b.icmp_ne(isemb, 0.llvm)
+            b.cond_br(isemb, embed, nonembed)
+            
+            #  Embedded format
+            b.set_insert_point(embed)
+            eabdy = b.struct_gep(arrp, 1)
+            eabdy = b.int_to_ptr(eabdy, P_VALUE)
+            
+            b.br(comm)
+            
+            #  Not embedded format
+            b.set_insert_point(nonembed)
+            nabdyp = b.struct_gep(arrp, 3)
+            nabdy = b.load(nabdyp)
+            b.br(comm)
+            
+            b.set_insert_point(comm)
+            abdy = b.phi(P_VALUE)
+            abdy.add_incoming(eabdy, embed)
+            abdy.add_incoming(nabdy, nonembed)
+            arr[0].type.ptr = abdy
+            
+            context.blocks_tail[context.curln] = comm
+          end
+          avp = b.gep(abdy, idxp)
+          av = b.load(avp)
+          arrelet = arr[0].type.element_type.type
+          context.rc = arrelet.from_value(av, b, context)
+          arr[0].type.element_content[idxp] = av
+        end
+        context
+      end
+
+    when :Hash
+      context = idx[1].call(b, context)
+      idxp = context.rc
+      idxval = idx[0].type.to_value(idxp, b, context)
+      context = arr[1].call(b, context)
+      arrp = context.rc
+      ftype = Type.function(VALUE, [VALUE, VALUE])
+      func = context.builder.external_function('rb_hash_aref', ftype)
+      av = b.call(func, arrp, idxval)
+      context.rc = av
+      
+      context
+
+    when :String
+      raise "Not impremented String::[] in #{info[3]}"
+      context
+
+    when :Struct
+      context = idx[1].call(b, context)
+      idxp = context.rc
+      idxval = idx[0].type.to_value(idxp, b, context)
+      context = arr[1].call(b, context)
+      arrp = context.rc
+      ftype = Type.function(VALUE, [VALUE, VALUE])
+      func = context.builder.external_function('rb_struct_aref', ftype)
+      av = b.call(func, arrp, idxval)
+      context.rc = av
+          
+      context
+      
+    when :"YARV2LLVM::LLVMLIB::Unsafe"
+      context = arr[1].call(b, context)
+      arrp = context.rc
+      context = idx[1].call(b, context)
+      case arr[0].type.type
+      when LLVM_Pointer, LLVM_Array, LLVM_Vector
+        idxp = context.rc
+        rettype.type.type = arr[0].type.type.member
+        addr = b.gep(arrp, idxp)
+        context.rc = b.load(addr)
+
+      when LLVM_Struct
+        addr = b.struct_gep(arrp, indx)
+        context.rc = b.load(addr)
+
+      else
+        p arr[0].type.type.class
+        raise "Unsupport type #{arr[0].type.type}"
+      end
+      context
+
+    else
+      if level == 0 then
+        arr[0].conflicted_types.each do |klass, carr|
+          if carr.is_a?(ComplexType) then
+            rettype = carr.element_type
+            arr[0].type = carr
+            res = opt_aref_aux(b, context, arr, idx, rettype, level + 1)
+            if res then
+              return res
+            end
+          end
+        end
+        pp arr[0]
+        raise "Not impremented #{arr[0].inspect2} in #{info[3]}"
+      else
+        nil
+      end
+    end
+  end
+
   def visit_opt_aref(code, ins, local_vars, ln, info)
     idx = @expstack.pop
     arr = @expstack.pop
@@ -2773,133 +2915,7 @@ class YarvTranslator<YarvVisitor
     @expstack.push [rettype,
       lambda {|b, context|
         pppp "aref start"
-        case arr[0].klass
-        when :Array
-          context = idx[1].call(b, context)
-          idxp = context.rc
-          if OPTION[:array_range_check] then
-            context = arr[1].call(b, context)
-            arrp = context.rc
-            ftype = Type.function(VALUE, [VALUE, MACHINE_WORD])
-            func = context.builder.external_function('rb_ary_entry', ftype)
-            av = b.call(func, arrp, idxp)
-            arrelet = arr[0].type.element_type.type
-            if arrelet then
-              context.rc = arrelet.from_value(av, b, context)
-            else
-              context.rc = av
-            end
-            context
-
-          else
-            if cont = arr[0].type.element_content[idxp] then
-              # Content of array corresponding index exists
-              context.rc = cont
-            else
-              if arr[0].type.ptr then
-                # Array body in register
-                abdy = arr[0].type.ptr
-              else
-	        embed = context.builder.create_block
-                nonembed = context.builder.create_block
-                comm = context.builder.create_block
-                context = arr[1].call(b, context)
-                arrp = context.rc
-                arrp = b.int_to_ptr(arrp, P_RARRAY)
-                arrhp = b.struct_gep(arrp, 0)
-                arrhp = b.struct_gep(arrhp, 0)
-                arrh = b.load(arrhp)
-                isemb = b.and(arrh, EMBEDER_FLAG.llvm)
-                isemb = b.icmp_ne(isemb, 0.llvm)
-                b.cond_br(isemb, embed, nonembed)
-
-                #  Embedded format
-                b.set_insert_point(embed)
-                eabdy = b.struct_gep(arrp, 1)
-                eabdy = b.int_to_ptr(eabdy, P_VALUE)
-
-                b.br(comm)
-
-		#  Not embedded format
-                b.set_insert_point(nonembed)
-                nabdyp = b.struct_gep(arrp, 3)
-                nabdy = b.load(nabdyp)
-                b.br(comm)
-
-                b.set_insert_point(comm)
-                abdy = b.phi(P_VALUE)
-                abdy.add_incoming(eabdy, embed)
-                abdy.add_incoming(nabdy, nonembed)
-                arr[0].type.ptr = abdy
-
-		context.blocks_tail[context.curln] = comm
-              end
-              avp = b.gep(abdy, idxp)
-              av = b.load(avp)
-              arrelet = arr[0].type.element_type.type
-              context.rc = arrelet.from_value(av, b, context)
-              arr[0].type.element_content[idxp] = av
-            end
-            context
-          end
-
-        when :Hash
-          context = idx[1].call(b, context)
-          idxp = context.rc
-          idxval = idx[0].type.to_value(idxp, b, context)
-          context = arr[1].call(b, context)
-          arrp = context.rc
-          ftype = Type.function(VALUE, [VALUE, VALUE])
-          func = context.builder.external_function('rb_hash_aref', ftype)
-          av = b.call(func, arrp, idxval)
-          context.rc = av
-          
-          context
-
-        when :String
-          raise "Not impremented String::[] in #{info[3]}"
-          context
-
-        when :Struct
-          context = idx[1].call(b, context)
-          idxp = context.rc
-          idxval = idx[0].type.to_value(idxp, b, context)
-          context = arr[1].call(b, context)
-          arrp = context.rc
-          ftype = Type.function(VALUE, [VALUE, VALUE])
-          func = context.builder.external_function('rb_struct_aref', ftype)
-          av = b.call(func, arrp, idxval)
-          context.rc = av
-          
-          context
-
-        when :"YARV2LLVM::LLVMLIB::Unsafe"
-          context = arr[1].call(b, context)
-          arrp = context.rc
-          context = idx[1].call(b, context)
-          case arr[0].type.type
-          when LLVM_Pointer, LLVM_Array, LLVM_Vector
-            idxp = context.rc
-            rettype.type.type = arr[0].type.type.member
-            addr = b.gep(arrp, idxp)
-            context.rc = b.load(addr)
-
-          when LLVM_Struct
-            addr = b.struct_gep(arrp, indx)
-            context.rc = b.load(addr)
-
-          else
-            p arr[0].type.type.class
-            raise "Unsupport type #{arr[0].type.type}"
-          end
-          context
-
-        else
-          # Todo: Hash table?
-          pp arr[0]
-          raise "Not impremented #{arr[0].inspect2} in #{info[3]}"
-          context
-        end
+        opt_aref_aux(b, context, arr, idx, rettype, 0)
       }
     ]
   end
