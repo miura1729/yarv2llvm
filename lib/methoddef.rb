@@ -49,6 +49,23 @@ module MethodDefinition
       }
     },
           
+    :dup => {
+      :inline_proc =>
+        lambda {|para|
+          info = para[:info]
+          rec = para[:receiver]
+
+          @expstack.push [rec[0], 
+            lambda {|b, context|
+              context = rec[1].call(b, context)
+              recobj = context.rc
+              ftype = Type.function(VALUE, [VALUE])
+              func = @builder.external_function('rb_obj_dup', ftype)
+              context.rc = b.call(func, recobj)
+              context}]
+        }
+     },
+
     :[]= => {
       :inline_proc => 
         lambda {|para|
@@ -307,7 +324,6 @@ module MethodDefinition
         lambda {|para|
           info = para[:info]
           rtype = RubyType.value(info[3], "Return type of sprintf")
-          fname = 'rb_f_sprintf'
           gen_call_var_args(para, 'rb_f_sprintf', rtype)
         }
      },
@@ -457,7 +473,7 @@ module MethodDefinition
        :inline_proc =>
          lambda {|para|
            rec = para[:receiver]
-           args = para[:args]
+           args = para[:args].reverse
            nargs = args.size
            arraycurlevel = 0
            if nargs != 0 then
@@ -489,7 +505,7 @@ module MethodDefinition
              minfo[:defined] = false
            end
 
-           args.reverse.each_with_index do |ele, i|
+           args.each_with_index do |ele, i|
              if minfo[:argtype][i] == nil then
                minfo[:argtype][i] = RubyType.new(nil)
              end

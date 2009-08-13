@@ -25,7 +25,6 @@ end
 YARV2LLVM::define_macro :foobar do |arg|
 end
 
-=begin
 class Fixnum
   def step(ed, st)
     i = self
@@ -43,6 +42,7 @@ class Fixnum
   end
 end
 
+=begin
 class Array
   def at(i)
     s = self

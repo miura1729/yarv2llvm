@@ -105,11 +105,7 @@ class LLVMBuilder
 
     narg = argt.size
     argt.each_with_index do |ar, n|
-      if n == 0 or name != "initialize" then
-        v = ar.type.from_value(@stubfunc.arguments[n], b, context)
-      else
-        v = ar.type.from_value(@stubfunc.arguments[narg - n], b, context)
-      end
+      v = ar.type.from_value(@stubfunc.arguments[n], b, context)
       argv.push v
     end
 

@@ -2764,9 +2764,10 @@ class YarvTranslator<YarvVisitor
       rettype = arr[0].type.element_type
 
     else
-      p info
-      p arr[0]
-      raise "Unkown Type #{arr[0].klass}"
+      rettype = RubyType.new(nil)
+      #      p info
+      #      pp arr[0]
+      #      raise "Unkown Type #{arr[0].klass}"
     end
 
     @expstack.push [rettype,
