@@ -1124,7 +1124,13 @@ class YarvTranslator<YarvVisitor
     end
     @expstack.push [type,
       lambda {|b, context|
-        if val then
+        if !UNDEF.equal?(type.type.constant) then
+          context.rc = type.type.constant.llvm
+
+        elsif !UNDEF.equal?(type.type.content) then
+          context.rc = type.type.content.llvm
+
+        elsif val then
           context.rc = val.llvm
         else
           slf = Object.llvm
@@ -1299,7 +1305,7 @@ class YarvTranslator<YarvVisitor
         when VALUE
           context.rc = orgtype.to_value(p1.llvm, b, context)
         when P_CHAR
-          context.rc = p1.llvm(b)
+          context.rc = p1.llvm2(b)
         else
           context.rc = p1.llvm
         end
@@ -1316,9 +1322,15 @@ class YarvTranslator<YarvVisitor
 
   def visit_putstring(code, ins, local_vars, ln, info)
     p1 = ins[1]
-    @expstack.push [RubyType.typeof(p1, info[3], p1), 
+    type = RubyType.typeof(p1, info[3], p1)
+    type.type.constant = p1
+    type.type.content = p1
+
+    @expstack.push [type, 
       lambda {|b, context| 
-        context.rc = p1.llvm(b)
+        ftype = Type.function(VALUE, [P_CHAR])
+        func = context.builder.external_function('rb_str_new_cstr', ftype)
+        context.rc = b.call(func, p1.llvm2(b))
         context.org = p1
         context
       }]
@@ -1326,7 +1338,7 @@ class YarvTranslator<YarvVisitor
 
   def visit_concatstrings(code, ins, local_vars, ln, info)
     nele = ins[1]
-    rett = RubyType.value(info[3], "return type tostring", String)
+    rett = RubyType.value(info[3], "return type concatstring", String)
     eles = []
     nele.times do
       eles.push @expstack.pop
@@ -2201,11 +2213,11 @@ class YarvTranslator<YarvVisitor
           return context
         end
 
-        case stype[0].type.llvm
-        when Type::DoubleTy, Type::Int32Ty
+        case stype[0].klass
+        when :Fixnum, :Float
           context.rc = b.add(sval[0], sval[1])
 
-        when P_CHAR
+        when :String
           ftype = Type.function(VALUE, [P_CHAR])
           fname = 'rb_str_new_cstr'
           funcnewstr = context.builder.external_function(fname, ftype)
@@ -2690,8 +2702,12 @@ class YarvTranslator<YarvVisitor
     s2 = @expstack.pop
     s1 = @expstack.pop
     rettype = s1[0].dup_type
-    if s1[0].type and s1[0].type.klass != Array then
-      rettype = check_same_type_2arg_static(s1, s2)
+    if s1[0].type 
+      if s1[0].type.klass == :String then
+        rettype = check_same_type_2arg_static(s1, s2)
+      elsif s1[0].type.klass != :Array then
+        rettype = check_same_type_2arg_static(s1, s2)
+      end
     end
 
     @expstack.push [rettype,
@@ -2712,7 +2728,17 @@ class YarvTranslator<YarvVisitor
           context.rc = b.shl(sval[0], sval[1])
 
         when :Array
-          raise "Unsupported type #{s1[0].inspect2}"
+          ftype = Type.function(VALUE, [VALUE, VALUE])
+          func = context.builder.external_function('rb_ary_push', ftype)
+          context.rc = b.call(func, sval[0], sval[1])
+
+        when :String
+          ftype = Type.function(VALUE, [VALUE, VALUE])
+          func = context.builder.external_function('rb_str_concat', ftype)
+          sval[0] = stype[0].type.to_value(sval[0], b, context)
+          sval[1] = stype[1].type.to_value(sval[1], b, context)
+          rcvalue = b.call(func, sval[0], sval[1])
+          context.rc = rettype.type.from_value(rcvalue, b, context)
 
         else
           raise "Unsupported type #{s1[0].inspect2}"
@@ -2921,7 +2947,30 @@ class YarvTranslator<YarvVisitor
   end
 
   # opt_aset
-  # opt_length
+
+  def visit_opt_length(code, ins, local_vars, ln, info)
+    rec = @expstack.pop
+    rettype = RubyType.fixnum(info[3], "return type of length", Fixnum)
+    @expstack.push [rettype, 
+      lambda {|b, context|
+        case rec[0].type.klass
+        when :String
+          context = rec[1].call(b, context)
+          recval = context.rc
+          recval = rec[0].type.to_value(recval, b, context)
+          ftype = Type.function(VALUE, [VALUE])
+          func = context.builder.external_function('rb_str_length', ftype)
+          rcvalue = b.call(func, recval)
+          context.rc = rettype.type.from_value(rcvalue, b, context)
+          
+        else
+          raise "Not support type #{lst[0].type.inspect2} in length"
+        end
+                      
+        context
+      }]
+  end
+
   # opt_succ
   # opt_not
   # opt_regexpmatch1
@@ -3096,7 +3145,7 @@ class YarvTranslator<YarvVisitor
     MethodDefinition::RubyMethodStub.each do |name, klasstab|
       klasstab.each do |rec, m|
         unless m[:outputp]
-          nameptr = name.llvm(b)
+          nameptr = name.llvm2(b)
           stubval = b.ptr_to_int(m[:stub], VALUE)
           if rec then
             recptr = Object.const_get(rec)

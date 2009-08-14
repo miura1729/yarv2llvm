@@ -395,6 +395,17 @@ EXTENT_ORDER = {
     RubyType.new(type, lno, name, :"YARV2LLVM::LLVMLIB::Unsafe")
   end
 
+  def self.from_llvm(llvm, lno, name)
+    case llvm
+    when Type::Int32Ty
+      RubyType.new(llvm, lno, name, :Fixnum)
+    when Type::DoubleTy
+      RubyType.new(llvm, lno, name, :Float)
+    else
+      raise "Unkown type"
+    end
+  end
+
   def self.from_sym(sym, lno, name)
     case sym
     when :Fixnum
@@ -886,21 +897,15 @@ class StringType<AbstructContainerType
   end
 
   def to_value(val, b, context)
-    ftype = Type.function(VALUE, [P_CHAR])
-    func = context.builder.external_function('rb_str_new_cstr', ftype)
-    b.call(func, val)
+    val
   end
 
   def from_value(val, b, context)
-    ftype = Type.function(P_CHAR, [P_VALUE])
-    func = context.builder.external_function('rb_string_value_ptr', ftype)
-    strp = b.alloca(VALUE, 1)
-    b.store(val, strp)
-    b.call(func, strp)
+    val
   end
 
   def llvm
-    P_CHAR
+    VALUE
   end
 end
 

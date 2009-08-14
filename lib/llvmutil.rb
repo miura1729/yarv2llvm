@@ -757,10 +757,10 @@ module SendUtil
       rettype = funcinfo[:rettype]
       argtype = funcinfo[:argtype]
       unless rettype.is_a?(RubyType) then
-        rettype = RubyType.new(rettype, 
+        rettype = RubyType.from_llvm(rettype, 
                                info[3], 
                                "return type of #{mname} in c call")
-        argtype = funcinfo[:argtype].map {|ts| RubyType.new(ts, info[3])}
+        argtype = funcinfo[:argtype].map {|ts| RubyType.from_llvm(ts, info[3], "")}
       end
       cname = funcinfo[:cname]
       send_self = funcinfo[:send_self]

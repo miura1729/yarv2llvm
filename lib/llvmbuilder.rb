@@ -34,6 +34,10 @@ class LLVMBuilder
     ns.gsub!(/@/, "_a")
     ns.gsub!(/\?/, "_q")
     ns.gsub!(/\+/, "_p")
+    ns.gsub!(/\//, "_d")
+    ns.gsub!(/\*/, "_A")
+    ns.gsub!(/\%/, "_P")
+    ns.gsub!(/\-/, "_m")
     ns
   end
 

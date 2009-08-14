@@ -98,7 +98,7 @@ class Float
 end
 
 class String
-  def llvm(b)
+  def llvm2(b)
     b.create_global_string_ptr(self)
   end
 end
