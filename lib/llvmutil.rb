@@ -394,31 +394,18 @@ module SendUtil
     end
 
     # inheritance search
+    obj = nil
     if recklass then
-      sup = Object.nested_const_get(recklass)
-      while sup do
-        minfo = mtab[sup.name.to_sym]
-        if minfo.is_a?(Hash) then
-          return [minfo, minfo[:func]]
-        end
-        if sup.is_a?(Class) then
-          sup = sup.superclass
-        else
-          break
-        end
-      end
+      obj = Object.nested_const_get(recklass)
     elsif lexklass and rectype == nil then
       # Search lexcal class
-      sup = Object.nested_const_get(lexklass)
-      while sup do
+      obj = Object.nested_const_get(lexklass)
+    end
+    if obj then
+      obj.ancestors.each do |sup|
         minfo = mtab[sup.name.to_sym]
         if minfo.is_a?(Hash) then
           return [minfo, minfo[:func]]
-        end
-        if sup.is_a?(Class) then
-          sup = sup.superclass
-        else
-          break
         end
       end
     end
@@ -467,16 +454,23 @@ module SendUtil
 
   def get_inline_function(recklass, lexklass, mname)
     funcinfo = nil
-    if recklass and MethodDefinition::InlineMethod[recklass] then
-      funcinfo = MethodDefinition::InlineMethod[recklass][mname]
-    elsif MethodDefinition::InlineMethod[lexklass] then
-      funcinfo = MethodDefinition::InlineMethod[lexklass][mname]
+    if recklass then
+      obj = Object.nested_const_get(recklass)
+    else
+      obj = Object.nested_const_get(lexklass)
     end
-    if funcinfo == nil then
-      funcinfo = MethodDefinition::InlineMethod[nil][mname]
+
+    if obj then
+      obj.ancestors.each do |sup|
+        kls = sup.name.to_sym
+        if tbl = MethodDefinition::InlineMethod[kls] and
+           funcinfo = tbl[mname] then
+          return funcinfo
+        end
+      end
     end
-    
-    funcinfo
+
+    MethodDefinition::InlineMethod[nil][mname]
   end
 
   def gen_call(func, arg, b, context)
@@ -572,22 +566,6 @@ module SendUtil
     context.rc = rett.type.from_value(context.rc, b, context)
     context
   end
-
-=begin
-  def gen_get_framaddress(fstruct, b, context)
-    ftype = Type.function(P_CHAR, [MACHINE_WORD])
-    func = context.builder.external_function('llvm.frameaddress', ftype)
-    fraw = b.call(func, 0.llvm)
-
-    fraw2 = b.bit_cast(fraw, fstruct)
-    fraw2 = b.gep(fraw2, -1.llvm)
-    fraw = b.bit_cast(fraw2, P_CHAR)
-    fraw = b.gep(fraw, -4.llvm)
-   
-    context.rc = fraw
-    context
-  end
-=end
 
   def gen_get_block_ptr(recklass, info, blk, b, context)
     blab = (info[1].to_s + '+blk+' + blk[1].to_s).to_sym

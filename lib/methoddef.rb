@@ -573,6 +573,27 @@ module MethodDefinition
     },
   }
 
+  InlineMethod_Enumerable = {
+    :to_a => {
+      :inline_proc => 
+        lambda {|para|
+          info = para[:info]
+          rec = para[:receiver]
+          rett = RubyType.array(info[3])
+
+          level = @expstack.size
+          if @array_alloca_size == nil or @array_alloca_size < 1 + level then
+            @array_alloca_size = 1 + level
+          end
+
+          @expstack.push [rett, 
+            lambda {|b, context|
+              context = gen_call_from_ruby(rett, rec[0], :to_a, [rec], 0, b, context)
+              context}]
+      }
+    }
+  }
+
   InlineMethod_Thread = {
     :new => {
       :inline_proc => lambda {|para|
@@ -664,6 +685,7 @@ module MethodDefinition
   InlineMethod = {
     nil => InlineMethod_nil,
     :Thread => InlineMethod_Thread,
+    :Enumerable => InlineMethod_Enumerable,
   }
 
   InlineMacro = {

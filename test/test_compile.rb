@@ -561,4 +561,14 @@ EOS
 EOS
      assert_equal(t_complex(1), 1)
    end
+
+  def test_range_to_a
+#    YARV2LLVM::compile(<<-EOS, {:disasm => true})
+    YARV2LLVM::compile(<<-EOS, {})
+        def t_range_to_a
+          (1..10).to_a
+        end
+EOS
+     assert_equal(t_range_to_a, (1..10).to_a)
+   end
 end

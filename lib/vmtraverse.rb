@@ -487,7 +487,7 @@ class YarvTranslator<YarvVisitor
           :rettype => RubyType.new(nil, info[3], "Return type of #{info[1]}")
         }
       elsif minfo[:defined] then
-        raise "#{info[1]} is already defined in #{info[3]}"
+#        raise "#{info[1]} is already defined in #{info[3]}"
 
       else
         # already Call but defined(forward call)
@@ -2218,17 +2218,19 @@ class YarvTranslator<YarvVisitor
           context.rc = b.add(sval[0], sval[1])
 
         when :String
-          ftype = Type.function(VALUE, [P_CHAR])
-          fname = 'rb_str_new_cstr'
-          funcnewstr = context.builder.external_function(fname, ftype)
-          rs0 = b.call(funcnewstr, sval[0])
-          if s[1][0].type.llvm == P_CHAR then
-            rs1 = b.call(funcnewstr, sval[1])
-          elsif s[1][0].type.llvm == VALUE then
-            rs1 = sval[1]
-          else
-            raise "Unkown type #{s[1][0].type.llvm}"
-          end
+#          ftype = Type.function(VALUE, [P_CHAR])
+#          fname = 'rb_str_new_cstr'
+#          funcnewstr = context.builder.external_function(fname, ftype)
+#          rs0 = b.call(funcnewstr, sval[0])
+#          if s[1][0].type.llvm == P_CHAR then
+#            rs1 = b.call(funcnewstr, sval[1])
+#          elsif s[1][0].type.llvm == VALUE then
+#            rs1 = sval[1]
+#          else
+#            raise "Unkown type #{s[1][0].type.llvm}"
+#          end
+          rs0 = sval[0]
+          rs1 = sval[1]
           ftype = Type.function(VALUE, [VALUE, VALUE])
           funcapp = context.builder.external_function('rb_str_append', ftype)
           context.rc = b.call(funcapp, rs0, rs1)
@@ -2964,7 +2966,7 @@ class YarvTranslator<YarvVisitor
           context.rc = rettype.type.from_value(rcvalue, b, context)
           
         else
-          raise "Not support type #{lst[0].type.inspect2} in length"
+          raise "Not support type #{lst[0].inspect2} in length"
         end
                       
         context
