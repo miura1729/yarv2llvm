@@ -38,7 +38,7 @@ if __FILE__ == $0 then
     y2lopt[:strict_type_inderence] = f
   end
 
-  opt.on('--[no-]implicit_numeric_type_conversion', 
+  opt.on('--[no-]implicit-numeric-type-conversion', 
          'Implicit type conversion. For example Fixnum to Float') do |f|
     y2lopt[:implicit_numeric_type_conversion] = f
   end

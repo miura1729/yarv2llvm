@@ -66,6 +66,23 @@ module MethodDefinition
         }
      },
 
+    :clone => {
+      :inline_proc =>
+        lambda {|para|
+          info = para[:info]
+          rec = para[:receiver]
+
+          @expstack.push [rec[0], 
+            lambda {|b, context|
+              context = rec[1].call(b, context)
+              recobj = context.rc
+              ftype = Type.function(VALUE, [VALUE])
+              func = @builder.external_function('rb_obj_clone', ftype)
+              context.rc = b.call(func, recobj)
+              context}]
+        }
+     },
+
     :[]= => {
       :inline_proc => 
         lambda {|para|
@@ -588,7 +605,73 @@ module MethodDefinition
 
           @expstack.push [rett, 
             lambda {|b, context|
-              context = gen_call_from_ruby(rett, rec[0], :to_a, [rec], 0, b, context)
+              context = gen_call_from_ruby(rett, rec[0], :to_a, [rec], level, 
+                                           b, context)
+              context}]
+      }
+    },
+
+  }
+
+  InlineMethod_Array = {
+    :first => {
+      :inline_proc => 
+        lambda {|para|
+          info = para[:info]
+          rec = para[:receiver]
+          rett = RubyType.value(info[3])
+
+          level = @expstack.size
+          if @array_alloca_size == nil or @array_alloca_size < 1 + level then
+            @array_alloca_size = 1 + level
+          end
+
+          @expstack.push [rett, 
+            lambda {|b, context|
+              context = gen_call_from_ruby(rett, rec[0], :first, [rec], level, 
+                                           b, context)
+              context}]
+      }
+    },
+
+    :reverse => {
+      :inline_proc => 
+        lambda {|para|
+          info = para[:info]
+          rec = para[:receiver]
+          rett = RubyType.array(info[3])
+
+          level = @expstack.size
+          if @array_alloca_size == nil or @array_alloca_size < 1 + level then
+            @array_alloca_size = 1 + level
+          end
+
+          @expstack.push [rett, 
+            lambda {|b, context|
+              context = gen_call_from_ruby(rett, rec[0], :reverse, [rec], level, 
+                                           b, context)
+              context}]
+      }
+    },
+
+    :slice! => {
+      :inline_proc => 
+        lambda {|para|
+          info = para[:info]
+          rec = para[:receiver]
+          args = para[:args]
+          rett = RubyType.array(info[3], "return type of slice!")
+
+          level = @expstack.size
+          if @array_alloca_size == nil or @array_alloca_size < 3 + level then
+            @array_alloca_size = 3 + level
+          end
+
+          @expstack.push [rett, 
+            lambda {|b, context|
+              pvec = [args[1], args[0], rec]
+              context = gen_call_from_ruby(rett, rec[0], :slice!, pvec, level, 
+                                           b, context)
               context}]
       }
     }
@@ -686,6 +769,7 @@ module MethodDefinition
     nil => InlineMethod_nil,
     :Thread => InlineMethod_Thread,
     :Enumerable => InlineMethod_Enumerable,
+    :Array => InlineMethod_Array,
   }
 
   InlineMacro = {

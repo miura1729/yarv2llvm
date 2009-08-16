@@ -51,11 +51,11 @@ class Fixnum
   end
 end
 
-=begin
+#=begin
 class Array
   def at(i)
     s = self
     s[i]
   end
 end
-=end
+#=end

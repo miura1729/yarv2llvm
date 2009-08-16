@@ -1518,19 +1518,20 @@ class YarvTranslator<YarvVisitor
   def visit_newrange(code, ins, local_vars, ln, info)
     lst = @expstack.pop
     fst = @expstack.pop
-    flg = (ins[1] == 0)
-    rtype = RubyType.range(fst[0], lst[0], flg, info[3])
+    exclflg = ins[1]
+    rtype = RubyType.range(fst[0], lst[0], (exclflg == 0), info[3])
     @expstack.push [rtype,
        lambda {|b, context|
          case fst[0].type.llvm
          when Type::Int32Ty
-           valint = fst[1].call(b, context).rc
-           rtype.type.first.type.constant = valint
+           valfst = nil
+           valfstint = fst[1].call(b, context).rc
+           rtype.type.first.type.constant = valfstint
 
          when VALUE
-           val = fst[1].call(b, context).rc
-           valint = b.ashr(val, 1.llvm)
-           rtype.type.first.type.constant = valint
+           valfst = fst[1].call(b, context).rc
+           valfstint = b.ashr(val, 1.llvm)
+           rtype.type.first.type.constant = valfstint
 
          else
            raise "Not support type #{fst[0].type.inspect2} in Range"
@@ -1538,21 +1539,32 @@ class YarvTranslator<YarvVisitor
 
          case lst[0].type.llvm
          when Type::Int32Ty
-           valint = lst[1].call(b, context).rc
-           valint = b.add(valint, 1.llvm) if flg == 0
-           rtype.type.last.type.constant = valint
+           vallst = nil
+           vallstint = lst[1].call(b, context).rc
+#           valint = b.add(valint, 1.llvm) if exclflg == 0
+           rtype.type.last.type.constant = vallstint
 
          when VALUE
-           val = lst[1].call(b, context).rc
-           valint = b.ashr(val, 1.llvm)
-           valint = b.add(valint, 1.llvm) if flg == 0
-           rtype.type.last.type.constant = valint
+           vallst = lst[1].call(b, context).rc
+           vallstint = b.ashr(val, 1.llvm)
+#           valint = b.add(valint, 1.llvm) if exclflg == 0
+           rtype.type.last.type.constant = vallstint
 
          else
            raise "Not support type #{lst[0].type.inspect2} in Range"
          end
 
-         context.rc = 4.llvm
+         if valfst == nil then
+           valfst = fst[0].type.to_value(valfstint, b, context)
+         end
+         if vallst == nil then
+           vallst = lst[0].type.to_value(vallstint, b, context)
+         end
+         ftype = Type.function(VALUE, [VALUE, VALUE, Type::Int32Ty])
+         fname = 'rb_range_new'
+         builder = context.builder
+         func = builder.external_function(fname, ftype)
+         context.rc = b.call(func, valfst, vallst, exclflg.llvm)
          context
     }]
   end
@@ -1993,7 +2005,9 @@ class YarvTranslator<YarvVisitor
       context = retexp[1].call(b, context)
       rc = context.rc
       if rett2.type.llvm == VALUE then
-        rc = retexp[0].type.to_value(rc, b, context)
+        if retexp[0].type then
+          rc = retexp[0].type.to_value(rc, b, context)
+        end
       end
       if rc == nil then
         rc = 4.llvm
@@ -2076,7 +2090,11 @@ class YarvTranslator<YarvVisitor
     if valexp then
       @expstack.push [valexp[0],
         lambda {|b, context| 
-          context.rc = context.block_value[fmlab][1]
+          if context.block_value[fmlab] then
+            context.rc = context.block_value[fmlab][1]
+          else
+            context.rc = 4.llvm
+          end
           context
         }]
     end
@@ -2218,21 +2236,17 @@ class YarvTranslator<YarvVisitor
           context.rc = b.add(sval[0], sval[1])
 
         when :String
-#          ftype = Type.function(VALUE, [P_CHAR])
-#          fname = 'rb_str_new_cstr'
-#          funcnewstr = context.builder.external_function(fname, ftype)
-#          rs0 = b.call(funcnewstr, sval[0])
-#          if s[1][0].type.llvm == P_CHAR then
-#            rs1 = b.call(funcnewstr, sval[1])
-#          elsif s[1][0].type.llvm == VALUE then
-#            rs1 = sval[1]
-#          else
-#            raise "Unkown type #{s[1][0].type.llvm}"
-#          end
           rs0 = sval[0]
           rs1 = sval[1]
           ftype = Type.function(VALUE, [VALUE, VALUE])
           funcapp = context.builder.external_function('rb_str_append', ftype)
+          context.rc = b.call(funcapp, rs0, rs1)
+
+        when :Array
+          rs0 = sval[0]
+          rs1 = sval[1]
+          ftype = Type.function(VALUE, [VALUE, VALUE])
+          funcapp = context.builder.external_function('rb_ary_plus', ftype)
           context.rc = b.call(funcapp, rs0, rs1)
 
 =begin
@@ -2995,6 +3009,7 @@ class YarvTranslator<YarvVisitor
         if UNDEF.equal?(context.rc = type.type.content) then
           context.rc = b.load(context.local_vars[voff][:area])
         end
+
         context.org = local_vars[voff][:name]
         context
       }]
@@ -3009,11 +3024,12 @@ class YarvTranslator<YarvVisitor
     srctype.add_same_type(dsttype)
     dsttype.add_same_value(srctype)
     srctype.add_extent_base dsttype
-
+    
     oldrescode = @rescode
     @rescode = lambda {|b, context|
       pppp "Setlocal start"
       context = oldrescode.call(b, context)
+
       context = srcvalue.call(b, context)
       srcval = context.rc
       lvar = context.local_vars[voff]
@@ -3023,6 +3039,7 @@ class YarvTranslator<YarvVisitor
 
       context.rc = b.store(srcval, lvar[:area])
       context.org = lvar[:name]
+          
       pppp "Setlocal end"
       context
     }
