@@ -195,7 +195,7 @@ class YarvTranslator<YarvVisitor
 
     # True means current method include 
     # throw instruction (break, next, continue, redo in block statement)
-    @have_yield = false
+    @have_throw = false
 
     # Size of alloca area for call rb_ary_new4 and new
     #  nil is not allocate
@@ -660,6 +660,7 @@ class YarvTranslator<YarvVisitor
 
     if MethodDefinition::RubyMethod[info[1]][info[0]].is_a?(Hash) then
       MethodDefinition::RubyMethod[info[1]][info[0]][:have_throw] = have_throw
+      MethodDefinition::RubyMethod[info[1]][info[0]][:have_yield] = have_yield
     end
 
     rett2 = nil
@@ -1916,7 +1917,8 @@ class YarvTranslator<YarvVisitor
   # invokesuper
 
   def visit_invokeblock(code, ins, local_vars, ln, info)
-    @have_yield = true
+#    @have_yield = true
+    set_have_yield(info, true)
 
     narg = ins[1]
     arg = []
@@ -2347,22 +2349,48 @@ class YarvTranslator<YarvVisitor
   def visit_opt_mult(code, ins, local_vars, ln, info)
     s2 = @expstack.pop
     s1 = @expstack.pop
-    rettype = check_same_type_2arg_static(s1, s2)
+      
+    level = nil
+    if s1[0].type == nil or
+        s1[0].klass == :Array then
+      level = @expstack.size
+      if @array_alloca_size == nil or @array_alloca_size < 1 + level then
+        @array_alloca_size = 1 + level
+      end
+      rettype = RubyType.array(info[3], "return type of *")
+      s1[0].type.element_type.add_same_type(rettype.type.element_type)
+    else
+      rettype = check_same_type_2arg_static(s1, s2)
+    end
 
     @expstack.push [rettype,
       lambda {|b, context|
-        sval = []
-        sval, stype, context, constp = gen_common_opt_2arg(b, context, s1, s2)
-        if constp then
-          rc = sval[0] * sval[1]
-          rettype.type.constant = rc
-          context.rc = rc.llvm
+        if s1[0].klass != :Array then
+          sval = []
+          sval, stype, context, constp = gen_common_opt_2arg(b, context, s1, s2)
+          if constp then
+            rc = sval[0] * sval[1]
+            rettype.type.constant = rc
+            context.rc = rc.llvm
+            return context
+          end
+        else
+          context = gen_call_from_ruby(rettype, s1[0], :*, [s2, s1], level, 
+                                       b, context)
           return context
         end
 
-        case stype[0].type.llvm
-        when Type::DoubleTy, Type::Int32Ty
+        case stype[0].klass
+        when :Fixnum, :Float
           context.rc = b.mul(sval[0], sval[1])
+
+        when :String
+          rs0 = sval[0]
+          rs1int = sval[1]
+          rs1 = stype[1].to_value(rs1int, b, context)
+          ftype = Type.function(VALUE, [VALUE, VALUE])
+          funcapp = context.builder.external_function('rb_str_times', ftype)
+          context.rc = b.call(funcapp, rs0, rs1)
 
 =begin          
         when VALUE
@@ -2966,6 +2994,11 @@ class YarvTranslator<YarvVisitor
 
   def visit_opt_length(code, ins, local_vars, ln, info)
     rec = @expstack.pop
+    level = @expstack.size
+    if @array_alloca_size == nil or @array_alloca_size < 1 + level then
+      @array_alloca_size = 1 + level
+    end
+
     rettype = RubyType.fixnum(info[3], "return type of length", Fixnum)
     @expstack.push [rettype, 
       lambda {|b, context|
@@ -2979,8 +3012,12 @@ class YarvTranslator<YarvVisitor
           rcvalue = b.call(func, recval)
           context.rc = rettype.type.from_value(rcvalue, b, context)
           
+        when :Array
+          context = gen_call_from_ruby(rettype, rec[0], :length, [rec], level, 
+                                       b, context)
+
         else
-          raise "Not support type #{lst[0].inspect2} in length"
+          raise "Not support type #{rec[0].inspect2} in length"
         end
                       
         context
@@ -3181,6 +3218,13 @@ class YarvTranslator<YarvVisitor
 
     b.return(4.llvm)
     builder.current_function
+  end
+
+  def set_have_yield(info, val)
+    if MethodDefinition::RubyMethod[info[1]][info[0]].is_a?(Hash) then
+      MethodDefinition::RubyMethod[info[1]][info[0]][:have_yield] = val
+    end
+    @have_yield = val
   end
 end
 

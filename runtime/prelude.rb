@@ -51,11 +51,22 @@ class Fixnum
   end
 end
 
-#=begin
 class Array
   def at(i)
     s = self
     s[i]
   end
 end
-#=end
+
+module Enumerable
+  def collect
+    res = []
+    i = 0
+    self.each do |e|
+      res[i] = yield e
+      i = i + 1
+    end
+
+    res
+  end
+end
