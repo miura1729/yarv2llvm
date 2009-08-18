@@ -2334,6 +2334,7 @@ class YarvTranslator<YarvVisitor
 =end
         else
           # Generic + dispatch
+          p info
           raise "Unkown Type #{s[0][0].type.llvm}"
         end
 
@@ -2351,8 +2352,7 @@ class YarvTranslator<YarvVisitor
     s1 = @expstack.pop
       
     level = nil
-    if s1[0].type == nil or
-        s1[0].klass == :Array then
+    if s1[0].klass == :Array then
       level = @expstack.size
       if @array_alloca_size == nil or @array_alloca_size < 1 + level then
         @array_alloca_size = 1 + level
@@ -2792,7 +2792,7 @@ class YarvTranslator<YarvVisitor
       }]
   end
 
-  def opt_aref_aux(b, context, arr, idx, rettype, level)
+  def opt_aref_aux(b, context, arr, idx, rettype, level, info)
     case arr[0].klass
     when :Array
       context = idx[1].call(b, context)
@@ -2877,7 +2877,7 @@ class YarvTranslator<YarvVisitor
       context
 
     when :String
-      raise "Not impremented String::[] in #{info[3]}"
+      raise "Not impremented String::[] #{info[3]}"
       context
 
     when :Struct
@@ -2920,7 +2920,7 @@ class YarvTranslator<YarvVisitor
           if carr.is_a?(ComplexType) then
             rettype = carr.element_type
             arr[0].type = carr
-            res = opt_aref_aux(b, context, arr, idx, rettype, level + 1)
+            res = opt_aref_aux(b, context, arr, idx, rettype, level + 1, info)
             if res then
               return res
             end
@@ -2944,9 +2944,10 @@ class YarvTranslator<YarvVisitor
     end
 
     RubyType.resolve
+
     # AbstrubctContainorType is type which have [] and []= as method.
     if arr[0].type == nil then
-      arr[0].type = AbstructContainerType.new(nil)
+      RubyType.new(AbstructContainerType.new(nil)).add_same_type arr[0]
     end
 
     rettype = nil
@@ -2985,7 +2986,7 @@ class YarvTranslator<YarvVisitor
     @expstack.push [rettype,
       lambda {|b, context|
         pppp "aref start"
-        opt_aref_aux(b, context, arr, idx, rettype, 0)
+        opt_aref_aux(b, context, arr, idx, rettype, 0, info)
       }
     ]
   end

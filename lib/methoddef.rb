@@ -588,32 +588,7 @@ module MethodDefinition
           end
       }
     },
-  }
 
-  InlineMethod_Enumerable = {
-    :to_a => {
-      :inline_proc => 
-        lambda {|para|
-          info = para[:info]
-          rec = para[:receiver]
-          rett = RubyType.array(info[3])
-
-          level = @expstack.size
-          if @array_alloca_size == nil or @array_alloca_size < 1 + level then
-            @array_alloca_size = 1 + level
-          end
-
-          @expstack.push [rett, 
-            lambda {|b, context|
-              context = gen_call_from_ruby(rett, rec[0], :to_a, [rec], level, 
-                                           b, context)
-              context}]
-      }
-    },
-
-  }
-
-  InlineMethod_Array = {
     :first => {
       :inline_proc => 
         lambda {|para|
@@ -674,7 +649,59 @@ module MethodDefinition
                                            b, context)
               context}]
       }
-    }
+    },
+
+
+    :at => {
+      :inline_proc => 
+        lambda {|para|
+          info = para[:info]
+          rec = para[:receiver]
+          args = para[:args]
+          rett = RubyType.new(nil, info[3], "return type of at")
+          arr = RubyType.array
+          arr.add_same_type rec[0]
+          arr.type.element_type.add_same_type rett
+
+          level = @expstack.size
+          if @array_alloca_size == nil or @array_alloca_size < 3 + level then
+            @array_alloca_size = 3 + level
+          end
+
+          @expstack.push [rett,
+            lambda {|b, context|
+              pvec = [args[0], rec]
+              context = gen_call_from_ruby(rett, rec[0], :at, pvec, level, 
+                                           b, context)
+              context}]
+      }
+    },
+  }
+
+  InlineMethod_Enumerable = {
+    :to_a => {
+      :inline_proc => 
+        lambda {|para|
+          info = para[:info]
+          rec = para[:receiver]
+          rett = RubyType.array(info[3])
+
+          level = @expstack.size
+          if @array_alloca_size == nil or @array_alloca_size < 1 + level then
+            @array_alloca_size = 1 + level
+          end
+
+          @expstack.push [rett, 
+            lambda {|b, context|
+              context = gen_call_from_ruby(rett, rec[0], :to_a, [rec], level, 
+                                           b, context)
+              context}]
+      }
+    },
+
+  }
+
+  InlineMethod_Array = {
   }
 
   InlineMethod_Thread = {

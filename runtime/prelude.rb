@@ -52,13 +52,6 @@ class Fixnum
 end
 
 class Array
-  def at(i)
-    s = self
-    s[i]
-  end
-end
-
-module Enumerable
   def collect
     res = []
     i = 0

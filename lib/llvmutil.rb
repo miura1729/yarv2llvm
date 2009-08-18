@@ -645,6 +645,7 @@ module SendUtil
       end
       if minfo and minfo[:self] then
         v[0].add_same_type minfo[:self]
+        minfo[:self].add_same_type v[0]
       end
     else
       v = [local_vars[2][:type], 
