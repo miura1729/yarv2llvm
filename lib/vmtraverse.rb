@@ -2947,7 +2947,8 @@ class YarvTranslator<YarvVisitor
 
     # AbstrubctContainorType is type which have [] and []= as method.
     if arr[0].type == nil then
-      RubyType.new(AbstructContainerType.new(nil)).add_same_type arr[0]
+   #   RubyType.new(AbstructContainerType.new(nil)).add_same_type arr[0]
+      arr[0].type = AbstructContainerType.new(nil)
     end
 
     rettype = nil
