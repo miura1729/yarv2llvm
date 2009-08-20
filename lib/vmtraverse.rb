@@ -172,6 +172,10 @@ class YarvTranslator<YarvVisitor
     # local block of the key
     @jump_from = {}
     
+    # local variable push stack as result
+    @is_push_result_lblock = {}
+
+
     # Name of prevous local block. This uses 
     # This variable uses only record @jump_from. This process need
     # name of current local block and previous local block.
@@ -810,6 +814,7 @@ class YarvTranslator<YarvVisitor
   end
   
   def visit_local_block_start(code, ins, local_vars, ln, info)
+    @is_push_result_lblock[ln] = true
     oldrescode = @rescode
     live =  @is_live
     if live == nil and info[1] == nil then
@@ -852,14 +857,25 @@ class YarvTranslator<YarvVisitor
       commer_label = @jump_from[ln]
 
       # value of block is stored in @expstack
-      clsize = commer_label.size 
+      commer_label.each do |ll|
+        if @is_push_result_lblock[ll] then
+          if v2 = @expstack.pop then
+            valexp[0].add_same_value(v2[0])
+            v2[0].add_same_value(valexp[0])
+          end
+        end
+      end
+
+=begin
+      clsize = commer_label.size
       while n < clsize do
         if v2 = @expstack.pop then
-          valexp[0].add_same_value(v2[0])
-          v2[0].add_same_value(valexp[0])
+           valexp[0].add_same_value(v2[0])
+           v2[0].add_same_value(valexp[0])
         end
         n += 1
       end
+=end
 
       rc = nil
       oldrescode2 = @rescode
@@ -1571,23 +1587,25 @@ class YarvTranslator<YarvVisitor
   end
 
   def visit_pop(code, ins, local_vars, ln, info)
-    exp = @expstack.pop
-    oldrescode = @rescode
-    @rescode = lambda {|b, context|
-      context = oldrescode.call(b, context)
-      if exp then
+    if @is_live != false then
+      exp = @expstack.pop
+      oldrescode = @rescode
+      @rescode = lambda {|b, context|
+        context = oldrescode.call(b, context)
+        if exp then
 =begin
-        RubyType.resolve
-        if exp[0].type == nil then
-          exp[0].type = PrimitiveType.new(VALUE, nil)
-          exp[0].clear_same
-        end
+             RubyType.resolve
+             if exp[0].type == nil then
+               exp[0].type = PrimitiveType.new(VALUE, nil)
+               exp[0].clear_same
+             end
 =end
-        context.rc = exp[1].call(b, context)
-      end
-
-      context
-    }
+          context.rc = exp[1].call(b, context)
+        end
+        
+        context
+      }
+    end
   end
   
   def visit_dup(code, ins, local_vars, ln, info)
@@ -1973,6 +1991,10 @@ class YarvTranslator<YarvVisitor
     retexp = nil
     retexp = @expstack.pop
     rett2 = nil
+    if code.lblock_list.last != ln then
+      @is_live = false
+    end
+
     if retexp == nil then
       rett2 = RubyType.value(info[3], "Return type of #{info[1]}")
       retexp = [rett2, lambda {|b, context|
@@ -2020,11 +2042,8 @@ class YarvTranslator<YarvVisitor
         b.br(context.exit_block)
         if code.lblock_list.last == ln then
           b.set_insert_point(context.exit_block)
-        else
-          context.is_live = false
         end
       else
-        context.is_live = false
         b.return(rc)
       end
 
@@ -2146,6 +2165,8 @@ class YarvTranslator<YarvVisitor
           context}]
 
     end
+    @is_push_result_lblock[ln] = false
+    @is_push_result_lblock[(ln.to_s + "_1").to_sym] = false
   end
 
   def visit_branchunless(code, ins, local_vars, ln, info)
@@ -2191,8 +2212,9 @@ class YarvTranslator<YarvVisitor
         lambda {|b, context| 
           context.rc = context.block_value[iflab][1]
           context}]
-
     end
+    @is_push_result_lblock[ln] = false
+    @is_push_result_lblock[(ln.to_s + "_1").to_sym] = false
   end
 
   # getinlinecache
@@ -2792,7 +2814,7 @@ class YarvTranslator<YarvVisitor
       }]
   end
 
-  def opt_aref_aux(b, context, arr, idx, rettype, level, info)
+  def opt_aref_aux(b, context, arr, idx, rettype, level, info, indx)
     case arr[0].klass
     when :Array
       context = idx[1].call(b, context)
@@ -2920,7 +2942,8 @@ class YarvTranslator<YarvVisitor
           if carr.is_a?(ComplexType) then
             rettype = carr.element_type
             arr[0].type = carr
-            res = opt_aref_aux(b, context, arr, idx, rettype, level + 1, info)
+            res = opt_aref_aux(b, context, arr, idx, rettype, 
+                               level + 1, info, indx)
             if res then
               return res
             end
@@ -2987,7 +3010,7 @@ class YarvTranslator<YarvVisitor
     @expstack.push [rettype,
       lambda {|b, context|
         pppp "aref start"
-        opt_aref_aux(b, context, arr, idx, rettype, 0, info)
+        opt_aref_aux(b, context, arr, idx, rettype, 0, info, indx)
       }
     ]
   end
@@ -3265,7 +3288,9 @@ def compcommon(is, opt, preload, bind)
     p iseq.to_a
   end
   prelude = 'runtime/prelude.rb'
-  preis = RubyVM::InstructionSequence.compile_file(prelude,
+  pcont = File.read(prelude)
+  pconty2l = eval(pcont)
+  preis = RubyVM::InstructionSequence.compile(pconty2l, prelude, 1,
              { :peephole_optimization    => true,
                :inline_const_cache       => false,
                :specialized_instruction  => true,}).to_a

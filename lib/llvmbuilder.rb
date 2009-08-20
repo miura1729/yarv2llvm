@@ -225,7 +225,7 @@ class LLVMBuilder
   end
 
   def post_optimize
-    llvmstr = YARV2LLVM::PostOptimizer.new.optimize(@module.inspect)
+    llvmstr = PostOptimizer.new.optimize(@module.inspect)
     @module = LLVM::Module.read_assembly(llvmstr)
     update_methodstub_table
   end

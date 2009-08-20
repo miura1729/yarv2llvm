@@ -138,7 +138,7 @@ module MethodDefinition
               arr[0].type.element_content[i] = v
               context
 
-            when YARV2LLVM::UnsafeType
+            when UnsafeType
               context = val[1].call(b, context)
               v = context.rc
               context = arr[1].call(b, context)

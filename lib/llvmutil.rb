@@ -498,9 +498,10 @@ module SendUtil
     else
       reck = Object
     end
+
 #    inst = YARV2LLVM::klass2instance(reck)
 
-    if reck.singleton_methods.include?(mname) then
+    if rectype.klass2 == Class and reck.singleton_methods.include?(mname) then
       mth = reck.method(mname)
       issing = "_singleton"
       painfo =  mth.parameters
@@ -520,7 +521,7 @@ module SendUtil
     mid = b.ashr(mname.llvm, 8.llvm)
     fp = b.call(ggmc, reck.llvm, mid)
 
-    if YARV2LLVM::variable_argument?(painfo) then
+    if ::YARV2LLVM::variable_argument?(painfo) then
       ftype = Type.function(VALUE, [LONG, P_VALUE, VALUE])
       ftype = Type.pointer(ftype)
       fp = b.int_to_ptr(fp, ftype)

@@ -1,3 +1,28 @@
+module YARV2LLVM
+#=begin
+  MethodDefinition::RubyMethod[:open][:File] = {
+    :argtype => [RubyType.string, RubyType.string],
+    :rettype => RubyType.value(nil, "Return type of File#open", IO),
+  }
+
+  MethodDefinition::RubyMethod[:read][:IO] = {
+    :argtype => [RubyType.fixnum],
+    :rettype => RubyType.string(nil, "Return type of File#read"),
+  }
+
+  MethodDefinition::RubyMethod[:gets][:IO] = {
+    :argtype => [],
+    :rettype => RubyType.string(nil, "Return type of File#gets"),
+  }
+
+  MethodDefinition::RubyMethod[:count][:String] = {
+    :argtype => [RubyType.string],
+    :rettype => RubyType.fixnum(nil, "Return type of String#count"),
+  }
+#=end
+end
+
+<<-'EOS'
 # 
 
 YARV2LLVM::define_macro :attr_reader do |arg|
@@ -13,7 +38,6 @@ YARV2LLVM::define_macro :attr do |arg|
     `def #{name}; @#{name}; end`
   end
 end
-
 
 YARV2LLVM::define_macro :attr_accessor do |arg|
   arg.each do |argele|
@@ -63,3 +87,5 @@ class Array
     res
   end
 end
+EOS
+
