@@ -26,11 +26,47 @@ module IntRuby
   include LLVMUtil
 
   def gen_get_method_cfunc(builder)
-    ftype = Type.function(VALUE, [VALUE, VALUE])
-    b = builder.define_function_raw('llvm_get_method_cfunc', ftype)
+    gen_get_method_cfunc_common(builder, false)
+  end
+
+  def gen_get_method_cfunc_singleton(builder)
+    gen_get_method_cfunc_common(builder, true)
+  end
+
+  def gen_get_method_cfunc_common(builder, issing)
+    ftype = Type.function(VALUE, [VALUE, VALUE, P_VALUE])
+    if issing then
+      fn = 'llvm_get_method_cfunc_singleton'
+    else
+      fn = 'llvm_get_method_cfunc'
+    end
+    b = builder.define_function_raw(fn, ftype)
     args = builder.arguments
     klass = args[0]
     id = args[1]
+    cachep = args[2]
+
+    cachehit = builder.create_block
+    cachemiss = builder.create_block
+
+    cache = b.load(cachep)
+    ishit = b.icmp_ne(cache, -1.llvm)
+
+    b.cond_br(ishit, cachehit, cachemiss)
+
+
+    # function pointer  cache hit
+    b.set_insert_point(cachehit)
+    cfunc = b.load(cachep)
+    b.return(cfunc)
+
+    # function pointer cache miss get c function pointer
+    b.set_insert_point(cachemiss)
+    if issing then
+      ftype = Type.function(VALUE, [VALUE])
+      sing_class = builder.external_function('rb_singleton_class', ftype)
+      klass = b.call(sing_class, klass)
+    end
 
     ftype = Type.function(P_RNODE, [VALUE, VALUE, VALUE])
     rmn = builder.external_function('rb_get_method_body', ftype)
@@ -41,28 +77,7 @@ module IntRuby
     pcnode = b.int_to_ptr(vcnode, P_RNODE)
     pcfunc = b.struct_gep(pcnode, 2)
     cfunc = b.load(pcfunc)
-    b.return(cfunc)
-  end
-
-  def gen_get_method_cfunc_singleton(builder)
-    ftype = Type.function(VALUE, [VALUE, VALUE])
-    b = builder.define_function_raw('llvm_get_method_cfunc_singleton', ftype)
-    args = builder.arguments
-    klass = args[0]
-    id = args[1]
-    ftype = Type.function(VALUE, [VALUE])
-    sing_class = builder.external_function('rb_singleton_class', ftype)
-    sklass = b.call(sing_class, klass)
-
-    ftype = Type.function(P_RNODE, [VALUE, VALUE, VALUE])
-    rmn = builder.external_function('rb_get_method_body', ftype)
-    pnode = b.call(rmn, sklass, id, 0.llvm)
-
-    vpcnode = b.struct_gep(pnode, 3)
-    vcnode =b.load(vpcnode)
-    pcnode = b.int_to_ptr(vcnode, P_RNODE)
-    pcfunc = b.struct_gep(pcnode, 2)
-    cfunc = b.load(pcfunc)
+    b.store(cfunc, cachep)
     b.return(cfunc)
   end
 

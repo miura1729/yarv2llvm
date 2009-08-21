@@ -501,7 +501,8 @@ module SendUtil
 
 #    inst = YARV2LLVM::klass2instance(reck)
 
-    if rectype.klass2 == Class and reck.singleton_methods.include?(mname) then
+    if rectype and rectype.klass2 == Class and 
+        reck.singleton_methods.include?(mname) then
       mth = reck.method(mname)
       issing = "_singleton"
       painfo =  mth.parameters
@@ -515,11 +516,12 @@ module SendUtil
       painfo =  mth.parameters
     end
 
-    ftype = Type.function(VALUE, [VALUE, VALUE])
+    ftype = Type.function(VALUE, [VALUE, VALUE, P_VALUE])
     fname = 'llvm_get_method_cfunc' + issing
     ggmc = context.builder.get_or_insert_function_raw(fname, ftype)
     mid = b.ashr(mname.llvm, 8.llvm)
-    fp = b.call(ggmc, reck.llvm, mid)
+    fcache = add_global_variable("func_cache", VALUE, -1.llvm)
+    fp = b.call(ggmc, reck.llvm, mid, fcache)
 
     if ::YARV2LLVM::variable_argument?(painfo) then
       ftype = Type.function(VALUE, [LONG, P_VALUE, VALUE])
@@ -714,7 +716,8 @@ module SendUtil
 #            p recklass
 #            raise "Undefined method \"#{mname}\" in #{info[3]}"
 #            rettype = minfo[:rettype]
-            gen_call_from_ruby(rettype, receiver[0], mname, para, curlevel, b, context)
+            rectype = receiver ? receiver[0] : local_vars[2][:type]
+            gen_call_from_ruby(rettype, rectype, mname, para, curlevel, b, context)
           end
         }]
       return true
