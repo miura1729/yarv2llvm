@@ -390,6 +390,20 @@ EOS
     assert_equal(tarray_each, 31)
   end
 
+  def test_upto
+    YARV2LLVM::compile(<<-EOS)
+def tarray_upto
+  rc = 0
+  a = [1, 2, 4, 8, 16]
+  0.upto(a.size - 1) do |i|
+    rc = rc + a[i]
+  end
+  rc
+end
+EOS
+    assert_equal(tarray_upto, 31)
+  end
+
   def test_return1
 #    YARV2LLVM::compile(<<-EOS, {:dump_yarv => true})
     YARV2LLVM::compile(<<-EOS, {})

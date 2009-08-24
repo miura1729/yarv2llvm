@@ -350,7 +350,7 @@ module MethodDefinition
         lambda {|para|
           info = para[:info]
           rec = para[:receiver]
-          rtype = RubyType.value(info[3], "Return type of print")
+          rtype = RubyType.value(info[3], "Return type of printf")
           stdout = para[:receiver]
           if stdout == nil or stdout[0].klass == :NilClass then
             stdout = [nil, lambda {|b, context| 

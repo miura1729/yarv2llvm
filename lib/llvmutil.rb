@@ -20,7 +20,7 @@ module LLVMUtil
     p2[0].add_same_type rettype
 
     RubyType.resolve
-    if rettype.dst_type
+    if rettype.dst_type then
       rettype.type = rettype.dst_type
     end
     rettype
@@ -100,7 +100,9 @@ module LLVMUtil
   def make_frame_struct(local_vars)
     member = []
     local_vars.each do |ele|
-      if ele[:type].type then
+      if ele[:type].dst_type then
+        member.push ele[:type].dst_type.llvm
+      elsif ele[:type].type then
         member.push ele[:type].type.llvm
       else
         member.push VALUE
@@ -188,7 +190,7 @@ module LLVMUtil
     ins = para[:ins]
     local_vars = para[:local]
     blk = ins[3]
-    blab = (info[1].to_s + '+blk+' + blk[1].to_s).to_sym
+    blab = get_block_label(info[1], blk)
     if OPTION[:inline_block] then
       blkcode = code.blockes[blk[1]]
       @inline_code_tab[blkcode] = code
@@ -218,7 +220,12 @@ module LLVMUtil
       minfo = {
         :defined => false,
         :argtype => argtype,
-        :rettype => rtype
+        :self => nil,
+        :rettype => rtype,
+        :have_throw => nil,
+        :have_yield => nil,
+        :yield_argtype => nil,
+        :yield_rettype => nil,
       }
       MethodDefinition::RubyMethod[blab][info[0]] = minfo
     else
@@ -570,9 +577,11 @@ module SendUtil
     context
   end
 
-  def gen_get_block_ptr(recklass, info, blk, b, context)
-    blab = (info[1].to_s + '+blk+' + blk[1].to_s).to_sym
-    minfo = MethodDefinition::RubyMethod[blab][recklass]
+  def get_block_label(lab, blk)
+    (lab.to_s + '+blk+' + blk[1].to_s).to_sym
+  end
+
+  def gen_get_block_ptr(recklass, minfo, b, context)
 
     func2 = minfo[:func]
     if func2 == nil then
@@ -626,6 +635,7 @@ module SendUtil
   end
 
   def gen_arg_eval(args, receiver, ins, local_vars, info, minfo, mname)
+    recklass = receiver ? receiver[0].klass : nil
     blk = ins[3]
     
     para = []
@@ -674,7 +684,47 @@ module SendUtil
           context
         }]
       
-      para.push [local_vars[1][:type], lambda {|b, context|
+      blab = get_block_label(info[1], blk)
+
+      minfoy = MethodDefinition::RubyMethod[mname][recklass]
+
+      yargt = minfoy[:yield_argtype]
+      if yargt then
+        minfob = MethodDefinition::RubyMethod[blab][recklass]
+        if minfob == nil then
+          rtype = RubyType.new(nil)
+          argtype = []
+          yargt.each do |e|
+            argtype.push RubyType.new(nil)
+          end
+          minfob = {
+              :defined => false,
+              :argtype => argtype,
+              :self => nil,
+              :rettype => rtype,
+              :have_throw => nil,
+              :have_yield => nil,
+              :yield_argtype => nil,
+              :yield_rettype => nil,
+          }
+          MethodDefinition::RubyMethod[blab][info[0]] = minfob
+        end
+        bargt = minfob[:argtype]
+        if yargt and bargt then
+          yargt.each_with_index do |pe, n|
+            pe.add_same_type bargt[n]
+            bargt[n].add_same_type pe
+          end
+        end
+
+        brett = minfob[:rettype]
+        yrett = minfoy[:yield_rettype]
+        brett.add_same_type yrett
+        yrett.add_same_type brett
+      end
+
+      para.push [local_vars[1][:type], 
+        lambda {|b, context|
           # Send with block may break local frame, so must clear local 
           # value cache
           local_vars.each do |le|
@@ -683,7 +733,8 @@ module SendUtil
             end
           end
           # receiver of block is parent class
-          gen_get_block_ptr(info[0], info, blk, b, context)
+          minfo = MethodDefinition::RubyMethod[blab][info[0]]
+          gen_get_block_ptr(info[0], minfo, b, context)
         }]
     end
 

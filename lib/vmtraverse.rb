@@ -488,7 +488,11 @@ class YarvTranslator<YarvVisitor
           :defined => true,
           :argtype => argt,
           :self    => local_vars[2][:type],
-          :rettype => RubyType.new(nil, info[3], "Return type of #{info[1]}")
+          :rettype => RubyType.new(nil, info[3], "Return type of #{info[1]}"),
+          :have_throw => nil,
+          :have_yield => nil,
+          :yield_argtype => nil,
+          :yield_rettype => nil,
         }
       elsif minfo[:defined] then
 #        raise "#{info[1]} is already defined in #{info[3]}"
@@ -589,7 +593,9 @@ class YarvTranslator<YarvVisitor
       
       lvars = context.local_vars
       1.upto(numarg) do |n|
-        b.store(arg[n - 1], lvars[-n][:area])
+        dsttype = lvars[-n][:type]
+        srcval = implicit_type_conversion(b, context, arg[n - 1], dsttype)
+        b.store(srcval, lvars[-n][:area])
       end
       
       blkpoff = numarg
@@ -903,9 +909,10 @@ class YarvTranslator<YarvVisitor
               end
             end
             RubyType.resolve
-            rc = b.phi(phitype.type.llvm)
-            commer_label.uniq.reverse.each do |lab|
-              if context.blocks_tail[lab] then
+            labels = commer_label.uniq.select {|e| context.blocks_tail[e]}
+            if labels.size > 0 then
+              rc = b.phi(phitype.type.llvm)
+              labels.reverse.each do |lab|
                 rc.add_incoming(context.block_value[lab][1], 
                                 context.blocks_tail[lab])
               end
@@ -1958,7 +1965,13 @@ class YarvTranslator<YarvVisitor
         context}]
     
     rett = RubyType.new(nil, info[3], "Return type of yield")
-    @expstack.push [rett, lambda {|b, context|
+
+    minfo = MethodDefinition::RubyMethod[info[1]][info[0]]
+    minfo[:yield_argtype] = arg.map {|e| e[0]}
+    minfo[:yield_rettype] = rett
+
+    @expstack.push [rett, 
+      lambda {|b, context|
         fptr_i = b.load(context.local_vars[1][:area])
         RubyType.resolve
         # type error check
@@ -3094,9 +3107,15 @@ class YarvTranslator<YarvVisitor
 
       context = srcvalue.call(b, context)
       srcval = context.rc
+      srcval = implicit_type_conversion(b, context, srcval, dsttype)
       lvar = context.local_vars[voff]
 
-      dsttype.type = dsttype.type.dup_type
+#      dsttype.type = dsttype.type.dup_type
+      if dsttype.dst_type then
+        dsttype.type = dsttype.dst_type.dup_type
+      else
+        dsttype.type = dsttype.type.dup_type
+      end
       dsttype.type.content = srcval
 
       context.rc = b.store(srcval, lvar[:area])
@@ -3155,8 +3174,14 @@ class YarvTranslator<YarvVisitor
       context = oldrescode.call(b, context)
       context = srcvalue.call(b, context)
       rval = context.rc
+      rval = implicit_type_conversion(b, context, rval, dsttype)
 
-      dsttype.type = dsttype.type.dup_type
+#      dsttype.type = dsttype.type.dup_type
+      if dsttype.dst_type then
+        dsttype.type = dsttype.dst_type.dup_type
+      else
+        dsttype.type = dsttype.type.dup_type
+      end
       dsttype.type.content = rval
 
       if context.inline_args then

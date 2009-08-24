@@ -50,6 +50,14 @@ YARV2LLVM::define_macro :foobar do |arg|
 end
 
 class Fixnum
+  def upto(ed)
+    i = self
+    while i <= ed do
+      yield i
+      i = i + 1
+    end
+  end
+
   def step(ed, st)
     i = self
     if st > 0 then
