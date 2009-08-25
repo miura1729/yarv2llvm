@@ -36,7 +36,9 @@ class Elf<Worker
   end
 
   def run
+    notrun = true
     Thread.new {
+      notrun = false
       while true
         gates = @group.join
         gates[0].pass
@@ -45,7 +47,9 @@ class Elf<Worker
         random_delay
       end
     }
-    Thread.pass
+    while notrun
+      Thread.pass
+    end
   end
 
   def work
@@ -60,7 +64,9 @@ class Reindeer<Worker
   end
   
   def run
+    notrun = true
     Thread.new {
+      notrun = false
       while true
         gates = @group.join
         gates[0].pass
@@ -69,7 +75,9 @@ class Reindeer<Worker
         random_delay
       end
     }
-    Thread.pass
+    while notrun
+      Thread.pass
+    end
   end
 
   def work

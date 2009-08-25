@@ -732,7 +732,10 @@ module MethodDefinition
              b.store(frameval, framearea)
              blkarea = b.gep(initarea2, 2.llvm)
              b.store(0.llvm, blkarea)
-             context = gen_get_block_ptr(info[0], info, blk, b, context)
+ 
+             blab = get_block_label(info[1], blk)
+             minfo = MethodDefinition::RubyMethod[blab][info[0]] 
+             context = gen_get_block_ptr(info[0], minfo, b, context)
              blkptr = context.rc
 
              ftype = Type.function(VALUE, [VALUE, VALUE, VALUE])
@@ -746,9 +749,8 @@ module MethodDefinition
              func = builder.external_function(fname, ftype)
 
              blab = (info[1].to_s + '+blk+' + blk[1].to_s).to_sym
-             stfubc = builder.make_callbackstub(
-                       info[0], blab.to_s, rettype, para[:args], blkptr)
-             stfubc = b.ptr_to_int(stfubc, VALUE)
+             stfubc = builder.make_callbackstub(info[0], blab.to_s, 
+                                                rettype, para[:args], blkptr)
              stfubc = b.ptr_to_int(stfubc, VALUE)
              argv = b.ptr_to_int(initarea2, VALUE)
              context.rc = b.call(func, stfubc, argv, nil.llvm)
