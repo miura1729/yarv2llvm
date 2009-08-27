@@ -100,8 +100,10 @@ module LLVMUtil
   def make_frame_struct(local_vars)
     member = []
     local_vars.each do |ele|
-      if ele[:type].dst_type then
-        member.push ele[:type].dst_type.llvm
+      if ele[:area_type].dst_type then
+        member.push ele[:area_type].dst_type.llvm
+      elsif ele[:area_type].type then
+        member.push ele[:area_type].type.llvm
       elsif ele[:type].type then
         member.push ele[:type].type.llvm
       else

@@ -433,6 +433,7 @@ class YarvTranslator<YarvVisitor
       local_vars[i] = {
         :name => n, 
         :type => RubyType.new(nil, info[3], n),
+        :area_type => RubyType.new(nil, info[3], "area of #{n}"),
         :area => nil}
     end
     local_vars[0][:type] = RubyType.new(P_CHAR, info[3], "Parent frame")
@@ -454,6 +455,7 @@ class YarvTranslator<YarvVisitor
       (dn - an).times do |i|
         local_vars.push({
           :type => RubyType.new(nil),
+          :area_type => RubyType.new(nil),
           :area => nil
         })
       end
@@ -594,7 +596,8 @@ class YarvTranslator<YarvVisitor
       lvars = context.local_vars
       1.upto(numarg) do |n|
         dsttype = lvars[-n][:type]
-        srcval = implicit_type_conversion(b, context, arg[n - 1], dsttype)
+        srcval = arg[n - 1]
+        srcval = implicit_type_conversion(b, context, srcval, dsttype)
         b.store(srcval, lvars[-n][:area])
       end
       
@@ -1993,7 +1996,9 @@ class YarvTranslator<YarvVisitor
         argval = []
         arg.each do |e|
           context = e[1].call(b, context)
-          argval.push context.rc
+          val = context.rc
+          val = implicit_type_conversion(b, context, val, e[0])
+          argval.push val
         end
         context.rc = b.call(fptr, *argval)
         context
@@ -3093,13 +3098,23 @@ class YarvTranslator<YarvVisitor
   def store_to_local(voff, src, local_vars, ln, info)
     voff = voff + 2
     dsttype = local_vars[voff][:type]
+    areatype = local_vars[voff][:area_type]
     srctype = src[0]
     srcvalue = src[1]
 
     srctype.add_same_type(dsttype)
     dsttype.add_same_value(srctype)
     srctype.add_extent_base dsttype
-    
+
+    srctype.add_same_type(areatype)
+=begin
+    RubyType.resolve
+    if dsttype.dst_type and 
+        dsttype.dst_type.klass == srctype.klass then
+      dsttype.type = dsttype.dst_type
+    end
+=end
+
     oldrescode = @rescode
     @rescode = lambda {|b, context|
       pppp "Setlocal start"
@@ -3107,15 +3122,10 @@ class YarvTranslator<YarvVisitor
 
       context = srcvalue.call(b, context)
       srcval = context.rc
-      srcval = implicit_type_conversion(b, context, srcval, dsttype)
+      srcval = implicit_type_conversion(b, context, srcval, srctype)
+        
       lvar = context.local_vars[voff]
 
-#      dsttype.type = dsttype.type.dup_type
-      if dsttype.dst_type then
-        dsttype.type = dsttype.dst_type.dup_type
-      else
-        dsttype.type = dsttype.type.dup_type
-      end
       dsttype.type.content = srcval
 
       context.rc = b.store(srcval, lvar[:area])
@@ -3161,6 +3171,7 @@ class YarvTranslator<YarvVisitor
     voff = voff + 2
     alocal = @locals[acode][voff]
     dsttype = alocal[:type]
+    areatype = alocal[:area_type]
 
     srctype = src[0]
     srcvalue = src[1]
@@ -3169,19 +3180,22 @@ class YarvTranslator<YarvVisitor
     dsttype.add_same_value(srctype)
     srctype.add_extent_base dsttype
 
+    srctype.add_same_type(areatype)
+=begin
+    RubyType.resolve
+    if dsttype.dst_type and 
+        dsttype.dst_type.klass == srctype.klass then
+      dsttype.type = dsttype.dst_type.dup_type
+    end
+=end
+
     oldrescode = @rescode
     @rescode = lambda {|b, context|
       context = oldrescode.call(b, context)
       context = srcvalue.call(b, context)
       rval = context.rc
-      rval = implicit_type_conversion(b, context, rval, dsttype)
+      rval = implicit_type_conversion(b, context, rval, srctype)
 
-#      dsttype.type = dsttype.type.dup_type
-      if dsttype.dst_type then
-        dsttype.type = dsttype.dst_type.dup_type
-      else
-        dsttype.type = dsttype.type.dup_type
-      end
       dsttype.type.content = rval
 
       if context.inline_args then

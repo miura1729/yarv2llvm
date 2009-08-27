@@ -278,8 +278,12 @@ class RubyType
         else
           if dupp then
             ty.type = @type.dup_type
+            if @dst_type then
+              ty.type = @dst_type.dup_type
+            end
           else
             ty.type = @type
+            ty.dst_type = @dst_type
           end
         end
         ty.resolve
@@ -312,11 +316,16 @@ EXTENT_ORDER = {
   end
 
   def extent_base
+    extent_base_aux([self])
+  end
+
+  def extent_base_aux(hist)
     @extent_base.map do |e|
-      if e == self then
+      if hist.include?(self) then
         @extent_base
       else
-        e.extent_base
+        hist.push self
+        e.extent_base(hist)
       end
     end.flatten
   end
