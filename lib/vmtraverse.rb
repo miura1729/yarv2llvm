@@ -3068,7 +3068,24 @@ class YarvTranslator<YarvVisitor
   end
 
   # opt_succ
-  # opt_not
+
+  def visit_opt_not(code, ins, local_vars, ln, info)
+    rec = @expstack.pop
+
+    rettype = RubyType.boolean(info[3], "return type of not")
+    @expstack.push [rettype, 
+      lambda {|b, context|
+        context = rec[1].call(b, context)
+        recval = context.rc
+        recval = rec[0].type.to_value(recval, b, context)
+        bool = b.and(recval, (~4).llvm)
+
+        context.rc = b.icmp_eq(bool, 0.llvm)
+
+        context
+      }]
+  end
+
   # opt_regexpmatch1
   # opt_regexpmatch2
   # opt_call_c_function
