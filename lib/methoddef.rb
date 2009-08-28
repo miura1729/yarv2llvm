@@ -122,7 +122,7 @@ module MethodDefinition
             when HashType
 #              val[0].add_same_type(arr[0].type.element_type)
 #              arr[0].type.element_type.add_same_type(val[0])
-              RubyType.resolve
+#              RubyType.resolve
               ftype = Type.function(Type::VoidTy, 
                                     [VALUE, VALUE, VALUE])
               func = context.builder.external_function('rb_hash_aset', ftype)

@@ -19,6 +19,23 @@ module YARV2LLVM
     :argtype => [RubyType.string],
     :rettype => RubyType.fixnum(nil, "Return type of String#count"),
   }
+
+  rt = RubyType.array(nil, "Return type of String#unpack")
+  # RubyType.fixnum.add_same_type rt.type.element_type
+  MethodDefinition::RubyMethod[:unpack][:String] = {
+    :argtype => [RubyType.string],
+    :rettype => rt,
+  }
+
+  st = RubyType.array
+  rt = RubyType.array
+  rt.add_same_type(st)
+  st.add_same_type(rt)
+  MethodDefinition::RubyMethod[:[]][:Array] = {
+    :self => st,
+    :argtype => [RubyType.new(nil), RubyType.new(nil)],
+    :rettype => rt,
+  }
 #=end
 end
 
@@ -55,6 +72,14 @@ class Fixnum
     while i <= ed do
       yield i
       i = i + 1
+    end
+  end
+
+  def downto(ed)
+    i = self
+    while i >= ed do
+      yield i
+      i = i - 1
     end
   end
 

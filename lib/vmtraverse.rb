@@ -1184,7 +1184,7 @@ class YarvTranslator<YarvVisitor
       const_klass = Object
     end
     val[0].extent = :global
-    if !UNDEF.equal?(val[0].type.constant) then
+    if val[0].type and !UNDEF.equal?(val[0].type.constant) then
       const_klass.const_set(ins[1], val[0].type.constant)
     else
       @constant_type_tab[@binding][ins[1]] = val[0]
@@ -2392,13 +2392,20 @@ class YarvTranslator<YarvVisitor
     s1 = @expstack.pop
       
     level = nil
-    if s1[0].klass == :Array then
+    case s1[0].klass
+    when :Array, :String
       level = @expstack.size
       if @array_alloca_size == nil or @array_alloca_size < 1 + level then
         @array_alloca_size = 1 + level
       end
-      rettype = RubyType.array(info[3], "return type of *")
-      s1[0].type.element_type.add_same_type(rettype.type.element_type)
+      case s1[0].klass
+      when :Array
+        rettype = RubyType.array(info[3], "return type of *")
+        s1[0].type.element_type.add_same_type(rettype.type.element_type)
+      when :String
+        rettype = RubyType.string(info[3], "return type of *")
+      end
+
     else
       rettype = check_same_type_2arg_static(s1, s2)
     end
@@ -2427,7 +2434,7 @@ class YarvTranslator<YarvVisitor
         when :String
           rs0 = sval[0]
           rs1int = sval[1]
-          rs1 = stype[1].to_value(rs1int, b, context)
+          rs1 = stype[1].type.to_value(rs1int, b, context)
           ftype = Type.function(VALUE, [VALUE, VALUE])
           funcapp = context.builder.external_function('rb_str_times', ftype)
           context.rc = b.call(funcapp, rs0, rs1)
@@ -2565,8 +2572,8 @@ class YarvTranslator<YarvVisitor
     s2 = @expstack.pop
     s1 = @expstack.pop
     check_same_type_2arg_static(s1, s2)
-    
-    @expstack.push [RubyType.boolean(info[3]), 
+    rett = RubyType.boolean(info[3])
+    @expstack.push [rett, 
       lambda {|b, context|
         sval = []
         sval, stype, context, constp = gen_common_opt_2arg(b, context, s1, s2)
@@ -2581,17 +2588,18 @@ class YarvTranslator<YarvVisitor
           return context
         end
 
-        case stype[0].type.llvm
-        when Type::DoubleTy
+        case stype[0].klass
+        when :Float
           context.rc = b.fcmp_ueq(sval[0], sval[1])
 
-        when Type::Int32Ty
+        when :Fixnum
           context.rc = b.icmp_eq(sval[0], sval[1])
 
-        when VALUE
-          vv1 = s1[0].type.to_value(sval[1], b, context)
-          vv2 = s2[0].type.to_value(sval[0], b, context)
-          context.rc = b.icmp_eq(vv1, vv2)
+        else
+          context = gen_call_from_ruby(stype[0], rett, :==, [s1, s2], 0,
+                                       b, context)
+          ret = context.rc
+          context.rc = b.icmp_ne(ret, true.llvm)
         end
 
         context
@@ -2603,8 +2611,9 @@ class YarvTranslator<YarvVisitor
     s2 = @expstack.pop
     s1 = @expstack.pop
     check_same_type_2arg_static(s1, s2)
+    rett = RubyType.boolean(info[3])
     
-    @expstack.push [RubyType.boolean(info[3]), 
+    @expstack.push [rett, 
       lambda {|b, context|
         sval = []
         sval, stype, context, constp = gen_common_opt_2arg(b, context, s1, s2)
@@ -2619,17 +2628,18 @@ class YarvTranslator<YarvVisitor
           return context
         end
 
-        case stype[0].type.llvm
-        when Type::DoubleTy
+        case stype[0].klass
+        when :Float
           context.rc = b.fcmp_une(sval[0], sval[1])
 
-        when Type::Int32Ty
+        when :Fixnum
           context.rc = b.icmp_ne(sval[0], sval[1])
 
-        when VALUE
-          vv1 = s1[0].type.to_value(sval[1], b, context)
-          vv2 = s2[0].type.to_value(sval[0], b, context)
-          context.rc = b.icmp_ne(vv1, vv2)
+        else
+          context = gen_call_from_ruby(stype[0], rett, :==, [s1, s2], 0,
+                                       b, context)
+          ret = context.rc
+          context.rc = b.icmp_eq(ret, true.llvm)
         end
 
         context

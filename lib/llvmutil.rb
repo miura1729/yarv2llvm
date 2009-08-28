@@ -690,8 +690,7 @@ module SendUtil
 
       minfoy = MethodDefinition::RubyMethod[mname][recklass]
 
-      yargt = minfoy[:yield_argtype]
-      if yargt then
+      if minfoy and (yargt = minfoy[:yield_argtype]) then
         minfob = MethodDefinition::RubyMethod[blab][recklass]
         if minfob == nil then
           rtype = RubyType.new(nil)
