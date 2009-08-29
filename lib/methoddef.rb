@@ -452,7 +452,7 @@ module MethodDefinition
                     context = rec[1].call(b, context)
                     rc = context.rc
                     fstt = rec[0].type.first
-                    if !UNDEF.equal?(fstt.type.constant) then
+                    if fstt.type and !UNDEF.equal?(fstt.type.constant) then
                       fstt.type.constant
                     else
                       rc
@@ -461,7 +461,7 @@ module MethodDefinition
                   led = lambda {|b, context|
                     lstt = rec[0].type.last
                     res = nil
-                    if !UNDEF.equal?(lstt.type.constant) then
+                    if lstt.type and !UNDEF.equal?(lstt.type.constant) then
                       res = lstt.type.constant
                     else
                       res = lstt.name.llvm

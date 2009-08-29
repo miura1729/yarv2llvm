@@ -444,6 +444,12 @@ EXTENT_ORDER = {
     when :Hash
       RubyType.hashtype(lno, name)
 
+    when :Range
+      fst = RubyType.new(nil)
+      lst = RubyType.new(nil)
+      excl = RubyType.new(nil)
+      RubyType.range(fst, lst, excl, lno, name)
+
     else
       obj = nil
       if sym then

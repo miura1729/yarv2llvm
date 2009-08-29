@@ -179,7 +179,7 @@ module LLVMUtil
         when Type::Int32Ty
           context.rc = core.call(val1, val2, b, context)
         else
-          raise "Unsupported type #{val[0].inspect2} in |"
+          raise "Unsupported type #{arg1[0].inspect2}"
         end
         context}]
   end

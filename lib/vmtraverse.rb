@@ -391,7 +391,7 @@ class YarvTranslator<YarvVisitor
           end
           
           case ins[0]
-          when :branchif, :branchunless
+          when :branchif, :branchunless, :jump
             curln = (curln.to_s + "_1").to_sym
           end
         end
@@ -1615,6 +1615,8 @@ class YarvTranslator<YarvVisitor
         
         context
       }
+    else
+      @expstack.pop
     end
   end
   
@@ -2008,6 +2010,10 @@ class YarvTranslator<YarvVisitor
   def visit_leave(code, ins, local_vars, ln, info)
     retexp = nil
     retexp = @expstack.pop
+    if @is_live == false then
+      return
+    end
+
     rett2 = nil
     if code.lblock_list.last != ln then
       @is_live = false
@@ -2116,13 +2122,17 @@ class YarvTranslator<YarvVisitor
     @jump_from[lab].push ln
     @rescode = lambda {|b, context|
       oldrescode.call(b, context)
+
       jblock = get_or_create_block(lab, b, context)
       fmlab = context.curln
+
       if valexp then
         bval = [valexp[0], valexp[1].call(b, context).rc]
         context.block_value[fmlab] = bval
       end
+
       b.br(jblock)
+      RubyType.clear_content
 
       context
     }

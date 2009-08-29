@@ -1,5 +1,8 @@
 module YARV2LLVM
 #=begin
+
+  # type definition of method
+
   MethodDefinition::RubyMethod[:open][:File] = {
     :argtype => [RubyType.string, RubyType.string],
     :rettype => RubyType.value(nil, "Return type of File#open", IO),
@@ -21,7 +24,6 @@ module YARV2LLVM
   }
 
   rt = RubyType.array(nil, "Return type of String#unpack")
-  # RubyType.fixnum.add_same_type rt.type.element_type
   MethodDefinition::RubyMethod[:unpack][:String] = {
     :argtype => [RubyType.string],
     :rettype => rt,
@@ -36,6 +38,7 @@ module YARV2LLVM
     :argtype => [RubyType.new(nil), RubyType.new(nil)],
     :rettype => rt,
   }
+
 #=end
 end
 
@@ -109,6 +112,19 @@ class Fixnum
 end
 
 class Array
+  def collect
+    res = []
+    i = 0
+    self.each do |e|
+      res[i] = yield e
+      i = i + 1
+    end
+
+    res
+  end
+end
+
+class Range
   def collect
     res = []
     i = 0
