@@ -752,6 +752,12 @@ module SendUtil
       pppp "RubyMethod called #{mname.inspect}"
 
       para = gen_arg_eval(args, receiver, ins, local_vars, info, minfo, mname)
+      if func == nil then
+        level = @expstack.size
+        if @array_alloca_size == nil or @array_alloca_size < 1 + level then
+          @array_alloca_size = 1 + level
+        end
+      end
       @expstack.push [rettype,
         lambda {|b, context|
           recklass = receiver ? receiver[0].klass : nil

@@ -39,6 +39,83 @@ module YARV2LLVM
     :rettype => rt,
   }
 
+=begin
+  st = RubyType.array
+  rt = RubyType.new(nil)
+  rt.add_same_type(st.type.element_type)
+  st.type.element_type.add_same_type(rt)
+  MethodDefinition::RubyMethod[:first][:Array] = {
+    :self => st,
+    :argtype => [RubyType.new(nil)],
+    :rettype => rt,
+  }
+
+  st = RubyType.array
+  rt = RubyType.array
+  rt.add_same_type(st)
+  st.add_same_type(rt)
+  MethodDefinition::RubyMethod[:reverse][:Array] = {
+    :self => st,
+    :argtype => [],
+    :rettype => rt,
+  }
+
+
+  st = RubyType.array
+  rt = RubyType.array
+  rt.add_same_type(st)
+  st.add_same_type(rt)
+  MethodDefinition::RubyMethod[:slice!][:Array] = {
+    :self => st,
+    :argtype => [RubyType.new(nil), RubyType.new(nil)],
+    :rettype => rt,
+  }
+=end
+
+  MethodDefinition::RubyMethod[:"!~"][:String] = {
+    :argtype => [RubyType.new(nil)],
+    :rettype => RubyType.boolean,
+  }
+
+  MethodDefinition::RubyMethod[:"=~"][:String] = {
+    :argtype => [RubyType.new(nil)],
+    :rettype => RubyType.boolean,
+  }
+
+
+  MethodDefinition::RubyMethod[:"!~"][:Regexp] = {
+    :argtype => [RubyType.string],
+    :rettype => RubyType.boolean,
+  }
+
+  MethodDefinition::RubyMethod[:"=~"][:Regexp] = {
+    :argtype => [RubyType.string],
+    :rettype => RubyType.boolean,
+  }
+
+  fst = RubyType.new(nil)
+  lst = RubyType.new(nil)
+  fst.add_same_type(lst)
+  lst.add_same_type(fst)
+  excl = RubyType.boolean
+  rng = RubyType.range(fst, lst, excl)
+  MethodDefinition::RubyMethod[:first][:Range] = {
+    :self => rng,
+    :argtype => [],
+    :rettype => fst,
+  }
+
+  fst = RubyType.new(nil)
+  lst = RubyType.new(nil)
+  fst.add_same_type(lst)
+  lst.add_same_type(fst)
+  excl = RubyType.boolean
+  rng = RubyType.range(fst, lst, excl)
+  MethodDefinition::RubyMethod[:last][:Range] = {
+    :self => rng,
+    :argtype => [],
+    :rettype => lst,
+  }
 #=end
 end
 
@@ -125,6 +202,22 @@ class Array
 end
 
 class Range
+  def step(st)
+    i = self.first
+    ed = self.last
+    if st > 0 then
+      while i <= ed do
+        yield i
+        i = i + st
+      end
+    else
+      while ed <= i do
+        yield i
+        i = i + st
+      end
+    end
+  end
+
   def collect
     res = []
     i = 0

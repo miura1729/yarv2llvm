@@ -267,10 +267,30 @@ module MethodDefinition
     :& => {
       :inline_proc => 
         lambda {|para|
-          gen_binary_operator(para, 
-            lambda {|v1, v2, b, context|
-              b.and(v1, v2)
-            })
+          arg1 = para[:receiver]
+          argt = arg1[0]
+          if argt.klass != :TrueClass and argt.klass != :FalseClass then
+            gen_binary_operator(para, 
+              lambda {|v1, v2, b, context|
+                b.and(v1, v2)
+              })
+          else
+            arg2 = para[:args][0]
+            @expstack.push [RubyType.boolean,
+              lambda {|b, context|
+                context = arg1[1].call(b, context)
+                v1 = context.rc
+                v1 = arg1[0].type.to_value(v1, b, context)
+                context = arg2[1].call(b, context)
+                v2 = context.rc
+                v2 = arg2[0].type.to_value(v2, b, context)
+
+                vt = b.and(v1, v2)
+                vt = b.and(vt, (~4).llvm)
+                context.rc = b.icmp_eq(vt, 0.llvm)
+                context
+              }]
+          end
         },
     },
 
@@ -493,19 +513,19 @@ module MethodDefinition
            args = para[:args].reverse
            nargs = args.size
            arraycurlevel = 0
-           if nargs != 0 then
-             arraycurlevel = @expstack.size
-             if  @array_alloca_size == nil or 
-                 @array_alloca_size < nargs +  arraycurlevel then
-                @array_alloca_size = nargs + arraycurlevel
-             end
-           end
 
            # This rb_class_new_instance needs stack area as arguments
            # in spite of with no arguments.
            if @array_alloca_size == nil then
              @array_alloca_size = 1
            end
+           if nargs != 0 then
+             arraycurlevel = @expstack.size
+             if @array_alloca_size < nargs + arraycurlevel then
+               @array_alloca_size = nargs + arraycurlevel
+             end
+           end
+
            rettype = RubyType.from_sym(rec[0].klass, para[:info][3], rec[0].klass)
 #=begin
            recklass = rec[0].klass
@@ -650,8 +670,7 @@ module MethodDefinition
               context}]
       }
     },
-
-
+    
     :at => {
       :inline_proc => 
         lambda {|para|

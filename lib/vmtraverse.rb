@@ -2328,6 +2328,7 @@ class YarvTranslator<YarvVisitor
           else
             # Generic + dispatch        else
           p info
+          p s[0][0].conflicted_types.keys
           raise "Unkown Type #{s[0][0].type.llvm}"
         end
 
@@ -2385,6 +2386,7 @@ class YarvTranslator<YarvVisitor
         else
           # Generic + dispatch
           p info
+          p s[0][0].conflicted_types.keys
           raise "Unkown Type #{s[0][0].type.llvm}"
         end
 

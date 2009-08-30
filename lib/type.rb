@@ -447,7 +447,9 @@ EXTENT_ORDER = {
     when :Range
       fst = RubyType.new(nil)
       lst = RubyType.new(nil)
-      excl = RubyType.new(nil)
+      fst.add_same_type(lst)
+      lst.add_same_type(fst)
+      excl = RubyType.boolean
       RubyType.range(fst, lst, excl, lno, name)
 
     else
