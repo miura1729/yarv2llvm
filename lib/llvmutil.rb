@@ -748,6 +748,17 @@ module SendUtil
     minfo, func = gen_method_select(rectype, info[0], mname)
     if minfo then
       rettype = minfo[:rettype]
+      if cact = minfo[:copy_rettype] then
+        if cact == true then
+          orgrettype = rettype
+          rettype = RubyType.new(nil)
+          orgrettype.add_same_type(rettype)
+        else
+          rectype = receiver ? receiver[0] : local_vars[2][:type]
+          rettype = cact.call(rectype, args.map{|e| e[0]})
+        end
+      end
+
       # rettype = RubyType.new(nil, info[3], "Return type of #{mname}")
       pppp "RubyMethod called #{mname.inspect}"
 

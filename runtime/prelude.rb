@@ -27,6 +27,7 @@ module YARV2LLVM
   MethodDefinition::RubyMethod[:unpack][:String] = {
     :argtype => [RubyType.string],
     :rettype => rt,
+    :copy_rettype => true,
   }
 
   st = RubyType.array
@@ -37,17 +38,31 @@ module YARV2LLVM
     :self => st,
     :argtype => [RubyType.new(nil), RubyType.new(nil)],
     :rettype => rt,
+    :copy_rettype => true,
   }
-
-=begin
+#=begin
+  MethodDefinition::RubyMethod[:at][:Array] = {
+    :self => nil,
+    :argtype => [RubyType.new(nil)],
+    :rettype => nil,
+    :copy_rettype => lambda { |rect, argt|
+      rt = RubyType.new(nil, "", "return type of at")
+      arr = RubyType.array
+      arr.add_same_type(rect)
+      arr.type.element_type.add_same_type(rt)
+      rt
+    },
+  }
+#=end
   st = RubyType.array
   rt = RubyType.new(nil)
   rt.add_same_type(st.type.element_type)
   st.type.element_type.add_same_type(rt)
   MethodDefinition::RubyMethod[:first][:Array] = {
     :self => st,
-    :argtype => [RubyType.new(nil)],
+    :argtype => [],
     :rettype => rt,
+    :copy_rettype => true,
   }
 
   st = RubyType.array
@@ -58,6 +73,7 @@ module YARV2LLVM
     :self => st,
     :argtype => [],
     :rettype => rt,
+    :copy_rettype => true,
   }
 
 
@@ -69,8 +85,8 @@ module YARV2LLVM
     :self => st,
     :argtype => [RubyType.new(nil), RubyType.new(nil)],
     :rettype => rt,
+    :copy_rettype => true,
   }
-=end
 
   MethodDefinition::RubyMethod[:"!~"][:String] = {
     :argtype => [RubyType.new(nil)],
@@ -103,6 +119,7 @@ module YARV2LLVM
     :self => rng,
     :argtype => [],
     :rettype => fst,
+    :copy_rettype => true,
   }
 
   fst = RubyType.new(nil)
@@ -115,6 +132,7 @@ module YARV2LLVM
     :self => rng,
     :argtype => [],
     :rettype => lst,
+    :copy_rettype => true,
   }
 #=end
 end

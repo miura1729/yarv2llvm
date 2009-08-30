@@ -221,6 +221,26 @@ module MethodDefinition
        },
     },
 
+    :to_a => {
+      :inline_proc => 
+        lambda {|para|
+          info = para[:info]
+          rec = para[:receiver]
+          rett = RubyType.array(info[3])
+
+          level = @expstack.size
+          if @array_alloca_size == nil or @array_alloca_size < 1 + level then
+            @array_alloca_size = 1 + level
+          end
+
+          @expstack.push [rett, 
+            lambda {|b, context|
+              context = gen_call_from_ruby(rett, rec[0], :to_a, [rec], level, 
+                                           b, context)
+              context}]
+       }
+    },
+
     :-@ => {
       :inline_proc => 
         lambda {|para|
@@ -609,6 +629,7 @@ module MethodDefinition
       }
     },
 
+=begin
     :first => {
       :inline_proc => 
         lambda {|para|
@@ -670,7 +691,7 @@ module MethodDefinition
               context}]
       }
     },
-    
+
     :at => {
       :inline_proc => 
         lambda {|para|
@@ -695,29 +716,12 @@ module MethodDefinition
               context}]
       }
     },
+=end
+
+
   }
 
   InlineMethod_Enumerable = {
-    :to_a => {
-      :inline_proc => 
-        lambda {|para|
-          info = para[:info]
-          rec = para[:receiver]
-          rett = RubyType.array(info[3])
-
-          level = @expstack.size
-          if @array_alloca_size == nil or @array_alloca_size < 1 + level then
-            @array_alloca_size = 1 + level
-          end
-
-          @expstack.push [rett, 
-            lambda {|b, context|
-              context = gen_call_from_ruby(rett, rec[0], :to_a, [rec], level, 
-                                           b, context)
-              context}]
-      }
-    },
-
   }
 
   InlineMethod_Array = {

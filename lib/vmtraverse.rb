@@ -495,6 +495,7 @@ class YarvTranslator<YarvVisitor
           :have_yield => nil,
           :yield_argtype => nil,
           :yield_rettype => nil,
+          :copy_rettype => false,
         }
       elsif minfo[:defined] then
 #        raise "#{info[1]} is already defined in #{info[3]}"
@@ -1506,7 +1507,8 @@ class YarvTranslator<YarvVisitor
       @expstack.push [arr[0],
         lambda {|b, context|
           unless val then
-            val = arr[1].call(b, context)
+            context = arr[1].call(b, context)
+            val = context.rc
           end
           ftype = Type.function(VALUE, [VALUE, MACHINE_WORD])
           func = context.builder.external_function('rb_ary_entry', ftype)
@@ -3000,7 +3002,8 @@ class YarvTranslator<YarvVisitor
   def visit_opt_aref(code, ins, local_vars, ln, info)
     idx = @expstack.pop
     arr = @expstack.pop
-    if arr[0].type.is_a?(ArrayType) then
+    case arr[0].klass
+    when :Array
       fix = RubyType.fixnum(info[3])
       idx[0].add_same_type(fix)
       fix.add_same_value(idx[0])
@@ -3017,10 +3020,10 @@ class YarvTranslator<YarvVisitor
     rettype = nil
     indx = nil
     case arr[0].klass
-    when :Array #, :Object
+    when :Array                 #, :Object
       rettype = arr[0].type.element_type
       
-    when :Hash, :Struct
+    when :Struct, :Hash
       rettype = RubyType.value
 
     when :"YARV2LLVM::LLVMLIB::Unsafe"
