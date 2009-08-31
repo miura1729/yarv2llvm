@@ -23,11 +23,28 @@ module YARV2LLVM
     :rettype => RubyType.fixnum(nil, "Return type of String#count"),
   }
 
-  rt = RubyType.array(nil, "Return type of String#unpack")
   MethodDefinition::RubyMethod[:unpack][:String] = {
     :argtype => [RubyType.string],
-    :rettype => rt,
-    :copy_rettype => true,
+    :rettype => nil,
+    :copy_rettype => lambda { |rect, argt|
+      rt = RubyType.array(nil, "Return type of String#unpack")
+      fmt = argt[0].content
+      if !UNDEF.equal?(fmt) then
+        fmt.each_char do |ch|
+          case ch
+          when 'c', 'C', 's', 'S', 'i', 'I', 'l', 'L', 'n', 'N', 'v', 'V'
+            RubyType.fixnum.add_same_type(rt.type.element_type)
+
+          when 'a', 'A', 'Z', 'b', 'B', 'h', 'H', 'm', 'M', 'u', 'U', 'w'
+            RubyType.string.add_same_type(rt.type.element_type)
+
+          when 'f', 'd', 'e', 'E', 'g', 'G'
+            RubyType.float.add_same_type(rt.type.element_type)
+          end
+        end
+      end
+      rt
+    }
   }
 
   st = RubyType.array
