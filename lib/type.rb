@@ -41,6 +41,7 @@ class RubyType
   include RubyHelpers
 
   @@type_table = []
+  @@type_error_type = Hash.new {|hash, key| hash[key] = Hash.new(nil)}
 
   def initialize(type, lno = nil, name = nil, klass = nil)
     @name = name
@@ -253,8 +254,11 @@ class RubyType
             if OPTION[:strict_type_inference] then
               raise mess
             else
-              if OPTION[:type_message] then
+              if OPTION[:type_message] and
+                 @@type_error_type[self][ty] == nil then
                 print mess
+                @@type_error_type[self][ty] = true
+              else
               end
 
               ty.conflicted_types[ty.type.klass] = ty.type
