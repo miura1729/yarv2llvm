@@ -99,8 +99,11 @@ if __FILE__ == $0 then
     GC::Profiler.enable
   end
 
-  $0 = ARGV[0]
-  YARV2LLVM::compile_file(ARGV[0], y2lopt, preload)
+  progn = ARGV[0]
+  $0 = progn
+  ARGV.shift
+
+  YARV2LLVM::compile_file(progn, y2lopt, preload)
   if y2lopt[:gc_profile] then
     GC::Profiler.report(STDERR)
   end

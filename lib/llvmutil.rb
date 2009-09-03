@@ -356,6 +356,7 @@ module LLVMUtil
     when Type::Int32Ty
       return val
     else
+      p recv
       raise "Unsupported type #{recv[0].inspect2}"
     end
   end
