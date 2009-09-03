@@ -235,6 +235,21 @@ module MethodDefinition
         ]
       }
     },
+
+    :to_raw => {
+      :inline_proc => lambda {|para|
+        info = para[:info]
+        obj = para[:receiver]
+
+        raw = get_raw_llvm_type(obj[0].content)
+        @expstack.push [RubyType.value,
+          lambda {|b, context|
+            context.rc = raw.llvm
+            context
+          }
+        ]
+      }
+    },
   }
 
   InlineMethod_LLVMLIB = {
@@ -635,7 +650,7 @@ module MethodDefinition
 
   InlineMethod[:YARV2LLVM] = InlineMethod_YARV2LLVM
   InlineMethod[:"YARV2LLVM::LLVMLIB"] = InlineMethod_LLVMLIB
-  InlineMethod[:"LLVM"] = InlineMethod_LLVM
+  InlineMethod[:LLVM] = InlineMethod_LLVM
   InlineMethod[:"YARV2LLVM::LLVMLIB::Unsafe"] = InlineMethod_Unsafe
   InlineMethod[:Transaction] = InlineMethod_Transaction
 end
