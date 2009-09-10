@@ -470,7 +470,7 @@ module SendUtil
       obj = Object.nested_const_get(lexklass)
     end
 
-    if obj then
+    if obj and obj != NilClass then
       obj.ancestors.each do |sup|
         kls = sup.name.to_sym
         if tbl = MethodDefinition::InlineMethod[kls] and

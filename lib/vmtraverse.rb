@@ -1224,6 +1224,7 @@ class YarvTranslator<YarvVisitor
       type.extent = :global
     end
     areap = @global_var_tab[glname][:area]
+
     @expstack.push [type,
       lambda {|b, context|
         ftype = Type.function(VALUE, [VALUE])
@@ -1262,7 +1263,7 @@ class YarvTranslator<YarvVisitor
     srcvalue = src[1]
     
     srctype.add_same_value(dsttype)
-    dsttype.add_same_value(srctype)
+    dsttype.add_same_type(srctype)
     srctype.extent = :global
 
     oldrescode = @rescode
@@ -1270,6 +1271,7 @@ class YarvTranslator<YarvVisitor
       context = oldrescode.call(b, context)
       context = srcvalue.call(b, context)
       srcval = context.rc
+      srcval = implicit_type_conversion(b, context, srcval, srctype)
       srcval2 = srctype.type.to_value(srcval, b, context)
 
       dsttype.type = dsttype.type.dup_type
@@ -2046,6 +2048,7 @@ class YarvTranslator<YarvVisitor
       if rett2.type == nil then
         retexp[0].add_same_type rett2
         RubyType.resolve
+#        retexp[0].resolve
         
         if rett2.type == nil then
           rett2.type = PrimitiveType.new(VALUE, nil)
@@ -3007,8 +3010,8 @@ class YarvTranslator<YarvVisitor
       fix = RubyType.fixnum(info[3])
       idx[0].add_same_type(fix)
       fix.add_same_value(idx[0])
+    #  fix.resolve
     end
-
     RubyType.resolve
 
     # AbstrubctContainorType is type which have [] and []= as method.
@@ -3149,6 +3152,10 @@ class YarvTranslator<YarvVisitor
     srctype.add_extent_base dsttype
 
     srctype.add_same_type(areatype)
+    dsttype.resolve
+    srctype.resolve
+#    RubyType.resolve
+
 =begin
     RubyType.resolve
     if dsttype.dst_type and 
@@ -3223,6 +3230,10 @@ class YarvTranslator<YarvVisitor
     srctype.add_extent_base dsttype
 
     srctype.add_same_type(areatype)
+    dsttype.resolve
+    srctype.resolve
+#    RubyType.resolve
+
 =begin
     RubyType.resolve
     if dsttype.dst_type and 
@@ -3366,7 +3377,7 @@ def compcommon(is, opt, preload, bind)
   end
   iseq = VMLib::InstSeqTree.new(nil, is)
   if OPTION[:dump_yarv] then
-    p iseq.to_a
+    pp iseq.to_a
   end
   prelude = 'runtime/prelude.rb'
   pcont = File.read(prelude)

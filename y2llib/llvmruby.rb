@@ -1,5 +1,5 @@
 require 'yarv2llvm'
-require 'llvmruby'
+require 'llvm'
 
 module YARV2LLVM
   MethodDefinition::RubyMethod[:get_or_insert_function][:"LLVM::Module"] = {

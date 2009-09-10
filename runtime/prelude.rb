@@ -227,8 +227,9 @@ class Array
   def collect
     res = []
     i = 0
-    self.each do |e|
-      res[i] = yield e
+    max = self.size
+    while i < max
+      res[i] = yield self[i]
       i = i + 1
     end
 
@@ -256,8 +257,9 @@ class Range
   def collect
     res = []
     i = 0
-    self.each do |e|
-      res[i] = yield e
+    max = self.last
+    while i < max do
+      res[i] = yield i
       i = i + 1
     end
 

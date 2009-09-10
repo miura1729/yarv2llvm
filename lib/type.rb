@@ -459,10 +459,9 @@ EXTENT_ORDER = {
     else
       obj = nil
       if sym then
-        obj = sym.to_s.split(/::/).inject(Object) {|res, sym|
-          res.const_get(sym.to_sym, true)
-        }
+        obj = Object.nested_const_get(sym)
       end
+
       unless obj
         obj = Object
       end
