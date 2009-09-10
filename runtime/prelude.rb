@@ -225,7 +225,7 @@ end
 
 class Array
   def collect
-    res = []
+    res = Array.new
     i = 0
     max = self.size
     while i < max
@@ -255,12 +255,19 @@ class Range
   end
 
   def collect
-    res = []
+    res = Array.new
     i = 0
     max = self.last
-    while i < max do
-      res[i] = yield i
-      i = i + 1
+    if self.exclude_end? then
+      while i < max do
+        res[i] = yield i
+        i = i + 1
+      end
+    else
+      while i <= max do
+        res[i] = yield i
+        i = i + 1
+      end
     end
 
     res

@@ -596,7 +596,7 @@ class YarvTranslator<YarvVisitor
       
       lvars = context.local_vars
       1.upto(numarg) do |n|
-        dsttype = lvars[-n][:type]
+        dsttype = lvars[-n][:area_type]
         srcval = arg[n - 1]
         srcval = implicit_type_conversion(b, context, srcval, dsttype)
         b.store(srcval, lvars[-n][:area])
