@@ -566,7 +566,7 @@ module MethodDefinition
              if minfo[:argtype][i] == nil then
                minfo[:argtype][i] = RubyType.new(nil)
              end
-             minfo[:argtype][i].add_same_type ele[0]
+#             minfo[:argtype][i].add_same_type ele[0]
              ele[0].add_same_type minfo[:argtype][i]
              ele[0].add_extent_base minfo[:argtype][i]
              ele[0].slf = rettype

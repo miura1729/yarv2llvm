@@ -41,6 +41,15 @@ module LLVMUtil
     val
   end
 
+  def implicit_type_conversion2(b, context, val, srctype, dsttype)
+    if dsttype.type.llvm == Type::DoubleTy and
+       srctype.type.llvm == Type::Int32Ty then
+
+      val = b.si_to_fp(val, Type::DoubleTy)
+    end
+    val
+  end
+
   def convert_type_for_2arg_op(b, context, p1, p2)
     RubyType.resolve
     nop = lambda {|val, type| [val, type]}
