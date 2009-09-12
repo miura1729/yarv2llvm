@@ -1950,7 +1950,28 @@ class YarvTranslator<YarvVisitor
     return
   end
 
-  # invokesuper
+  def visit_invokesuper(code, ins, local_vars, ln, info)
+    if info[0] then
+      nargs = ins[1]
+      args = []
+      0.upto(nargs - 1) do |n|
+        args.push @expstack.pop
+      end
+      @expstack.pop
+      @expstack.push nil
+      args.each do |e|
+        @expstack.push e
+      end
+
+      klass = Object.const_get(info[0], true)
+      supklass = klass.superclass
+      nins = [:send, info[1], ins[1], ins[2], ins[3]]
+      ninfo = [supklass.to_s.to_sym, info[1], info[2], info[3], info[4]]
+      visit_send(code, nins, local_vars, ln, ninfo)
+    else
+      raise "Toplevel of super?"
+    end
+  end
 
   def visit_invokeblock(code, ins, local_vars, ln, info)
 #    @have_yield = true
@@ -3111,6 +3132,10 @@ class YarvTranslator<YarvVisitor
         bool = b.and(recval, (~4).llvm)
 
         context.rc = b.icmp_eq(bool, 0.llvm)
+        if rettype.klass == :Object then
+          rc = context.rc
+          context.rc = RubyType.boolean.type.to_value(rc, b, context)
+        end
 
         context
       }]

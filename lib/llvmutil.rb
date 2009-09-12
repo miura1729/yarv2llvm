@@ -420,6 +420,7 @@ module SendUtil
       # Search lexcal class
       obj = Object.nested_const_get(lexklass)
     end
+
     if obj then
       obj.ancestors.each do |sup|
         minfo = mtab[sup.name.to_sym]
@@ -430,11 +431,13 @@ module SendUtil
     end
 
     candidatenum = mtab.size
+    candidate = []
     if candidatenum > 1 then
       candidatenum = 0
       mtab.each {|klass, info| 
         if info[:func] then
           candidatenum += 1
+          candidate.push info
         end
       }
     end
