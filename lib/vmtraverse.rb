@@ -3112,8 +3112,17 @@ class YarvTranslator<YarvVisitor
       end
 
     when :Object
-      rettype = arr[0].type.element_type
-
+      if idx[0].klass == :Range then
+        rettype = arr[0].dup_type
+        level = @expstack.size
+        if @array_alloca_size == nil or @array_alloca_size < 1 + level then
+          @array_alloca_size = 1 + level
+        end
+      elsif idx[0].klass == :Fixnum then
+        rettype = arr[0].type.element_type
+      else
+        rettype = arr[0].type.element_type
+      end
     else
       rettype = RubyType.new(nil)
       #      p info

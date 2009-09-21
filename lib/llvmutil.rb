@@ -248,6 +248,8 @@ module LLVMUtil
       if rec[0].type.is_a?(ComplexType) then
         rec[0].type.element_type.add_same_type atype
         # atype.add_same_type rec[0].type.element_type
+      else
+        rec[0].add_same_type atype
       end
     end
     
