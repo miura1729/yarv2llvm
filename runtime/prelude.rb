@@ -1,5 +1,4 @@
 module YARV2LLVM
-#=begin
 
   # type definition of method
 
@@ -57,7 +56,7 @@ module YARV2LLVM
     :rettype => rt,
     :copy_rettype => true,
   }
-#=begin
+
   MethodDefinition::RubyMethod[:at][:Array] = {
     :self => nil,
     :argtype => [RubyType.new(nil)],
@@ -70,7 +69,7 @@ module YARV2LLVM
       rt
     },
   }
-#=end
+
   st = RubyType.array
   rt = RubyType.new(nil)
   rt.add_same_type(st.type.element_type)
@@ -93,6 +92,17 @@ module YARV2LLVM
     :copy_rettype => true,
   }
 
+
+  st = RubyType.array
+  rt = RubyType.array
+  rt.add_same_type(st)
+  st.add_same_type(rt)
+  MethodDefinition::RubyMethod[:sort][:Array] = {
+    :self => st,
+    :argtype => [],
+    :rettype => rt,
+    :copy_rettype => true,
+  }
 
   st = RubyType.array
   rt = RubyType.array
@@ -151,7 +161,7 @@ module YARV2LLVM
     :rettype => lst,
     :copy_rettype => true,
   }
-#=end
+
 end
 
 <<-'EOS'

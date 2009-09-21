@@ -103,9 +103,9 @@ module MethodDefinition
 
             case arr[0].type
             when ArrayType
-              val[0].add_same_type(arr[0].type.element_type)
-              arr[0].type.element_type.add_same_type(val[0])
-              RubyType.resolve
+#              val[0].add_same_type(arr[0].type.element_type)
+#              arr[0].type.element_type.add_same_type(val[0])
+#              RubyType.resolve
               ftype = Type.function(Type::VoidTy, 
                                     [VALUE, MACHINE_WORD, VALUE])
               func = context.builder.external_function('rb_ary_store', ftype)
@@ -520,6 +520,7 @@ module MethodDefinition
                   context
                   
                 else
+                  p rec[0].conflicted_types.keys
                   raise "Do not supported #{rec[0].inspect2}"
                 end
             }]

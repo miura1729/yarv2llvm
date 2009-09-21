@@ -78,6 +78,11 @@ if __FILE__ == $0 then
     y2lopt[:func_signature] = f
   end
 
+  opt.on('--[no-]var-signature', 
+         'Display type inferenced inforamtion about global variable') do |f|
+    y2lopt[:var_signature] = f
+  end
+
   opt.on('--[no-]type-message', 
          'Display type message for example Type Conflict Error') do |f|
     y2lopt[:type_message] = f

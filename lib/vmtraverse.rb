@@ -252,6 +252,16 @@ class YarvTranslator<YarvVisitor
   def run
     super
 
+    if OPTION[:var_signature] then
+      @global_var_tab.each do |vn, vtab|
+        if tinfo = vtab[:type] then
+          print "#{vn} : #{tinfo.inspect2} \n"
+        else
+          print "#{vn} : nil \n"
+        end
+      end
+    end
+
     # generate code for access Ruby internal
     if OPTION[:cache_instance_variable] then
       if @instance_var_tab.size != 0 then
@@ -950,8 +960,8 @@ class YarvTranslator<YarvVisitor
     # don't call before visit_block_start call.
     if @is_live == nil then
       @is_live = true
+      @prev_label = ln
     end
-    @prev_label = ln
 
     # p @expstack.map {|n| n[1]}
   end
@@ -1267,6 +1277,7 @@ class YarvTranslator<YarvVisitor
     srctype.add_same_value(dsttype)
     dsttype.add_same_type(srctype)
     srctype.extent = :global
+    dsttype.extent = :global
 
     oldrescode = @rescode
     @rescode = lambda {|b, context|
@@ -2044,6 +2055,7 @@ class YarvTranslator<YarvVisitor
     rett2 = nil
     if code.lblock_list.last != ln then
       @is_live = false
+      @prev_label = ln
     end
 
     if retexp == nil then
@@ -2146,6 +2158,7 @@ class YarvTranslator<YarvVisitor
     end
     bval = nil
     @is_live = false
+    @prev_label = ln
     @jump_from[lab] ||= []
     @jump_from[lab].push ln
     @rescode = lambda {|b, context|
@@ -2202,6 +2215,7 @@ class YarvTranslator<YarvVisitor
         bval = [valexp[0], valexp[1].call(b, context).rc]
         context.block_value[iflab] = bval
       end
+
       condval = cond[1].call(b, context).rc
       if cond[0].type.llvm != Type::Int1Ty then
         vcond = cond[0].type.to_value(condval, b, context)
@@ -2839,7 +2853,14 @@ class YarvTranslator<YarvVisitor
     if s1[0].type 
       if s1[0].type.klass == :String then
         rettype = check_same_type_2arg_static(s1, s2)
-      elsif s1[0].type.klass != :Array then
+      elsif s1[0].type.klass == :Array then
+        rettype = RubyType.array(info[3], "Return type of ltlt")
+        s1[0].add_same_type rettype
+        rettype.add_same_type s1[0]
+        s2[0].add_same_type rettype.type.element_type
+        rettype.type.element_type.add_same_type s2[0]
+        RubyType.resolve
+      else
         rettype = check_same_type_2arg_static(s1, s2)
       end
     end
@@ -2887,7 +2908,26 @@ class YarvTranslator<YarvVisitor
     when :Array
       context = idx[1].call(b, context)
       idxp = context.rc
-      if OPTION[:array_range_check] then
+      if idx[0].klass == :Range then
+        context = arr[1].call(b, context)
+        arrp = context.rc
+
+        idxptr = context.array_alloca_area
+        b.store(idxp, idxptr)
+
+        ftype = Type.function(VALUE, [LONG, P_VALUE, VALUE])
+        func = context.builder.external_function('rb_ary_aref', ftype)
+        av = b.call(func, 1.llvm, idxptr, arrp)
+        arrelet = arr[0].type.element_type.type
+        if arrelet then
+          context.rc = arrelet.from_value(av, b, context)
+        else
+          context.rc = av
+        end
+        context
+        
+        
+      elsif OPTION[:array_range_check] then
         context = arr[1].call(b, context)
         arrp = context.rc
         ftype = Type.function(VALUE, [VALUE, MACHINE_WORD])
@@ -3028,18 +3068,11 @@ class YarvTranslator<YarvVisitor
   def visit_opt_aref(code, ins, local_vars, ln, info)
     idx = @expstack.pop
     arr = @expstack.pop
-    case arr[0].klass
-    when :Array
-      fix = RubyType.fixnum(info[3])
-      idx[0].add_same_type(fix)
-      fix.add_same_value(idx[0])
-    #  fix.resolve
-    end
+
     RubyType.resolve
 
     # AbstrubctContainorType is type which have [] and []= as method.
     if arr[0].type == nil then
-   #   RubyType.new(AbstructContainerType.new(nil)).add_same_type arr[0]
       arr[0].type = AbstructContainerType.new(nil)
     end
 
@@ -3047,7 +3080,19 @@ class YarvTranslator<YarvVisitor
     indx = nil
     case arr[0].klass
     when :Array                 #, :Object
-      rettype = arr[0].type.element_type
+      if idx[0].klass == :Range then
+        rettype = arr[0].dup_type
+        level = @expstack.size
+        if @array_alloca_size == nil or @array_alloca_size < 1 + level then
+          @array_alloca_size = 1 + level
+        end
+      else
+        fix = RubyType.fixnum(info[3])
+        idx[0].add_same_type(fix)
+        fix.add_same_value(idx[0])
+
+        rettype = arr[0].type.element_type
+      end
       
     when :Struct, :Hash
       rettype = RubyType.value

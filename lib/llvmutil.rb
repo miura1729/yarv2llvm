@@ -248,13 +248,11 @@ module LLVMUtil
       if rec[0].type.is_a?(ComplexType) then
         rec[0].type.element_type.add_same_type atype
         # atype.add_same_type rec[0].type.element_type
-      else
-        rec[0].add_same_type atype
-        atype.add_same_type rec[0]
       end
     end
     
     lambda {|b, context, lst, led, body, recval, excl|
+=begin
       if argsize == 1 then
         if rec[0].type.is_a?(ComplexType) then
           rec[0].type.element_type.add_same_type atype
@@ -265,6 +263,7 @@ module LLVMUtil
         end
       end
       RubyType.resolve
+=end
       
       bcond = context.builder.create_block
       bbody = context.builder.create_block
@@ -466,6 +465,10 @@ module SendUtil
 
     elsif candidatenum < MaxSmallPolymotphicNum then
       # TODO : Use inline hash function generation
+      p rectype.conflicted_types.keys
+      p rectype.inspect2
+      p rectype.name
+      p lexklass
       raise("Not implimented polymorphic methed call yet '#{mname}' #{lexklass}")
 
     else

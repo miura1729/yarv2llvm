@@ -819,7 +819,7 @@ class ArrayType<AbstructContainerType
   def inspect2
     if @element_type then
       if has_cycle? then
-        "Array of VALUE"
+        "Array of Array of ..."
       else
         "Array of #{@element_type.inspect2}"
       end
@@ -886,7 +886,7 @@ class HashType<AbstructContainerType
   def inspect2
     if @element_type then
       if has_cycle? then
-        "Hash of VALUE"
+        "Hash of Hash of ..."
       else
         "Hash of #{@element_type.inspect2}"
       end
