@@ -348,7 +348,6 @@ EXTENT_ORDER = {
       if extmax.extent == :instance then
         slf = extmax.slf
         if slf.is_arg then
-          p "foo"
           return :global
         else
           return slf.real_extent
@@ -742,7 +741,7 @@ class AbstructContainerType<ComplexType
   include RubyHelpers
 
   def initialize(etype)
-    set_klass(Object)
+    set_klass(AbstructContainer)
     @element_type = RubyType.new(etype)
     @content = UNDEF
     @constant = UNDEF

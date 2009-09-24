@@ -246,6 +246,10 @@ class YarvTranslator<YarvVisitor
     @global_var_tab = Hash.new {|gltab, glname|
       gltab[glname] = {}
     }
+
+    # Hook for type infererence. This is called in between ending of traverse
+    # all yarv code and 2nd pass for code generation.
+    @type_inferece_after_traverse = lambda {}
   end
 
   include IntRuby
@@ -704,6 +708,14 @@ class YarvTranslator<YarvVisitor
     orggen_deffunc = @generated_define_func[info[0]][info[1]]
     @generated_define_func[info[0]][info[1]] = lambda {|iargs|
       inlineargs = iargs
+      RubyType.resolve
+      @type_inferece_after_traverse.call
+      RubyType.resolve
+      @type_inferece_after_traverse.call
+      RubyType.resolve
+      @type_inferece_after_traverse.call
+      RubyType.resolve
+      @type_inferece_after_traverse = lambda {}
       if OPTION[:func_signature] then
         # write function prototype
         print "#{info[0]}##{info[1]} :("
@@ -1915,11 +1927,37 @@ class YarvTranslator<YarvVisitor
       end
     end
 
+    minfo = nil
+    func = nil
     rett = RubyType.new(nil, info[3], "Return forward type of #{mname}")
+
+    old_tiat = @type_inferece_after_traverse
+    @type_inferece_after_traverse = lambda {
+      old_tiat.call
+      rectype = receiver ? receiver[0] : nil
+      minfo, func = gen_method_select(rectype, info[0], mname)
+      if minfo == nil then
+        # Retry for generate dynamic dispatch.
+        minfo, func = gen_method_select(rectype, nil, mname)
+      end
+
+      if minfo then
+        nargt = minfo[:argtype]
+        nargt.each_with_index do |ele, n|
+          para[n][0].add_same_type ele
+          ele.add_same_type para[n][0]
+        end
+        rett.add_same_type minfo[:rettype]
+        minfo[:rettype].add_same_type rett
+      end
+    }
+    
     @expstack.push [rett,
       lambda {|b, context|
+
         recklass = receiver ? receiver[0].klass : nil
         rectype = receiver ? receiver[0] : nil
+
         minfo, func = gen_method_select(rectype, info[0], mname)
         if minfo == nil then
           # Retry for generate dynamic dispatch.
@@ -1927,15 +1965,6 @@ class YarvTranslator<YarvVisitor
         end
 
         if func then
-          nargt = minfo[:argtype]
-          nargt.each_with_index do |ele, n|
-            para[n][0].add_same_type ele
-            ele.add_same_type para[n][0]
-          end
-          rett.add_same_type minfo[:rettype]
-          minfo[:rettype].add_same_type rett
-          RubyType.resolve
-
           if !with_selfp(receiver, info[0], mname) then
             para.pop
           end
@@ -3111,7 +3140,7 @@ class YarvTranslator<YarvVisitor
         rettype.type.type = arr[0].type.type.member[indx]
       end
 
-    when :Object
+    when :Object, :AbstructContainer
       if idx[0].klass == :Range then
         rettype = arr[0].dup_type
         level = @expstack.size
@@ -3123,11 +3152,14 @@ class YarvTranslator<YarvVisitor
       else
         rettype = arr[0].type.element_type
       end
-    else
+
+    when :NilClass
       rettype = RubyType.new(nil)
-      #      p info
-      #      pp arr[0]
-      #      raise "Unkown Type #{arr[0].klass}"
+      
+    else
+      p info
+      pp arr[0]
+      raise "Unkown Type #{arr[0].klass}"
     end
 
     @expstack.push [rettype,

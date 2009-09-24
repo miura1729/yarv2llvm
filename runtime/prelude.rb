@@ -97,7 +97,30 @@ module YARV2LLVM
   rt = RubyType.array
   rt.add_same_type(st)
   st.add_same_type(rt)
-  MethodDefinition::RubyMethod[:sort][:Array] = {
+  MethodDefinition::RubyMethod[:sort][:AbstructContainer] = {
+    :self => st,
+    :argtype => [],
+    :rettype => rt,
+    :copy_rettype => true,
+  }
+
+  st = RubyType.array
+  rt = RubyType.array
+  rt.add_same_type(st)
+  st.add_same_type(rt)
+  MethodDefinition::RubyMethod[:sort!][:AbstructContainer] = {
+    :self => st,
+    :argtype => [],
+    :rettype => rt,
+    :copy_rettype => true,
+  }
+
+
+  st = RubyType.array
+  rt = RubyType.array
+  rt.add_same_type(st)
+  st.add_same_type(rt)
+  MethodDefinition::RubyMethod[:uniq!][:AbstructContainer] = {
     :self => st,
     :argtype => [],
     :rettype => rt,

@@ -90,7 +90,7 @@ module MethodDefinition
           idx = para[:args][1]
           arr = para[:receiver]
           RubyType.resolve
-          if arr[0].type.is_a?(ArrayType)  then
+          if arr[0].type.is_a?(ArrayType) then
             val[0].add_same_type arr[0].type.element_type
             arr[0].type.element_type.add_same_type val[0]
           elsif arr[0].type == nil then
@@ -261,7 +261,7 @@ module MethodDefinition
               when Type::Int32Ty
                 context.rc = b.sub(0.llvm, val)
               else
-                raise "Unsupported type #{val[0].inspect2} in -@"
+                raise "Unsupported type #{recv[0].inspect2} in -@"
               end
               context}]
        },

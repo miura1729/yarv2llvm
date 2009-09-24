@@ -111,6 +111,9 @@ class Symbol
   end
 end
 
+class AbstructContainer
+end
+
 module LLVM::RubyInternals
   RFLOAT = Type.struct([RBASIC, Type::DoubleTy])
   P_RFLOAT = Type.pointer(RFLOAT)
