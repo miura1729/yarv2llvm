@@ -662,8 +662,8 @@ module SendUtil
     nargs = ins[2]
     args.each_with_index do |pe, n|
       if minfo then
-        pe[0].add_same_type(minfo[:argtype][nargs - n - 1])
-        minfo[:argtype][nargs - n - 1].add_same_value(pe[0])
+#        pe[0].add_same_type(minfo[:argtype][nargs - n - 1])
+#        minfo[:argtype][nargs - n - 1].add_same_value(pe[0])
         pe[0].add_extent_base minfo[:argtype][nargs - n - 1]
       end
       para[n] = pe
@@ -678,7 +678,7 @@ module SendUtil
       end
       if minfo and minfo[:self] then
         v[0].add_same_type minfo[:self]
-        minfo[:self].add_same_type v[0]
+#        minfo[:self].add_same_type v[0]
       end
     else
       v = [local_vars[2][:type], 
@@ -833,10 +833,13 @@ module SendUtil
       nargt = minfo[:argtype]
       nargt.each_with_index do |ele, n|
         para[n][0].add_same_type ele
-        ele.add_same_type para[n][0]
+#        ele.add_same_type para[n][0]
       end
-      rettype.add_same_type minfo[:rettype]
-      minfo[:rettype].add_same_type rettype
+
+      if minfo[:rettype] then
+        rettype.add_same_type minfo[:rettype]
+        minfo[:rettype].add_same_type rettype
+      end
 
       if func == nil then
         level = @expstack.size
