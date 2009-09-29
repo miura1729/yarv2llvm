@@ -2719,7 +2719,7 @@ class YarvTranslator<YarvVisitor
           context.rc = b.icmp_ne(sval[0], sval[1])
 
         else
-          context = gen_call_from_ruby(stype[0], rett, :==, [s1, s2], 0,
+          context = gen_call_from_ruby(stype[0], rett, :!=, [s1, s2], 0,
                                        b, context)
           ret = context.rc
           context.rc = b.icmp_eq(ret, true.llvm)
