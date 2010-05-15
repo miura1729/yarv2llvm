@@ -1,5 +1,4 @@
 module YARV2LLVM
-#=begin
 
   # type definition of method
 
@@ -57,7 +56,7 @@ module YARV2LLVM
     :rettype => rt,
     :copy_rettype => true,
   }
-#=begin
+
   MethodDefinition::RubyMethod[:at][:Array] = {
     :self => nil,
     :argtype => [RubyType.new(nil)],
@@ -70,7 +69,7 @@ module YARV2LLVM
       rt
     },
   }
-#=end
+
   st = RubyType.array
   rt = RubyType.new(nil)
   rt.add_same_type(st.type.element_type)
@@ -93,6 +92,40 @@ module YARV2LLVM
     :copy_rettype => true,
   }
 
+
+  st = RubyType.array
+  rt = RubyType.array
+  rt.add_same_type(st)
+  st.add_same_type(rt)
+  MethodDefinition::RubyMethod[:sort][:AbstructContainer] = {
+    :self => st,
+    :argtype => [],
+    :rettype => rt,
+    :copy_rettype => true,
+  }
+
+  st = RubyType.array
+  rt = RubyType.array
+  rt.add_same_type(st)
+  st.add_same_type(rt)
+  MethodDefinition::RubyMethod[:sort!][:AbstructContainer] = {
+    :self => st,
+    :argtype => [],
+    :rettype => rt,
+    :copy_rettype => true,
+  }
+
+
+  st = RubyType.array
+  rt = RubyType.array
+  rt.add_same_type(st)
+  st.add_same_type(rt)
+  MethodDefinition::RubyMethod[:uniq!][:AbstructContainer] = {
+    :self => st,
+    :argtype => [],
+    :rettype => rt,
+    :copy_rettype => true,
+  }
 
   st = RubyType.array
   rt = RubyType.array
@@ -151,12 +184,12 @@ module YARV2LLVM
     :rettype => lst,
     :copy_rettype => true,
   }
-#=end
+
 end
 
 <<-'EOS'
 # 
-
+#=begin
 YARV2LLVM::define_macro :attr_reader do |arg|
   arg.each do |argele|
     name = argele[0].type.constant
@@ -225,10 +258,11 @@ end
 
 class Array
   def collect
-    res = []
+    res = Array.new
     i = 0
-    self.each do |e|
-      res[i] = yield e
+    max = self.size
+    while i < max
+      res[i] = yield self[i]
       i = i + 1
     end
 
@@ -254,15 +288,24 @@ class Range
   end
 
   def collect
-    res = []
+    res = Array.new
     i = 0
-    self.each do |e|
-      res[i] = yield e
-      i = i + 1
+    max = self.last
+    if self.exclude_end? then
+      while i < max do
+        res[i] = yield i
+        i = i + 1
+      end
+    else
+      while i <= max do
+        res[i] = yield i
+        i = i + 1
+      end
     end
 
     res
   end
 end
+#=end
 EOS
 

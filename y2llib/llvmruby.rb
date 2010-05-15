@@ -14,7 +14,8 @@ module YARV2LLVM
   }
 
  MethodDefinition::RubyMethod[:builder][:"LLVM::BasicBlock"] = {
-    :argtype => [RubyType.value, RubyType.array],
+#    :argtype => [RubyType.value, RubyType.array],
+    :argtype => [],
     :rettype => RubyType.value(nil, "Return type of Type::function", :Builder),
   }
 

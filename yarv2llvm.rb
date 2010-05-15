@@ -26,7 +26,7 @@ if __FILE__ == $0 then
          'Execute FILE by Ruby1.9 before compile main program') do |f|
     rf = File.read(f)
     prog = eval(rf)
-    is = RubyVM::InstructionSequence.compile( prog, f, 1, 
+    is = RubyVM::InstructionSequence.compile( prog, f, "", 1, 
             {  :peephole_optimization    => true,
                :inline_const_cache       => false,
                :specialized_instruction  => true,}).to_a
@@ -76,6 +76,11 @@ if __FILE__ == $0 then
   opt.on('--[no-]func-signature', 
          'Display type inferenced inforamtion about function and local variable') do |f|
     y2lopt[:func_signature] = f
+  end
+
+  opt.on('--[no-]var-signature', 
+         'Display type inferenced inforamtion about global variable') do |f|
+    y2lopt[:var_signature] = f
   end
 
   opt.on('--[no-]type-message', 

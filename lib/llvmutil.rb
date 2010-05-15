@@ -41,6 +41,15 @@ module LLVMUtil
     val
   end
 
+  def implicit_type_conversion2(b, context, val, srctype, dsttype)
+    if dsttype.type.llvm == Type::DoubleTy and
+       srctype.type.llvm == Type::Int32Ty then
+
+      val = b.si_to_fp(val, Type::DoubleTy)
+    end
+    val
+  end
+
   def convert_type_for_2arg_op(b, context, p1, p2)
     RubyType.resolve
     nop = lambda {|val, type| [val, type]}
@@ -239,13 +248,13 @@ module LLVMUtil
       if rec[0].type.is_a?(ComplexType) then
         rec[0].type.element_type.add_same_type atype
         # atype.add_same_type rec[0].type.element_type
-      else
+      elsif rec[0].type then
         rec[0].add_same_type atype
-        atype.add_same_type rec[0]
       end
     end
     
     lambda {|b, context, lst, led, body, recval, excl|
+=begin
       if argsize == 1 then
         if rec[0].type.is_a?(ComplexType) then
           rec[0].type.element_type.add_same_type atype
@@ -256,6 +265,7 @@ module LLVMUtil
         end
       end
       RubyType.resolve
+=end
       
       bcond = context.builder.create_block
       bbody = context.builder.create_block
@@ -411,6 +421,7 @@ module SendUtil
       # Search lexcal class
       obj = Object.nested_const_get(lexklass)
     end
+
     if obj then
       obj.ancestors.each do |sup|
         minfo = mtab[sup.name.to_sym]
@@ -421,11 +432,13 @@ module SendUtil
     end
 
     candidatenum = mtab.size
+    candidate = []
     if candidatenum > 1 then
       candidatenum = 0
       mtab.each {|klass, info| 
         if info[:func] then
           candidatenum += 1
+          candidate.push info
         end
       }
     end
@@ -454,6 +467,10 @@ module SendUtil
 
     elsif candidatenum < MaxSmallPolymotphicNum then
       # TODO : Use inline hash function generation
+      p rectype.conflicted_types.keys
+      p rectype.inspect2
+      p rectype.name
+      p lexklass
       raise("Not implimented polymorphic methed call yet '#{mname}' #{lexklass}")
 
     else
@@ -470,7 +487,7 @@ module SendUtil
       obj = Object.nested_const_get(lexklass)
     end
 
-    if obj then
+    if obj and obj != NilClass then
       obj.ancestors.each do |sup|
         kls = sup.name.to_sym
         if tbl = MethodDefinition::InlineMethod[kls] and
@@ -645,8 +662,8 @@ module SendUtil
     nargs = ins[2]
     args.each_with_index do |pe, n|
       if minfo then
-        pe[0].add_same_type(minfo[:argtype][nargs - n - 1])
-        minfo[:argtype][nargs - n - 1].add_same_value(pe[0])
+#        pe[0].add_same_type(minfo[:argtype][nargs - n - 1])
+#        minfo[:argtype][nargs - n - 1].add_same_value(pe[0])
         pe[0].add_extent_base minfo[:argtype][nargs - n - 1]
       end
       para[n] = pe
@@ -661,7 +678,7 @@ module SendUtil
       end
       if minfo and minfo[:self] then
         v[0].add_same_type minfo[:self]
-        minfo[:self].add_same_type v[0]
+#        minfo[:self].add_same_type v[0]
       end
     else
       v = [local_vars[2][:type], 
@@ -669,6 +686,27 @@ module SendUtil
           context.rc = b.load(context.local_vars[2][:area])
           context}]
     end
+
+=begin
+    unless minfo
+      old_tiat = @type_inferece_after_traverse
+      @type_inferece_after_traverse = lambda {
+        old_tiat.call
+        unless minfo
+          minfo, func = gen_method_select(receiver[0], info[0], mname)
+          if minfo and minfo[:self] then
+            args.each_with_index do |pe, n|
+              pe[0].add_same_type(minfo[:argtype][nargs - n - 1])
+              minfo[:argtype][nargs - n - 1].add_same_value(pe[0])
+              pe[0].add_extent_base minfo[:argtype][nargs - n - 1]
+            end
+            v[0].add_same_type minfo[:self]
+            minfo[:self].add_same_type v[0]
+          end
+        end
+      }  
+    end
+=end
 
     para.push [local_vars[2][:type], lambda {|b, context|
       context = v[1].call(b, context)
@@ -723,6 +761,32 @@ module SendUtil
         yrett = minfoy[:yield_rettype]
         brett.add_same_type yrett
         yrett.add_same_type brett
+      else
+        old_tiat2 = @type_inferece_after_traverse
+        @type_inferece_after_traverse = lambda {
+          old_tiat2.call
+          recklass = receiver[0].klass
+          minfoy = MethodDefinition::RubyMethod[mname][recklass]
+          minfob = MethodDefinition::RubyMethod[blab][info[0]]
+
+          if minfoy and minfob then
+            yargt = minfoy[:yield_argtype]
+            bargt = minfob[:argtype]
+            if yargt and bargt then
+              yargt.each_with_index do |pe, n|
+#                pe.add_same_type bargt[n]
+#                bargt[n].add_same_type pe
+              end
+            end
+  
+            brett = minfob[:rettype]
+            yrett = minfoy[:yield_rettype]
+            if brett and yrett then
+              brett.add_same_type yrett
+              yrett.add_same_type brett
+            end
+          end
+        }
       end
 
       para.push [local_vars[1][:type], 
@@ -736,6 +800,7 @@ module SendUtil
           end
           # receiver of block is parent class
           minfo = MethodDefinition::RubyMethod[blab][info[0]]
+
           gen_get_block_ptr(info[0], minfo, b, context)
         }]
     end
@@ -764,6 +829,18 @@ module SendUtil
       pppp "RubyMethod called #{mname.inspect}"
 
       para = gen_arg_eval(args, receiver, ins, local_vars, info, minfo, mname)
+
+      nargt = minfo[:argtype]
+      nargt.each_with_index do |ele, n|
+        para[n][0].add_same_type ele
+#        ele.add_same_type para[n][0]
+      end
+
+      if minfo[:rettype] then
+        rettype.add_same_type minfo[:rettype]
+        minfo[:rettype].add_same_type rettype
+      end
+
       if func == nil then
         level = @expstack.size
         if @array_alloca_size == nil or @array_alloca_size < 1 + level then

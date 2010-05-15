@@ -92,7 +92,7 @@ EOS
 
   def visit_local_block_start(code, ins, local_vars, ln, info)
     if ln then
-      @curlln = (@curlabel.to_s + ln).to_sym
+      @curlln = (@curlabel.to_s + ln.to_s).to_sym
       @labels[@curlabel].push @curlln
       oldcode = @generated_code[@curlln]
       @generated_code[@curlln] = lambda {|context|

@@ -34,6 +34,7 @@ DEF_OPTION = {
   :dump_yarv => false,
   :write_bc => false,
   :func_signature => false,
+  :var_signature => false,
 
   :array_range_check => true,
 
@@ -108,6 +109,9 @@ class Symbol
 #    YARV2LLLVM::EXPORTED_OBJECT[self] = true
     immediate
   end
+end
+
+class AbstructContainer
 end
 
 module LLVM::RubyInternals

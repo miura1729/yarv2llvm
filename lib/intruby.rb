@@ -17,6 +17,20 @@ module LLVM::RubyInternals
                         VALUE   # u3
                        ])
   P_RNODE = Type.pointer(RNODE)
+  METHOD_DEFINITION = Type::struct([LONG, # type
+                                    VALUE, # original_id
+                                    VALUE, # cfunc
+                                    LONG   # alias_count
+                                    ])
+  P_METHOD_DEFINITION = Type.pointer(METHOD_DEFINITION)
+
+  METHOD_ENTRY = Type::struct([LONG, # flag
+                               P_METHOD_DEFINITION, # def
+                               VALUE,  # called_id
+                               VALUE # klass
+                               ])
+  P_METHOD_ENTRY = Type.pointer(METHOD_ENTRY)
+  
 end
 
 module YARV2LLVM
@@ -68,14 +82,14 @@ module IntRuby
       klass = b.call(sing_class, klass)
     end
 
-    ftype = Type.function(P_RNODE, [VALUE, VALUE, VALUE])
-    rmn = builder.external_function('rb_get_method_body', ftype)
-    pnode = b.call(rmn, klass, id, 0.llvm)
+    ftype = Type.function(P_METHOD_ENTRY, [VALUE, VALUE])
+#    rmn = builder.external_function('rb_get_method_entry', ftype)
+    rmn = builder.external_function('rb_method_entry_get_without_cache', ftype)
+    pme = b.call(rmn, klass, id)
 
-    vpcnode = b.struct_gep(pnode, 3)
-    vcnode =b.load(vpcnode)
-    pcnode = b.int_to_ptr(vcnode, P_RNODE)
-    pcfunc = b.struct_gep(pcnode, 2)
+    vpmdef = b.struct_gep(pme, 1)
+    vmdef =b.load(vpmdef)
+    pcfunc = b.struct_gep(vmdef, 2)
     cfunc = b.load(pcfunc)
     b.store(cfunc, cachep)
     b.return(cfunc)

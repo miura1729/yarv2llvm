@@ -90,9 +90,15 @@ module MethodDefinition
           idx = para[:args][1]
           arr = para[:receiver]
           RubyType.resolve
-          if arr[0].type.is_a?(ArrayType)  then
-            val[0].add_same_type(arr[0].type.element_type)
-            arr[0].type.element_type.add_same_type(val[0])
+          if arr[0].type.is_a?(ArrayType) then
+            val[0].add_same_type arr[0].type.element_type
+            arr[0].type.element_type.add_same_type val[0]
+          elsif arr[0].type == nil then
+            act = AbstructContainerType.new(nil)
+            arr[0].type = act
+
+            val[0].add_same_type act.element_type
+            act.element_type.add_same_type val[0]
           end
           val[0].add_extent_base arr[0]
 
@@ -103,9 +109,9 @@ module MethodDefinition
 
             case arr[0].type
             when ArrayType
-              val[0].add_same_type(arr[0].type.element_type)
-              arr[0].type.element_type.add_same_type(val[0])
-              RubyType.resolve
+#              val[0].add_same_type(arr[0].type.element_type)
+#              arr[0].type.element_type.add_same_type(val[0])
+#              RubyType.resolve
               ftype = Type.function(Type::VoidTy, 
                                     [VALUE, MACHINE_WORD, VALUE])
               func = context.builder.external_function('rb_ary_store', ftype)
@@ -255,7 +261,7 @@ module MethodDefinition
               when Type::Int32Ty
                 context.rc = b.sub(0.llvm, val)
               else
-                raise "Unsupported type #{val[0].inspect2} in -@"
+                raise "Unsupported type #{recv[0].inspect2} in -@"
               end
               context}]
        },
@@ -520,6 +526,7 @@ module MethodDefinition
                   context
                   
                 else
+                  p rec[0].conflicted_types.keys
                   raise "Do not supported #{rec[0].inspect2}"
                 end
             }]
@@ -566,13 +573,13 @@ module MethodDefinition
              if minfo[:argtype][i] == nil then
                minfo[:argtype][i] = RubyType.new(nil)
              end
-             minfo[:argtype][i].add_same_type ele[0]
+#             minfo[:argtype][i].add_same_type ele[0]
              ele[0].add_same_type minfo[:argtype][i]
              ele[0].add_extent_base minfo[:argtype][i]
              ele[0].slf = rettype
            end
 #           minfo[:argtype][-1].add_same_type rec[0]
-           rec[0].add_same_type minfo[:argtype][-1]
+#           rec[0].add_same_type minfo[:argtype][-1]
 #=end
 
            @expstack.push [rettype, 

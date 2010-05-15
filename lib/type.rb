@@ -97,9 +97,11 @@ class RubyType
       return @type.content
     end
     @same_value.reverse.each do |ty|
-      cont = ty.type.content
-      if !UNDEF.equal?(cont) then
-        return cont
+      if ty.type then
+        cont = ty.type.content
+        if !UNDEF.equal?(cont) then
+          return cont
+        end
       end
     end
     UNDEF
@@ -346,7 +348,6 @@ EXTENT_ORDER = {
       if extmax.extent == :instance then
         slf = extmax.slf
         if slf.is_arg then
-          p "foo"
           return :global
         else
           return slf.real_extent
@@ -459,10 +460,9 @@ EXTENT_ORDER = {
     else
       obj = nil
       if sym then
-        obj = sym.to_s.split(/::/).inject(Object) {|res, sym|
-          res.const_get(sym.to_sym, true)
-        }
+        obj = Object.nested_const_get(sym)
       end
+
       unless obj
         obj = Object
       end
@@ -741,7 +741,7 @@ class AbstructContainerType<ComplexType
   include RubyHelpers
 
   def initialize(etype)
-    set_klass(Object)
+    set_klass(AbstructContainer)
     @element_type = RubyType.new(etype)
     @content = UNDEF
     @constant = UNDEF
@@ -818,7 +818,7 @@ class ArrayType<AbstructContainerType
   def inspect2
     if @element_type then
       if has_cycle? then
-        "Array of VALUE"
+        "Array of Array of ..."
       else
         "Array of #{@element_type.inspect2}"
       end
@@ -885,7 +885,7 @@ class HashType<AbstructContainerType
   def inspect2
     if @element_type then
       if has_cycle? then
-        "Hash of VALUE"
+        "Hash of Hash of ..."
       else
         "Hash of #{@element_type.inspect2}"
       end
