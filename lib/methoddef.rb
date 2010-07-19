@@ -554,7 +554,7 @@ module MethodDefinition
            end
 
            rettype = RubyType.from_sym(rec[0].klass, para[:info][3], rec[0].klass)
-=begin
+#=begin
            recklass = rec[0].klass
            minfo = MethodDefinition::RubyMethod[:initialize][recklass] 
            unless minfo.is_a?(Hash)
@@ -580,7 +580,7 @@ module MethodDefinition
            end
 #           minfo[:argtype][-1].add_same_type rec[0]
            rec[0].add_same_type minfo[:argtype][-1]
-=end
+#=end
 
            @expstack.push [rettype, 
              lambda {|b, context|

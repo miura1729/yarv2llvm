@@ -216,11 +216,19 @@ class LLVMBuilder
   end
 
   def optimize
+=begin
     bitout =  Tempfile.new('bit')
+    bitout2 =  Tempfile.new('out')
     @module.write_bitcode("#{bitout.path}")
-    File.popen("/usr/local/bin/opt -O3 -f #{bitout.path}") {|fp|
+    File.popen("/usr/local/bin/opt -O3 -f #{bitout.path}", "r") {|fp|
       @module = LLVM::Module.read_bitcode(fp.read)
     }
+    system("/usr/local/bin/opt #{bitout.path} -O3 -f -o=#{bitout2.path}")
+    File.open("#{bitout2.path}", "r") {|fp|
+      @module = LLVM::Module.read_bitcode(fp.read)
+    }
+=end
+    LLVM::PassManager.new.run(@module)
     update_methodstub_table
   end
 

@@ -1,5 +1,5 @@
 require 'rubygems'
-require 'tempfile'
+#require 'tempfile'
 require 'llvm'
 
 require 'pp'

@@ -25,6 +25,7 @@ module LLVM::RubyInternals
   P_METHOD_DEFINITION = Type.pointer(METHOD_DEFINITION)
 
   METHOD_ENTRY = Type::struct([LONG, # flag
+                               LONG, # mark
                                P_METHOD_DEFINITION, # def
                                VALUE,  # called_id
                                VALUE # klass
@@ -87,7 +88,7 @@ module IntRuby
     rmn = builder.external_function('rb_method_entry_get_without_cache', ftype)
     pme = b.call(rmn, klass, id)
 
-    vpmdef = b.struct_gep(pme, 1)
+    vpmdef = b.struct_gep(pme, 2)
     vmdef =b.load(vpmdef)
     pcfunc = b.struct_gep(vmdef, 2)
     cfunc = b.load(pcfunc)

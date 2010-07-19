@@ -344,7 +344,7 @@ class YarvTranslator<YarvVisitor
             {  :peephole_optimization    => true,
                :inline_const_cache       => false,
                :specialized_instruction  => true,}).to_a
-    is_body = is[11]
+    is_body = is[12]
     is_body.unshift :label_start
     is_body.push :label_end
     is_body.each_with_index do |e, i|
@@ -708,6 +708,8 @@ class YarvTranslator<YarvVisitor
     orggen_deffunc = @generated_define_func[info[0]][info[1]]
     @generated_define_func[info[0]][info[1]] = lambda {|iargs|
       inlineargs = iargs
+
+=begin
       RubyType.resolve
       @type_inferece_after_traverse.call
       RubyType.resolve
@@ -715,6 +717,7 @@ class YarvTranslator<YarvVisitor
       RubyType.resolve
       @type_inferece_after_traverse.call
       RubyType.resolve
+=end
       @type_inferece_after_traverse = lambda {}
       if OPTION[:func_signature] then
         # write function prototype
@@ -1552,21 +1555,56 @@ class YarvTranslator<YarvVisitor
   # checkincludearray
 
   def visit_newhash(code, ins, local_vars, ln, info)
-    nele = ins[1]
+    nele = ins[1] / 2
     inits = []
     htype = RubyType.value(info[3], "Return type of newhash", Hash)
 
     nele.times do |n|
       k = @expstack.pop
       v = @expstack.pop
-      inits.push [k, v]
+      inits.push k
+      inits.push v
     end
+
+    arraycurlevel = @expstack.size
+    if nele != 0 then
+      if @array_alloca_size == nil or @array_alloca_size < nele + arraycurlevel then
+        @array_alloca_size = nele + arraycurlevel
+      end
+    end
+    inits.reverse!
 
     @expstack.push [htype,
       lambda {|b, context|
         ftype = Type.function(VALUE, [])
         func = context.builder.external_function('rb_hash_new', ftype)
         rc = b.call(func)
+
+        if inits.size != 0 then
+          hash = rc
+          initsize = inits.size
+          initarea = context.array_alloca_area
+          initarea2 =  b.gep(initarea, arraycurlevel.llvm)
+
+          ftype = Type.function(VALUE, [VALUE, VALUE, VALUE])
+          aset = context.builder.external_function('rb_hash_aset', ftype)
+          inits.each_slice(2) do |key, val|
+            context = key[1].call(b, context)
+            if key[0].type then
+               keyv = key[0].type.to_value(context.rc, b, context)
+            else
+               keyv = context.rc
+            end
+            context = val[1].call(b, context)
+            if val[0].type then
+               valv = val[0].type.to_value(context.rc, b, context)
+            else
+               valv = context.rc
+            end
+            b.call(aset, hash, keyv, valv)
+          end
+        end
+
         context.rc = rc
         context
     }]
@@ -1971,8 +2009,9 @@ class YarvTranslator<YarvVisitor
           end
           gen_call(func, para, b, context)
         else
-          RubyType.value.add_same_type rett
-          RubyType.resolve
+          valt = RubyType.value
+          valt.add_same_type rett
+          valt.resolve
 
 	  gen_call_from_ruby(rett, rectype, mname, para, curlevel, b, context)
 	end

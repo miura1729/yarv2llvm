@@ -189,7 +189,6 @@ end
 
 <<-'EOS'
 # 
-#=begin
 YARV2LLVM::define_macro :attr_reader do |arg|
   arg.each do |argele|
     name = argele[0].type.constant
@@ -214,6 +213,7 @@ end
 YARV2LLVM::define_macro :foobar do |arg|
 end
 
+=begin
 class Fixnum
   def upto(ed)
     i = self
@@ -221,6 +221,7 @@ class Fixnum
       yield i
       i = i + 1
     end
+    self
   end
 
   def downto(ed)
@@ -229,6 +230,7 @@ class Fixnum
       yield i
       i = i - 1
     end
+    self
   end
 
   def step(ed, st)
@@ -238,12 +240,15 @@ class Fixnum
         yield i
         i = i + st
       end
+      0
     else
       while ed <= i do
         yield i
         i = i + st
       end
+      0
     end
+    self
   end
 
   def **(n)
@@ -285,6 +290,7 @@ class Range
         i = i + st
       end
     end
+    self
   end
 
   def collect
@@ -306,6 +312,6 @@ class Range
     res
   end
 end
-#=end
+=end
 EOS
 

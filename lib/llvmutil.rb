@@ -528,7 +528,7 @@ module SendUtil
 
 #    inst = YARV2LLVM::klass2instance(reck)
 
-    if rectype and rectype.klass2 == Class and 
+    if rectype and (rectype.klass2 === Class or rectype.klass2 === Module) and 
         reck.singleton_methods.include?(mname) then
       mth = reck.method(mname)
       issing = "_singleton"
@@ -861,6 +861,7 @@ module SendUtil
           else
 #            p mname
 #            p recklass
+#            p info
 #            raise "Undefined method \"#{mname}\" in #{info[3]}"
 #            rettype = minfo[:rettype]
             rectype = receiver ? receiver[0] : local_vars[2][:type]
@@ -953,7 +954,7 @@ module SendUtil
   def do_macro(mname, _sender_env)
     macroinfo = MethodDefinition::InlineMacro[mname]
     if macroinfo then
-      # print macroinfo[:body]
+      #      print macroinfo[:body]
       eval(macroinfo[:body])
       return true
     end

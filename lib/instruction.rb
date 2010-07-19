@@ -6,7 +6,7 @@
 module VMLib
   class InstSeqTree
     Headers = %w(magic major_version minor_version format_type
-                 misc name filename filepath line typhe locals args exception_table)
+                 misc name filename filepath line type locals args exception_table)
 #                 misc name filename type locals args exception_table)
 #  call-seq:
 #     VMLib::InstSeqTree.new(parent, iseq)
