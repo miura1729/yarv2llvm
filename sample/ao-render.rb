@@ -1,4 +1,5 @@
-# AO render benchmark 
+# encoding: ASCII-8BIT
+# AO render benchmark
 # Original program (C) Syoyo Fujita in Javascript (and other languages)
 #      http://lucille.atso-net.jp/blog/?p=642
 #      http://lucille.atso-net.jp/blog/?p=711
@@ -29,7 +30,7 @@ class Vec
   def x; @x; end
   def y; @y; end
   def z; @z; end
-  
+
   def vadd(b)
     Vec.new(@x + b.x, @y + b.y, @z + b.z)
   end
